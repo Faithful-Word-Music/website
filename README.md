@@ -140,7 +140,7 @@ missing key shows an error state - which still links to the spreadsheet - instea
 ### How the contact form works
 
 ```
-visitor -> /contact -> POST /api/contact -> Zod validation -> Resend -> contact@fwbcmusic.org
+visitor -> /contact -> POST /api/contact -> BotID -> honeypot -> Zod validation -> Resend -> contact@fwbcmusic.org
 ```
 
 - The same Zod schema runs in the browser and on the server. The server never trusts the client.
@@ -149,10 +149,30 @@ visitor -> /contact -> POST /api/contact -> Zod validation -> Resend -> contact@
   come from their address (which would fail SPF/DKIM).
 - A hidden honeypot field catches bots; a filled honeypot returns `200` and sends nothing, so a bot
   cannot detect it.
-- Status codes: `400` invalid, `502` Resend failed, `503` not configured, `200` sent. Responses are
-  generic - no stack traces, no environment values. Message contents are never logged.
-- There is deliberately **no in-memory rate limiter**: it would not hold across serverless instances.
-  If spam appears, use Vercel WAF rate limiting, which works at the edge.
+- Status codes: `400` invalid, `403` BotID, `502` Resend failed, `503` not configured, `200` sent.
+  Responses are generic - no stack traces, no environment values. Message contents are never logged.
+
+**Spam and bot protection.** Three layers, none of which asks the visitor to do anything:
+
+1. **Vercel BotID** - an invisible challenge the browser solves in the background, verified on the
+   server with `checkBotId()`. The protected routes are listed in `src/instrumentation-client.ts`
+   and must match what `src/app/api/contact/route.ts` checks; `withBotId()` in `next.config.ts`
+   serves the challenge from this domain so an ad-blocker cannot drop it. A submission judged
+   automated gets `403` and copy that names `contact@fwbcmusic.org`, so a false positive still has
+   a way through. Free on every plan, including Hobby.
+   *Deep Analysis* (Kasada's ML model) is a Firewall toggle - Pro only, $1 per 1000 checks, and not
+   needed at this volume.
+2. **The honeypot**, as above.
+3. **A WAF rate-limit rule**, configured in the Vercel dashboard rather than in code - an in-memory
+   limiter would not hold across serverless instances, but the edge one does. Firewall → Configure →
+   New Rule: if `Request Path` equals `/api/contact` **and** `Method` equals `POST`, then
+   **Rate Limit** (not Log - Log there throttles nothing), Fixed Window, `600s`, `10` requests,
+   keyed on `IP`. Leave the exceeded-action on **Log** for the first week, then switch it to
+   **Deny**. Hobby allows exactly one rate-limit rule per project; blocked requests are not billed.
+
+`checkBotId()` always returns `isBot: false` under `next dev` - real detection only happens on a
+Vercel deployment. To exercise the rejection path locally, pass
+`developmentOptions: { bypass: "BAD-BOT" }` to it temporarily.
 
 ---
 
@@ -255,6 +275,7 @@ Vercel → Logs.
 | `503` | `RESEND_API_KEY` is not reaching the function - not set for that environment, or set but not redeployed since | Add it in Vercel for Production/Preview/Development, then redeploy |
 | `502` | Resend was reached and **rejected** the message. Usually an unverified sending domain; sometimes a revoked key or a rate limit | Read the exact reason in Vercel Logs, then fix it in Resend |
 | `400` | Validation - a field is empty, malformed or too long | Nothing to fix; the form reports it per field |
+| `403` | Vercel BotID judged the request automated. Expected for `curl` and other direct calls, which never solve the challenge | Nothing to fix if it was a bot. If a real visitor hit it, check Vercel → Firewall → BotID, and that `/api/contact` is listed in `src/instrumentation-client.ts` |
 
 On a `502`, `src/lib/resend.ts` logs the reason Resend gave, prefixed `[contact]`:
 

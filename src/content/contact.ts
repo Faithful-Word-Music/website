@@ -34,6 +34,13 @@ export const contactContent = {
     errorTitle: "Your message could not be sent",
     /** Fallback when the server gives no specific reason. */
     errorBody: `Something went wrong on our end. Please try again in a moment, or email us directly at ${siteConfig.contactEmail}.`,
+
+    /**
+     * Shown when Vercel BotID judges a submission automated. It always names
+     * the direct address, so a visitor wrongly flagged - an unusual browser, a
+     * blocked script - still has a way to reach the ministry.
+     */
+    botBody: `We could not verify this submission. Please email us directly at ${siteConfig.contactEmail} and we will get back to you.`,
   },
 
   /** Client-side validation messages. The server enforces the same rules. */

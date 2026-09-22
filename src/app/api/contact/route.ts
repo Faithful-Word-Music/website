@@ -1,3 +1,4 @@
+import { checkBotId } from "botid/server";
 import { NextResponse } from "next/server";
 
 import { contactContent } from "@/content/contact";
@@ -16,8 +17,28 @@ import {
  * Client-side validation is a convenience only; everything is re-checked here,
  * because a request can be made without ever loading the form. Responses stay
  * generic: no stack traces, no environment values, no Resend detail.
+ *
+ * Three layers stand in front of a spam submission: Vercel BotID below, the
+ * honeypot further down, and a WAF rate-limit rule configured in the Vercel
+ * dashboard (see README).
  */
 export async function POST(request: Request): Promise<NextResponse<ContactResponse>> {
+  // BotID first, before the body is even read: the verdict is about the
+  // request itself, so there is no point parsing something already rejected.
+  // The matching route list lives in src/instrumentation-client.ts - a route
+  // checked here but missing there always reads as a bot.
+  //
+  // Under `next dev` this always returns isBot: false; real detection only
+  // happens on a Vercel deployment.
+  const verification = await checkBotId();
+
+  if (verification.isBot) {
+    return NextResponse.json(
+      { ok: false, error: contactContent.status.botBody },
+      { status: 403 },
+    );
+  }
+
   let payload: unknown;
 
   try {
