@@ -1,26 +1,276 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ===========================================================================
+   DESIGN TOKENS  -  the one place site-wide colours, type and depth are set.
+   Change a value here and it updates everywhere. Avoid hard-coded hex codes
+   in components.
+   ===========================================================================
+   Contrast notes (WCAG AA), so accessibility survives future edits:
+     ink      on paper  18.1:1  - body text, headings
+     muted    on paper   5.2:1  - secondary text (AA)
+     gold-dark on paper   4.9:1  - small accent text (AA)
+     gold     on paper   3.1:1  - FAILS for small text. Decorative only:
+                                  rules, borders, icons, large display type.
+   =========================================================================== */
+@theme {
+  /* Surfaces */
+  --color-paper: #faf9f6;
+  --color-surface: #ffffff;
+
+  /* Text */
+  --color-ink: #111111;
+  --color-ink-soft: #2a2a28;
+  --color-muted: #6b6b68;
+
+  /* Lines and accent */
+  --color-line: #e5e5e2;
+  --color-staff: #d8d7d1;
+  --color-gold: #b08d57;
+  --color-gold-dark: #84683f;
+
+  /* Typography - wired up in src/app/layout.tsx */
+  --font-display: var(--font-source-serif), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Depth: restrained, paper-like rather than glossy */
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04), 0 8px 24px -12px rgba(17, 17, 17, 0.1);
+  --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 32px -16px rgba(17, 17, 17, 0.18);
+
+  --radius-card: 0.75rem;
+
+  /* Page rhythm */
+  --spacing-section: 6rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ===========================================================================
+   BASE
+   =========================================================================== */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* One visible, consistent focus ring everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--color-gold-dark);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-gold) 28%, transparent);
+    color: var(--color-ink);
+  }
+
+  /* Hymn numbers and musical keys line up in columns. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ===========================================================================
+   MUSICAL DETAILS
+   Restrained engraving cues. Each is used sparingly - see CONTENT-GUIDE.md.
+   =========================================================================== */
+@layer components {
+  /* Five staff lines, fading out. Decorative only, hidden from assistive tech. */
+  .staff-lines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--color-staff) 0,
+      var(--color-staff) 1px,
+      transparent 1px,
+      transparent 9px
+    );
+    background-size: 100% 41px;
+    background-repeat: no-repeat;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent);
+  }
+
+  /* A thin strip of piano keys, used once as a section divider. */
+  .piano-rule {
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--color-ink) 0,
+      var(--color-ink) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  }
+
+  /* Header / hero / search panels: translucent white over paper. */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: var(--shadow-glass);
+  }
+
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .glass {
+      background-color: rgba(255, 255, 255, 0.6);
+      -webkit-backdrop-filter: blur(12px) saturate(1.4);
+      backdrop-filter: blur(12px) saturate(1.4);
+    }
+  }
+}
+
+/* ===========================================================================
+   MOTION
+   ---------------------------------------------------------------------------
+   Two effects, both restrained and both fully disabled under
+   prefers-reduced-motion:
+
+     1. Page transitions  - fade + slight lift when moving between routes.
+     2. Scroll reveal     - sections fade up as they are scrolled into view.
+
+   Note the reduced-motion block below has to name the ::view-transition
+   pseudo-elements explicitly. They live in their own pseudo-element tree on the
+   root, so the usual `*, *::before, *::after` reset does not reach them.
+   =========================================================================== */
+
+/* --- 1. Page transitions -------------------------------------------------
+   Driven by React's <ViewTransition> (see src/components/ui/PageTransition.tsx).
+   Browsers without the View Transitions API simply swap pages instantly. */
+
+/* The transition overlay otherwise swallows clicks while it is running. */
+::view-transition {
+  pointer-events: none;
+}
+
+/* Timing is deliberately asymmetric: the old page leaves quickly so it stops
+   competing for attention, the new page arrives more gently. */
+::view-transition-old(.page-exit) {
+  animation:
+    150ms ease-in both page-fade reverse,
+    150ms ease-in both page-lift reverse;
+}
+
+::view-transition-new(.page-enter) {
+  animation:
+    220ms ease-out 150ms both page-fade,
+    380ms cubic-bezier(0.22, 1, 0.36, 1) both page-lift;
+}
+
+@keyframes page-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes page-lift {
+  from { transform: translateY(8px); }
+  to   { transform: none; }
+}
+
+/* The header and footer are the visitor's fixed reference points: the content
+   should look like it changed, not the whole viewport. Hiding the old snapshot
+   avoids a brief flash of two headers. */
+::view-transition-group(site-header),
+::view-transition-group(site-footer) {
+  animation: none;
+}
+
+::view-transition-group(site-header) {
+  z-index: 100;
+}
+
+::view-transition-old(site-header),
+::view-transition-old(site-footer) {
+  display: none;
+}
+
+::view-transition-new(site-header),
+::view-transition-new(site-footer) {
+  animation: none;
+}
+
+/* --- 2. Scroll reveal ----------------------------------------------------
+   Applied by src/components/ui/Reveal.tsx to content below the fold. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.55s ease-out,
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Failsafe. If JavaScript never runs, this reveals the content anyway after a
+     short delay, so a broken script can never leave the page blank. The first
+     Reveal to mount adds `motion-ready` to <html>, which cancels it. */
+  animation: reveal-failsafe 0.01s linear 800ms forwards;
+}
+
+html.motion-ready .reveal {
+  animation: none;
+}
+
+.reveal[data-revealed="true"] {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
+/* Content already on screen when it mounts appears at once, with no animation -
+   it should not fade in behind the page transition, and nobody should wait to
+   read something already in front of them. */
+.reveal[data-instant="true"] {
+  transition: none;
+}
+
+@keyframes reveal-failsafe {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Reduced motion ------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Reached only by naming them: see the note at the top of this section. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+
+  /* Content is simply present, never animated in. */
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
 }

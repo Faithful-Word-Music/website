@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Faithful Word Music">
+  <!-- The same mark as src/components/layout/Logo.tsx: the forte sign on a
+       four-line stave, the rules broken around the glyph. Keep the two in step. -->
+  <rect width="64" height="64" rx="14" fill="#111111"/>
+  <g stroke="#b08d57" stroke-width="2.6" stroke-linecap="round">
+    <path d="M6 21 H58"/><path d="M6 29 H58"/><path d="M6 37 H58"/><path d="M6 45 H58"/>
+  </g>
+  <g fill="none" stroke="#111111" stroke-width="10.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 48 C12.3 52.8 19.8 54.4 23 48.5 C26.8 40.5 31 29.5 34.8 22.5 C37.5 16.5 44.5 15.4 46.6 19.8"/>
+    <path d="M18.5 36.5 L37 33"/>
+  </g>
+  <g fill="none" stroke="#faf9f6" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 48 C12.3 52.8 19.8 54.4 23 48.5 C26.8 40.5 31 29.5 34.8 22.5 C37.5 16.5 44.5 15.4 46.6 19.8"/>
+    <path d="M18.5 36.5 L37 33"/>
+  </g>
+</svg>
