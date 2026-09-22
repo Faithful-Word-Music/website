@@ -24,6 +24,7 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 | Navigation menu items | `src/config/site.ts` → `nav` |
 | Site colours, fonts, spacing | `src/app/globals.css` (the `@theme` block at the top) |
 | The logo / brand mark | `src/components/layout/Logo.tsx` &mdash; and `src/app/icon.svg`, the browser-tab copy, must match |
+| The social share card (link previews) | `src/lib/og.tsx` |
 | Animation speed, or turning animation off | `src/app/globals.css` (the `MOTION` section at the bottom) |
 | How fresh the song list is (default 60s) | `src/config/site.ts` → `songList.revalidateSeconds` |
 | Local secrets (API keys) | `.env.local` - never committed |

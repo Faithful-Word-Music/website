@@ -26,5 +26,5 @@ export const footerContent = {
   contactBlurb: "For questions about the music ministry:",
 
   /** {year} is replaced with the current year at render time. */
-  copyright: `© {year} ${siteConfig.name}.`,
+  copyright: `{year} ${siteConfig.name}`,
 } as const;
