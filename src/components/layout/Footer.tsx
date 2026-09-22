@@ -91,9 +91,22 @@ export function Footer() {
           </Reveal>
         </div>
 
-        <div className="mt-12 border-t border-line pt-6">
+        <div className="mt-12 flex flex-col gap-3 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted">
             {footerContent.copyright.replace("{year}", String(year))}
+          </p>
+
+          {/* Set in the same small tracked label the footer headings use. The
+              text stays normal-case here and is uppercased in CSS, so it reads
+              naturally to a screen reader and is easy to edit. */}
+          <p className="font-sans text-[0.7rem] uppercase tracking-[0.18em] text-muted">
+            {footerContent.builtBy.prefix}{" "}
+            <ExternalLink
+              href={footerContent.builtBy.href}
+              className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
+            >
+              {footerContent.builtBy.name}
+            </ExternalLink>
           </p>
         </div>
       </Container>

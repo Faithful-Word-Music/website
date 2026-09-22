@@ -10,9 +10,9 @@ import { siteConfig } from "@/config/site";
  * The mark carries the gold; the wordmark stays pure ink, so there is one
  * accent in the lockup rather than two competing ones.
  *
- * The name shortens on narrow screens. Tailwind's `hidden` is `display: none`,
- * which takes the hidden one out of the accessibility tree too, so the link is
- * announced with exactly one name rather than both run together.
+ * The full name shows at every width. Even at 320px there is room: the
+ * container's padding, the mark and the menu button take about 118px, leaving
+ * roughly 200px for a wordmark that sets in about 170px.
  */
 export function Brand({ className }: { className?: string }) {
   return (
@@ -24,9 +24,8 @@ export function Brand({ className }: { className?: string }) {
       )}
     >
       <Logo size={32} className="shrink-0" />
-      <span className="font-display text-lg tracking-tight text-ink sm:text-xl">
-        <span className="hidden sm:inline">{siteConfig.name}</span>
-        <span className="sm:hidden">{siteConfig.shortName}</span>
+      <span className="whitespace-nowrap font-display text-lg tracking-tight text-ink sm:text-xl">
+        {siteConfig.name}
       </span>
     </Link>
   );
