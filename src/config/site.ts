@@ -12,8 +12,13 @@ export const siteConfig = {
   /** Public brand name. */
   name: "Faithful Word Music",
 
-  /** Short form of the brand, used where the full name will not fit. */
-  shortName: "FWBC Music",
+  /**
+   * Short form of the brand, used where the full name will not fit. The
+   * ministry is branded "Faithful Word Music" throughout, so this is currently
+   * the same as `name` - kept as its own field for places that want a shorter
+   * label later.
+   */
+  shortName: "Faithful Word Music",
 
   /** Short tagline used under the brand and in metadata. */
   tagline: "The Music Ministry of Faithful Word Baptist Church",
@@ -23,10 +28,10 @@ export const siteConfig = {
     "Faithful Word Music is the music ministry of Faithful Word Baptist Church in Phoenix, Arizona. Browse the congregational song list and find hymn resources for the local church and like-minded believers.",
 
   /** Canonical production domain. Used for metadata, canonical URLs and the sitemap. */
-  url: "https://fwbcmusic.org",
+  url: "https://faithfulwordmusic.com",
 
   /** Public contact address. Also the destination for the contact form. */
-  contactEmail: "contact@fwbcmusic.org",
+  contactEmail: "contact@faithfulwordmusic.com",
 
   church: {
     name: "Faithful Word Baptist Church",
@@ -57,16 +62,16 @@ export const siteConfig = {
   /**
    * Contact form email addressing (see src/lib/resend.ts).
    *
-   * `from` must use a domain verified in Resend. Until fwbcmusic.org is
-   * verified, Resend will reject sends from this address - change it here and
-   * nowhere else.
+   * `from` must use a domain verified in Resend. Until faithfulwordmusic.com
+   * is verified, Resend will reject sends from this address - change it here
+   * and nowhere else.
    *
    * The visitor's address is NOT used as the sender. It is set as Reply-To, so
    * replying reaches them without the message pretending to come from them.
    */
   mail: {
-    from: "Faithful Word Music <contact@fwbcmusic.org>",
-    to: "contact@fwbcmusic.org",
+    from: "Faithful Word Music <contact@faithfulwordmusic.com>",
+    to: "contact@faithfulwordmusic.com",
   },
 
   /** External resources, surfaced in the footer. */

@@ -102,7 +102,7 @@ Keep the quotes and commas as they are; change only the text inside the quotes.
 In `src/content/footer.ts`, add or delete a line in `resources`:
 
 ```ts
-{ label: "FWBC Music on YouTube", href: siteConfig.resources.youtube },
+{ label: "Faithful Word Music on YouTube", href: siteConfig.resources.youtube },
 ```
 
 For a brand new resource, add the URL to `src/config/site.ts` → `resources` first, then reference it here.

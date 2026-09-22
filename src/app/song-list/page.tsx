@@ -36,7 +36,7 @@ export default async function SongListPage() {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <SectionHeading
             as="h1"
-            eyebrow={siteConfig.church.shortName}
+            eyebrow={siteConfig.name}
             title={songListContent.title}
             className="max-w-2xl"
           >

@@ -16,8 +16,8 @@ export const footerContent = {
   resourcesHeading: "Resources",
   resources: [
     { label: "Faithful Word Baptist Church", href: siteConfig.resources.church },
-    { label: "FWBC Music on YouTube", href: siteConfig.resources.youtube },
-    { label: "FWBC Music on MuseScore", href: siteConfig.resources.musescore },
+    { label: "Faithful Word Music on YouTube", href: siteConfig.resources.youtube },
+    { label: "Faithful Word Music on MuseScore", href: siteConfig.resources.musescore },
     { label: "Congregation Song Sheets", href: siteConfig.resources.songSheets },
     { label: "Hymn CDs", href: siteConfig.resources.hymnCds },
   ],

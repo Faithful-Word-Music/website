@@ -3,7 +3,9 @@
 Production website for **Faithful Word Music**, the music ministry of
 [Faithful Word Baptist Church](https://www.faithfulwordbaptist.org/) in Phoenix, Arizona.
 
-Canonical domain: **https://fwbcmusic.org** (secondary: `faithfulwordmusic.com`, which redirects to it).
+Canonical domain: **https://faithfulwordmusic.com** (secondary: `fwbcmusic.org`, which redirects to it).
+Contact mail is on the same domain: **contact@faithfulwordmusic.com**, which is what Resend must
+verify.
 
 Three routes:
 
@@ -140,7 +142,7 @@ missing key shows an error state - which still links to the spreadsheet - instea
 ### How the contact form works
 
 ```
-visitor -> /contact -> POST /api/contact -> BotID -> honeypot -> Zod validation -> Resend -> contact@fwbcmusic.org
+visitor -> /contact -> POST /api/contact -> BotID -> honeypot -> Zod validation -> Resend -> contact@faithfulwordmusic.com
 ```
 
 - The same Zod schema runs in the browser and on the server. The server never trusts the client.
@@ -158,7 +160,7 @@ visitor -> /contact -> POST /api/contact -> BotID -> honeypot -> Zod validation 
    server with `checkBotId()`. The protected routes are listed in `src/instrumentation-client.ts`
    and must match what `src/app/api/contact/route.ts` checks; `withBotId()` in `next.config.ts`
    serves the challenge from this domain so an ad-blocker cannot drop it. A submission judged
-   automated gets `403` and copy that names `contact@fwbcmusic.org`, so a false positive still has
+   automated gets `403` and copy that names `contact@faithfulwordmusic.com`, so a false positive still has
    a way through. Free on every plan, including Hobby.
    *Deep Analysis* (Kasada's ML model) is a Firewall toggle - Pro only, $1 per 1000 checks, and not
    needed at this volume.
@@ -203,26 +205,26 @@ To pull them down for local use later: `npx vercel env pull .env.local`.
 
 **Settings, Domains.**
 
-1. Add `fwbcmusic.org` and set it as the **primary** domain.
-2. Add `www.fwbcmusic.org`; Vercel will offer to redirect it to the apex - accept.
-3. Add `faithfulwordmusic.com` (and `www.faithfulwordmusic.com`), and for each choose
-   **Redirect to** `fwbcmusic.org`, permanent (308).
+1. Add `faithfulwordmusic.com` and set it as the **primary** domain. It must match `siteConfig.url`
+   in `src/config/site.ts`, which is what canonical URLs, the sitemap and metadata are built from.
+2. Add `www.faithfulwordmusic.com`; Vercel will offer to redirect it to the apex - accept.
+3. Add `fwbcmusic.org` (and `www.fwbcmusic.org`), and for each choose
+   **Redirect to** `faithfulwordmusic.com`, permanent (308).
 4. Vercel then shows the **exact DNS records** to create at your registrar - typically an `A` record
    for the apex and a `CNAME` for `www`. **Use the values Vercel gives you**; they are not guessed here.
 5. Wait for each domain to show **Valid Configuration**.
 
-> **Heads-up on the cutover.** `fwbcmusic.org`, `www.fwbcmusic.org` and `faithfulwordmusic.com`
-> currently point at the existing Google Sites site. Repointing DNS is what takes the old site down
-> and brings this one up, so do it deliberately. Verify the Vercel deployment on its
-> `*.vercel.app` URL first.
+> **Note.** `fwbcmusic.org` already redirects to `faithfulwordmusic.com`; step 3 just reproduces
+> that redirect in Vercel.
 
 ### 4. Verify
 
 - All three pages load, and the song list shows the current month's real data.
 - Edit a cell in the Google Sheet; within about 60 seconds a fresh page load shows the change, with no redeploy.
 - Send a real message through `/contact` and confirm it arrives, and that **Reply** addresses the visitor.
-- `https://fwbcmusic.org/sitemap.xml` and `/robots.txt` respond.
-- `faithfulwordmusic.com` redirects to `fwbcmusic.org`.
+- `https://faithfulwordmusic.com/sitemap.xml` and `/robots.txt` respond, and every URL inside them
+  is on `faithfulwordmusic.com` - not the old domain.
+- `fwbcmusic.org` redirects to `faithfulwordmusic.com`.
 
 ---
 
@@ -248,13 +250,13 @@ The integration is read-only; the site never writes to the spreadsheet.
 ## Setting up Resend
 
 1. Create an account at [resend.com](https://resend.com).
-2. **Domains, Add Domain,** `fwbcmusic.org`.
+2. **Domains, Add Domain,** `faithfulwordmusic.com` - this must be the domain in `mail.from`, which is not the same as the canonical site domain.
 3. Resend shows the **exact DNS records** to add (typically DKIM `TXT`, an SPF/`MX` pair for the
    sending subdomain, and optionally DMARC). **Add the records Resend gives you** - they are
    account-specific and are not reproduced here. Then click **Verify** and wait for *Verified*.
 4. **API Keys, Create API Key**, with **Sending access**. Copy it - it is shown only once.
 5. Put it in `.env.local` as `RESEND_API_KEY=...`, and add it in Vercel.
-6. Make sure **`contact@fwbcmusic.org` is a real mailbox you can read.** Verifying the domain lets
+6. Make sure **`contact@faithfulwordmusic.com` is a real mailbox you can read.** Verifying the domain lets
    Resend *send* as that address; it does not create an inbox. Messages are delivered there.
 7. Test: submit `/contact`, confirm the message arrives, and confirm **Reply** goes to the visitor.
 
@@ -280,14 +282,14 @@ Vercel → Logs.
 On a `502`, `src/lib/resend.ts` logs the reason Resend gave, prefixed `[contact]`:
 
 ```
-[contact] Resend rejected the message: validation_error (403) - The fwbcmusic.org domain is not verified.
+[contact] Resend rejected the message: validation_error (403) - The faithfulwordmusic.com domain is not verified.
 ```
 
 `validation_error (403)` means the domain needs verifying. `invalid_access (401)` means the key is
 bad or revoked. Nothing sensitive is logged - no key, no message contents.
 
 **Sending and receiving are independent.** Verifying the domain lets Resend send *as*
-`contact@fwbcmusic.org`; it does not create an inbox. Inbound mail is whatever the domain's `MX`
+`contact@faithfulwordmusic.com`; it does not create an inbox. Inbound mail is whatever the domain's `MX`
 records point at, and that address needs a real mailbox or forwarding rule there - otherwise
 messages will send successfully and land nowhere. Do not enable Resend's "Receiving" feature unless
 you intend to move inbound mail to Resend as well: it adds `MX` records at the root that would
