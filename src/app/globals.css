@@ -69,6 +69,20 @@
     text-wrap: pretty;
   }
 
+  /*
+     Buttons should feel as clickable as links. Tailwind v4 dropped the
+     `cursor: pointer` its v3 Preflight used to put on buttons, to match native
+     browser behaviour - so <button> gets the plain arrow while <a href> gets
+     the hand. Put it back, once, for every button on the site.
+
+     Excluding :disabled keeps the rule honest: a disabled button should never
+     look clickable. (Button.tsx also sets disabled:cursor-not-allowed.)
+  */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
   /* One visible, consistent focus ring everywhere. */
   :focus-visible {
     outline: 2px solid var(--color-gold-dark);

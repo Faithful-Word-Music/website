@@ -241,6 +241,37 @@ The integration is read-only; the site never writes to the spreadsheet.
 If you ever send from a different address, change it in `src/config/site.ts` under `mail.from`. It
 must be on a domain verified in Resend.
 
+### Troubleshooting the contact form
+
+**Adding an API key and verifying a domain are two separate steps.** A working key is not enough:
+Resend refuses to send from a domain your account has not verified, and `mail.from` must always be
+on a verified domain.
+
+The status code tells you which half is wrong. Read it in the browser's Network tab, or in
+Vercel → Logs.
+
+| Status | Cause | Fix |
+|---|---|---|
+| `503` | `RESEND_API_KEY` is not reaching the function - not set for that environment, or set but not redeployed since | Add it in Vercel for Production/Preview/Development, then redeploy |
+| `502` | Resend was reached and **rejected** the message. Usually an unverified sending domain; sometimes a revoked key or a rate limit | Read the exact reason in Vercel Logs, then fix it in Resend |
+| `400` | Validation - a field is empty, malformed or too long | Nothing to fix; the form reports it per field |
+
+On a `502`, `src/lib/resend.ts` logs the reason Resend gave, prefixed `[contact]`:
+
+```
+[contact] Resend rejected the message: validation_error (403) - The fwbcmusic.org domain is not verified.
+```
+
+`validation_error (403)` means the domain needs verifying. `invalid_access (401)` means the key is
+bad or revoked. Nothing sensitive is logged - no key, no message contents.
+
+**Sending and receiving are independent.** Verifying the domain lets Resend send *as*
+`contact@fwbcmusic.org`; it does not create an inbox. Inbound mail is whatever the domain's `MX`
+records point at, and that address needs a real mailbox or forwarding rule there - otherwise
+messages will send successfully and land nowhere. Do not enable Resend's "Receiving" feature unless
+you intend to move inbound mail to Resend as well: it adds `MX` records at the root that would
+collide with the existing ones.
+
 ---
 
 ## Motion

@@ -88,8 +88,15 @@ export async function sendContactEmail(
     });
 
     if (error) {
-      // Log the failure reason only - never the visitor's message contents.
-      console.error("[contact] Resend rejected the message:", error.message);
+      // The reason only - never the visitor's message contents, never the key.
+      // `name` and `statusCode` are what make this diagnosable at a glance in
+      // the Vercel logs: "validation_error (403)" is almost always a sending
+      // domain that has not been verified, which reads very differently from
+      // "invalid_access (401)", a bad or revoked API key.
+      console.error(
+        "[contact] Resend rejected the message:",
+        `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
+      );
       return { ok: false, reason: "send-failed" };
     }
 
