@@ -5,7 +5,7 @@ import { PageTransition } from "@/components/ui/PageTransition";
 export default function NotFound() {
   return (
     <PageTransition>
-      <Container size="narrow" className="py-24 text-center sm:py-32">
+      <Container size="narrow" className="pb-24 pt-16 text-center sm:pb-32 sm:pt-24">
         <p className="font-display text-sm uppercase tracking-[0.2em] text-gold-dark">
           404
         </p>

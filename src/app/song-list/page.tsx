@@ -32,7 +32,7 @@ export default async function SongListPage() {
 
   return (
     <PageTransition>
-      <Container className="py-14 sm:py-20">
+      <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <SectionHeading
             as="h1"

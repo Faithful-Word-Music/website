@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <PageTransition>
-      <Container size="narrow" className="py-14 sm:py-20">
+      <Container size="narrow" className="pb-14 pt-10 sm:pb-20 sm:pt-14">
         <SectionHeading as="h1" eyebrow="Contact" title={contactContent.title}>
           <p className="text-base sm:text-lg">{contactContent.lead}</p>
         </SectionHeading>

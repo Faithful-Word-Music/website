@@ -8,7 +8,7 @@ export function Hero() {
 
   return (
     <section className="relative overflow-hidden">
-      <Container className="relative py-20 text-center sm:py-28">
+      <Container className="relative pb-20 pt-12 text-center sm:pb-28 sm:pt-20">
         <div>
           <RehearsalMark align="center">{hero.eyebrow}</RehearsalMark>
 

@@ -25,13 +25,6 @@ export const footerContent = {
   contactHeading: "Contact",
   contactBlurb: "For questions about the music ministry:",
 
-  /** Site credit, shown opposite the copyright in the footer. */
-  builtBy: {
-    prefix: "Built by",
-    name: "Alexander D. Ball",
-    href: "https://alexball.dev",
-  },
-
   /** {year} is replaced with the current year at render time. */
   copyright: `{year} ${siteConfig.name}`,
 } as const;
