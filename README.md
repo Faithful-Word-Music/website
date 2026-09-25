@@ -51,19 +51,22 @@ returns a clear error. Add the keys to exercise those features.
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build locally |
 | `npm run lint` | ESLint |
+| `npm test` | Unit tests (Vitest) for the song-list parser, timing and history logic |
 | `npx tsc --noEmit` | Type check |
 
 ---
 
 ## Environment variables
 
-Both are **server-only secrets**. Neither is prefixed `NEXT_PUBLIC_`, because that prefix bundles a
+All are **server-only secrets**. None is prefixed `NEXT_PUBLIC_`, because that prefix bundles a
 value into browser JavaScript and makes it public.
 
 | Variable | Used by | Needed in |
 |---|---|---|
 | `GOOGLE_SHEETS_API_KEY` | `src/lib/google-sheets.ts` | Development, Preview, Production |
 | `RESEND_API_KEY` | `src/lib/resend.ts` | Development, Preview, Production |
+| `DATABASE_URL` | `src/lib/db.ts` (song archive) | Development, Preview, Production - set automatically by the Neon integration |
+| `CRON_SECRET` | `src/app/api/cron/sync-archive/route.ts` | Production (and anywhere you trigger the sync by hand) |
 
 - **`.env.local`** - real values, local only, git-ignored.
 - **`.env.example`** - placeholders, committed, documents what exists.
@@ -103,8 +106,8 @@ src/
 ```
 
 Content, configuration, presentation and integration are kept apart. Only three components ship
-JavaScript to the browser - the header (mobile menu), the song list (tabs + search) and the contact
-form. Everything else is a Server Component.
+JavaScript to the browser - the header (mobile menu), the song list (live Next/Now, tabs, search), the
+song archive (search, filters) and the contact form. Everything else is a Server Component.
 
 ### How the song list works
 
@@ -113,10 +116,11 @@ Google Sheets  ->  src/lib/google-sheets.ts  ->  src/lib/song-list.ts  ->  nativ
                    (fetch, read-only)            (parse into services)
 ```
 
-Two requests, both cached for 60 seconds:
+Two requests, both cached for 10 seconds (`siteConfig.songList.revalidateSeconds`):
 
 1. **Sheet metadata** - `?fields=sheets.properties(title,index,hidden)`
-   Hidden tabs are dropped, the rest sorted by tab index, and the **first two** taken.
+   Tabs are sorted by tab index. The **first two visible** tabs are the schedule; hidden tabs are
+   read only for song history (services that have already happened) and never shown as a schedule.
 2. **Cell values** - `values:batchGet` with `valueRenderOption=FORMATTED_VALUE`, one range per tab.
 
 **Why the API and not a CSV export.** The workbook holds all twelve months; only the current one is
@@ -128,13 +132,30 @@ Only the Sheets API exposes `hidden` and `index`.
 formulas arrive already resolved. The site never parses a formula.
 
 **Sheet layout.** Row 1 is a heading; then repeating groups of a date row plus its song rows, in two
-side-by-side blocks (columns `A/B/C` and `E/F/G`, with `D` a spacer). A date row and a
-song-without-a-number both have an empty first cell, so they are told apart by the key column, which
-every song has and no date row does. Repeated dates are labelled Morning/Evening. If the layout
-stops matching, the page falls back to a plain table rather than rendering nothing.
+side-by-side blocks (columns `A/B/C` and `E/F/G`, with `D` a spacer). A date row carries `AM` or
+`PM` in the number column and has no key; every song has a key. That marker names the service
+(Morning/Evening) and, with the times in `siteConfig.songList.serviceTimes`, gives it an exact start
+time. If the layout stops matching, the page falls back to a plain table rather than rendering nothing.
 
-**Freshness.** `revalidate = 60` on both the data fetches and the page. Editing the sheet reaches the
-site within about a minute, with no rebuild and no redeploy. Nothing is baked into the build.
+**Next and Now.** Every service is an absolute instant in Arizona time (UTC-7 all year), so the
+markers are right for visitors in any timezone. The browser keeps its own clock
+(`src/components/song-list/use-now.ts`): a service is **Next** right up to its start time, then
+**Now** for 90 minutes while Next moves to the following service. No reload is needed. In
+development, `?now=2026-09-27T10:29:00-07:00` pretends it is that moment.
+
+**Song history and the archive.** The sheet only keeps a rolling twelve months, so every past
+service is copied nightly into a Neon Postgres database (`src/lib/archive-store.ts`) by a Vercel
+Cron job (`vercel.json`, calling `/api/cron/sync-archive`). A service stays *fresh* for 30 days, and
+during that time the sheet's version wins so corrections are picked up. After that it is *frozen*,
+so rewriting a tab for next year can never change last year's record. Pages combine the database
+with the sheet (`src/lib/song-history.ts`), so the history is current before the nightly run, and if
+the database is unavailable they carry on with the sheet's twelve months. `/song-list/archive` is
+the searchable archive, and the hints under each upcoming song ("Last sung 3 weeks ago", "First
+time ever") come from the same history. It only knows about services since the archive began, so
+"First time ever" means "first time on record".
+
+**Freshness.** `revalidate = 10` on both the data fetches and the pages. Editing the sheet reaches the
+site within seconds (at most 12 Sheets API requests a minute, against a 300/minute quota), with no rebuild and no redeploy. Nothing is baked into the build.
 
 **Failure.** `getSongList()` returns a result object and never throws, so a Sheets outage or a
 missing key shows an error state - which still links to the spreadsheet - instead of a broken site.
@@ -185,17 +206,21 @@ Vercel deployment. To exercise the rejection path locally, pass
 1. Push this repository to GitHub.
 2. In Vercel: **Add New, Project**, then import the repo.
 3. Framework preset: **Next.js** (auto-detected). Root directory: `./`. Build command and output
-   directory: leave as the defaults. No `vercel.json` is needed.
+   directory: leave as the defaults. `vercel.json` only declares the nightly archive cron job.
 4. Add the environment variables below **before** the first deploy, then deploy.
 
 ### 2. Environment variables
 
-**Settings, Environment Variables.** Add both, ticked for **Production, Preview and Development**:
+**Settings, Environment Variables.** Add these, ticked for **Production, Preview and Development**:
 
 ```
 GOOGLE_SHEETS_API_KEY = <your key>
 RESEND_API_KEY        = <your key>
+CRON_SECRET           = <a long random string>
 ```
+
+`DATABASE_URL` is added for you when the Neon database is connected (see
+[Setting up the song archive](#setting-up-the-song-archive)).
 
 Changing an environment variable requires a redeploy to take effect.
 
@@ -220,7 +245,7 @@ To pull them down for local use later: `npx vercel env pull .env.local`.
 ### 4. Verify
 
 - All three pages load, and the song list shows the current month's real data.
-- Edit a cell in the Google Sheet; within about 60 seconds a fresh page load shows the change, with no redeploy.
+- Edit a cell in the Google Sheet; within about 10-20 seconds a fresh page load shows the change, with no redeploy.
 - Send a real message through `/contact` and confirm it arrives, and that **Reply** addresses the visitor.
 - `https://faithfulwordmusic.com/sitemap.xml` and `/robots.txt` respond, and every URL inside them
   is on `faithfulwordmusic.com` - not the old domain.
@@ -244,6 +269,25 @@ The spreadsheet is public read-only, so an API key is enough - no OAuth, no serv
 7. Test: run the site and open `/song-list`. It should show the current month.
 
 The integration is read-only; the site never writes to the spreadsheet.
+
+---
+
+## Setting up the song archive
+
+1. In Vercel, open the project, go to **Storage, Create Database**, choose **Neon** (Marketplace,
+   free plan), and connect it to this project for all environments. This adds `DATABASE_URL`.
+2. Add `CRON_SECRET` (a long random string) in **Settings, Environment Variables**, then redeploy.
+3. Locally: `npx vercel link`, then `npx vercel env pull .env.local`, or copy `DATABASE_URL` and
+   `CRON_SECRET` into `.env.local` by hand.
+4. Seed the archive once. The tables create themselves on first run:
+   ```
+   curl -H "Authorization: Bearer <CRON_SECRET>" https://faithfulwordmusic.com/api/cron/sync-archive
+   ```
+   The response reports how many services were `added`, `refreshed` and `frozen`. Running it again
+   is harmless.
+5. After that, Vercel runs it every night at 3 AM Arizona time. Check **Settings, Cron Jobs**.
+
+Without a database the site still works: the archive and hints use the sheet's twelve months.
 
 ---
 

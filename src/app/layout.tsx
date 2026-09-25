@@ -4,6 +4,7 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
+import { BackToTop } from "@/components/ui/BackToTop";
 import { siteConfig } from "@/config/site";
 
 import "./globals.css";
@@ -56,8 +57,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // data-scroll-behavior="smooth": globals.css makes scrolling smooth, which
+    // is right for "Back to top" and in-page links but wrong between pages.
+    // This tells Next.js to switch it off while changing page, so a navigation
+    // lands instantly at the true top. Without it the smoothed jump is still
+    // under way when Next.js checks its position, and it settles below the
+    // header instead.
     <html
       lang="en"
+      data-scroll-behavior="smooth"
       className={`${sourceSerif.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-paper">
@@ -73,6 +81,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {children}
         </main>
         <Footer />
+        {/* Site-wide: appears on any page once it has been scrolled more
+            than a screen, so short pages never show it. */}
+        <BackToTop />
       </body>
     </html>
   );

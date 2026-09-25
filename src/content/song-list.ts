@@ -1,5 +1,6 @@
 /**
- * Editable copy for the Congregational Song List page (/song-list).
+ * Editable copy for the Congregational Song List page (/song-list) and its
+ * archive (/song-list/archive).
  *
  * The SONGS THEMSELVES ARE NOT HERE. They come from the Google Sheet and are
  * never edited in code. This file holds only the wording around them.
@@ -11,16 +12,47 @@ export const songListContent = {
   /** Button linking to the original public spreadsheet. */
   sheetLinkLabel: "View in Google Sheets",
 
+  /** Link from the schedule to the archive. */
+  archiveLinkLabel: "Browse every song we've sung",
+
   /** Instruction shown above the month tabs, for screen readers. */
   monthTabsLabel: "Choose a month",
+
+  /** The spotlight at the top of the schedule. */
+  spotlight: {
+    nextEyebrow: "Next service",
+    nowEyebrow: "Happening now",
+    thenLabel: "Then",
+    noneTitle: "No upcoming services listed",
+    noneBody:
+      "The next month's schedule has not been posted yet. Check back soon, or browse the archive below.",
+    /** Shown beside the church time when the visitor's clock is elsewhere. */
+    yourTime: "{time} your time",
+  },
+
+  /** Small pills on the service cards. */
+  badges: {
+    next: "Next",
+    now: "Now",
+  },
+
+  /** Collapsible group of this month's services that have already happened. */
+  earlier: {
+    show: "Show earlier services ({count})",
+    hide: "Hide earlier services",
+  },
 
   search: {
     label: "Search songs",
     placeholder: "Search by title or hymnal number",
     clear: "Clear search",
-    /** {count} and {month} are replaced at render time. */
+    keyLabel: "Search by key",
+    keyPlaceholder: "Key",
+    keyClear: "Clear key",
+    /** {count}, {noun} and {month} are replaced at render time. */
     results: "{count} matching {noun} in {month}.",
     noResults: "No songs match your search.",
+    clearFilters: "Clear filters",
   },
 
   /** Column headings for the songs in each service. */
@@ -31,12 +63,28 @@ export const songListContent = {
   },
 
   /**
-   * Sundays hold two services and the spreadsheet does not name them, so these
-   * labels are applied by the site when a date appears more than once.
-   * Reword or blank them out here - no other file needs to change.
+   * Hints under each upcoming song, from the full song history. {when} is a
+   * relative time such as "3 wks ago"; {date} is a short date.
+   */
+  hints: {
+    firstEver: "First time ever",
+    firstThisYear: "First time this year",
+    lastSung: "Last sung {when}",
+    alsoOn: "Also on {date}",
+  },
+
+  /** The sheet marks each date AM or PM; these are the names shown for them. */
+  serviceMarkerLabels: {
+    AM: "Morning Service",
+    PM: "Evening Service",
+  },
+
+  /**
+   * Fallback only: if a date ever appears twice WITHOUT an AM/PM marker, these
+   * name the two services in order. Reword here - no other file needs to change.
    */
   repeatedServiceLabels: ["Morning Service", "Evening Service"] as const,
-  /** Used if a date ever appears three or more times: "Service 1", "Service 2"... */
+  /** Used if an unmarked date appears three or more times: "Service 1", "Service 2"... */
   numberedServicePrefix: "Service",
 
   /** Heading used for songs found before any date in the sheet (malformed data). */
@@ -55,7 +103,58 @@ export const songListContent = {
     notConfiguredBody:
       "This site is not currently configured to read the song schedule. You can open the spreadsheet directly.",
 
+    pendingSong: "To be announced",
+
     fallbackNotice:
       "This month's schedule is laid out differently than usual, so it is shown below exactly as it appears in the spreadsheet.",
+  },
+
+  archive: {
+    title: "Song Archive",
+    lead: "Every song sung in our services, how often we have sung it, and when we last did.",
+    backLabel: "Back to the song list",
+    stats: {
+      services: "Services",
+      songs: "Different songs",
+      since: "Records since",
+    },
+    search: {
+      label: "Search the archive",
+      placeholder: "Search by title or hymnal number",
+    },
+    range: {
+      label: "Period",
+      all: "All time",
+      year: "This year",
+      twelveMonths: "Last 12 months",
+    },
+    sort: {
+      label: "Sort by",
+      mostSung: "Most sung",
+      recent: "Recently sung",
+      longestAgo: "Longest since sung",
+      title: "Title (A-Z)",
+      number: "Hymnal number",
+      /** Shown when the table was sorted by clicking a column in an order the menu doesn't list. */
+      custom: "Custom order",
+    },
+    columns: {
+      number: "No.",
+      title: "Song",
+      count: "Times sung",
+      last: "Last sung",
+      keys: "Keys",
+    },
+    /** {count} and {noun} are replaced at render time. */
+    results: "{count} {noun}",
+    /** {count} is replaced at render time. */
+    showMore: "Show {count} more",
+    /** {shown} and {total} are replaced at render time. */
+    showing: "Showing {shown} of {total} songs",
+    noResults: "No songs match your search.",
+    emptyTitle: "No songs recorded yet",
+    emptyBody: "Once services have been held, every song sung will appear here.",
+    errorTitle: "The archive is temporarily unavailable",
+    errorBody: "We could not load the song history just now. Please try again shortly.",
   },
 } as const;

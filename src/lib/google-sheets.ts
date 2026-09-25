@@ -25,8 +25,10 @@ import type { SongListMonth, SongListResult } from "@/types/song-list";
  * ---------------------------------------------------------------------------
  * FRESHNESS
  * ---------------------------------------------------------------------------
- * Both requests are cached for siteConfig.songList.revalidateSeconds (60s).
- * Editing the spreadsheet is reflected on the site within about a minute, with
+ * Both requests are cached for siteConfig.songList.revalidateSeconds (10s).
+ * Hidden tabs are fetched too, but they only feed song history (services that
+ * have already happened). They are never rendered as a schedule.
+ * Editing the spreadsheet is reflected on the site within seconds, with
  * no code change, no build and no redeploy. Nothing is baked into the build.
  */
 
@@ -76,25 +78,30 @@ async function requestJson<T>(url: string, apiKey: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+interface SheetTab {
+  title: string;
+  hidden: boolean;
+}
+
 /**
- * The visible worksheet tabs, in the spreadsheet's own tab order, capped at
- * siteConfig.songList.maxMonths.
+ * Every worksheet tab, in the spreadsheet's own tab order, with its visibility.
  *
- * Tab 1 is the current month; tab 2, when present, is the upcoming month.
- * Hidden tabs are dropped and never reach the website.
+ * Visible tabs are the schedule: tab 1 is the current month and tab 2, when
+ * present, the upcoming one. Hidden tabs are last year's months (plus special
+ * events); they are read only for song history and never shown as a schedule.
  */
-async function fetchVisibleSheetTitles(apiKey: string): Promise<string[]> {
+async function fetchSheetTabs(apiKey: string): Promise<SheetTab[]> {
   const url = `${SHEETS_API}/${siteConfig.songList.spreadsheetId}?fields=sheets.properties(title,index,hidden)`;
   const data = await requestJson<SpreadsheetMetadata>(url, apiKey);
 
   return (data.sheets ?? [])
     .map((sheet) => sheet.properties)
-    .filter((properties): properties is SheetProperties => Boolean(properties))
-    .filter((properties) => properties.hidden !== true)
-    .filter((properties) => Boolean(properties.title))
+    .filter((properties): properties is SheetProperties => Boolean(properties?.title))
     .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
-    .slice(0, siteConfig.songList.maxMonths)
-    .map((properties) => properties.title as string);
+    .map((properties) => ({
+      title: properties.title as string,
+      hidden: properties.hidden === true,
+    }));
 }
 
 /** A sheet title inside an A1 range is single-quoted; inner quotes double up. */
@@ -123,7 +130,9 @@ async function fetchGrids(apiKey: string, titles: string[]): Promise<string[][][
 }
 
 /**
- * The song list, ready for rendering.
+ * The song list, ready for rendering: the visible months for the schedule, and
+ * every month (hidden ones too) as the raw material for song history. Both come
+ * from the same two requests.
  *
  * Never throws: a missing key or an unreachable Google degrades to an error
  * state on the page, so the rest of the site stays up.
@@ -136,18 +145,24 @@ export async function getSongList(): Promise<SongListResult> {
   }
 
   try {
-    const titles = await fetchVisibleSheetTitles(apiKey);
+    const tabs = await fetchSheetTabs(apiKey);
 
-    if (titles.length === 0) {
-      return { ok: true, months: [] };
+    if (tabs.length === 0) {
+      return { ok: true, months: [], allMonths: [] };
     }
 
-    const grids = await fetchGrids(apiKey, titles);
-    const months: SongListMonth[] = titles.map((title, index) =>
-      parseMonthGrid(title, grids[index] ?? []),
+    const grids = await fetchGrids(
+      apiKey,
+      tabs.map((tab) => tab.title),
     );
+    const allMonths: SongListMonth[] = tabs.map((tab, index) =>
+      parseMonthGrid(tab.title, grids[index] ?? []),
+    );
+    const months = allMonths
+      .filter((_, index) => !tabs[index].hidden)
+      .slice(0, siteConfig.songList.maxMonths);
 
-    return { ok: true, months };
+    return { ok: true, months, allMonths };
   } catch (error) {
     console.error(
       "[song-list] Could not load the schedule from Google Sheets:",

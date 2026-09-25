@@ -8,7 +8,7 @@ import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
-import { getSongList } from "@/lib/google-sheets";
+import { getScheduleData } from "@/lib/song-archive";
 
 export const metadata: Metadata = {
   title: songListContent.title,
@@ -22,18 +22,20 @@ export const metadata: Metadata = {
 };
 
 /**
- * Re-render at most once a minute, so an edit in Google Sheets reaches the site
- * within about 60 seconds without a rebuild or a redeploy.
+ * Re-render at most every 10 seconds (siteConfig.songList.revalidateSeconds), so
+ * an edit in Google Sheets reaches the site within seconds, without a rebuild or
+ * a redeploy. Which service is
+ * "Next" does not depend on this: the browser works that out live.
  */
-export const revalidate = 60;
+export const revalidate = 10;
 
 export default async function SongListPage() {
-  const result = await getSongList();
+  const { result, plays, loadedAt } = await getScheduleData();
 
   return (
     <PageTransition>
-      <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+      <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14 print:max-w-none print:p-0">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between print:hidden">
           <SectionHeading
             as="h1"
             eyebrow={siteConfig.name}
@@ -48,10 +50,10 @@ export default async function SongListPage() {
           </div>
         </div>
 
-        <div className="mt-12">
+        <div className="mt-12 print:mt-0">
           {result.ok ? (
             result.months.length > 0 ? (
-              <SongListView months={result.months} />
+              <SongListView months={result.months} plays={plays} serverNow={loadedAt} />
             ) : (
               <SongListError reason="unavailable" />
             )

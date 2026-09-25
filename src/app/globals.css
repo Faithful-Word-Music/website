@@ -83,6 +83,12 @@
     cursor: pointer;
   }
 
+  /* The page body takes focus only programmatically (skip link, Back to top),
+     to move the keyboard to the top; it is not a control, so no ring. */
+  #main:focus {
+    outline: none;
+  }
+
   /* One visible, consistent focus ring everywhere. */
   :focus-visible {
     outline: 2px solid var(--color-gold-dark);
@@ -257,6 +263,25 @@ html.motion-ready .reveal {
   }
 }
 
+/* --- 3. Content that appears on request ---------------------------------
+   Song-list cards and archive rows that come into view because the visitor
+   searched, filtered or switched month fade up briefly instead of snapping
+   in. Only newly added elements animate; ones already showing stay still. */
+.animate-enter {
+  animation: enter-fade-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes enter-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* --- Reduced motion ------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -286,5 +311,36 @@ html.motion-ready .reveal {
     transform: none !important;
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* ===========================================================================
+   PRINT
+   ---------------------------------------------------------------------------
+   The song list prints as a clean one-page schedule, like the spreadsheet it
+   comes from: no site chrome, no spotlight, no controls - just the month's
+   services in two columns. Components opt elements out with `print:hidden`.
+   =========================================================================== */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    font-size: 11px;
+  }
+
+  body > header,
+  body > footer,
+  body > a[href="#main"] {
+    display: none !important;
+  }
+
+  /* Printed content is simply there, never waiting to be revealed. */
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

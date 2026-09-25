@@ -1,37 +1,96 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useMemo, useState } from "react";
 
 import { FallbackTable } from "@/components/song-list/FallbackTable";
+import { KeySearch } from "@/components/song-list/KeySearch";
 import { MonthTabs } from "@/components/song-list/MonthTabs";
+import { NextServiceSpotlight } from "@/components/song-list/NextServiceSpotlight";
 import { ServiceCard } from "@/components/song-list/ServiceCard";
 import { SongListEmpty } from "@/components/song-list/SongListStates";
 import { SongSearch } from "@/components/song-list/SongSearch";
+import { useNow } from "@/components/song-list/use-now";
+import { cn } from "@/components/ui/cn";
 import { Reveal } from "@/components/ui/Reveal";
-import { countSongs, filterServices } from "@/lib/song-list";
 import { songListContent } from "@/content/song-list";
-import type { SongListMonth } from "@/types/song-list";
+import { getTimeline, type Timeline } from "@/lib/service-time";
+import type { PlayIndex } from "@/lib/song-history";
+import { countSongs, filterServices, listKeys } from "@/lib/song-list";
+import type { Service, SongListMonth } from "@/types/song-list";
 
 /**
- * The interactive part of the song list: month switching and search.
+ * The interactive song list: the next-service spotlight, month switching,
+ * search and key filter.
  *
  * The data arrives already fetched and parsed from the server component, so no
  * Google request ever happens in the browser and no API key is involved here.
+ * Only the clock runs here: which service is "Next" or "Now" is worked out
+ * against the visitor's live time, so it changes the moment a service starts.
  */
-export function SongListView({ months }: { months: SongListMonth[] }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [query, setQuery] = useState("");
+export function SongListView({
+  months,
+  plays,
+  serverNow,
+}: {
+  months: SongListMonth[];
+  /** When each song on these months was sung, for the hints. null if history is unavailable. */
+  plays: PlayIndex | null;
+  serverNow: number;
+}) {
+  const now = useNow(serverNow);
   const idPrefix = useId();
   const searchId = `${idPrefix}-search`;
+  const keyId = `${idPrefix}-key`;
   const statusId = `${idPrefix}-status`;
 
-  const month = months[activeIndex] ?? months[0];
-  const visibleServices = useMemo(
-    () => filterServices(month.services, query),
-    [month, query],
-  );
+  const allServices = useMemo(() => months.flatMap((month) => month.services), [months]);
+  const timeline = useMemo(() => getTimeline(allServices, now), [allServices, now]);
 
-  const searching = query.trim() !== "";
+  // Open on the month holding the next service, so late in a month with the
+  // next one already posted, the visitor lands on the right tab. Chosen once,
+  // from the server time, so the first render matches the HTML.
+  const [activeIndex, setActiveIndex] = useState(() => {
+    const initial = getTimeline(allServices, serverNow);
+    const target = initial.nowId ?? initial.nextId;
+    const index = months.findIndex((month) => month.services.some((s) => s.id === target));
+    return index >= 0 ? index : 0;
+  });
+  const [query, setQuery] = useState("");
+  const [key, setKey] = useState("");
+  const [showEarlier, setShowEarlier] = useState(false);
+  // Cards animate in only once the visitor starts searching or switching:
+  // on first load they arrive with the page, as everywhere else on the site.
+  const [interacted, setInteracted] = useState(false);
+
+  function updateQuery(value: string) {
+    setInteracted(true);
+    setQuery(value);
+  }
+
+  function updateKey(value: string) {
+    setInteracted(true);
+    setKey(value);
+  }
+
+  const month = months[activeIndex] ?? months[0];
+  const filter = useMemo(() => ({ query, key }), [query, key]);
+  const visibleServices = useMemo(
+    () => filterServices(month.services, filter),
+    [month, filter],
+  );
+  const keys = useMemo(
+    () => listKeys(month.services.flatMap((service) => service.songs.map((song) => song.key))),
+    [month],
+  );
+  // Suggestions offer the coming services' songs first, then the rest of the month.
+  const songs = useMemo(() => {
+    const upcoming = month.services.filter((s) => timeline.statusOf(s.id) !== "past");
+    const past = month.services.filter((s) => timeline.statusOf(s.id) === "past");
+    return [...upcoming, ...past].flatMap((service) => service.songs);
+  }, [month, timeline]);
+
+  const filtering = query.trim() !== "" || key.trim() !== "";
   const matchCount = countSongs(visibleServices);
   const { search } = songListContent;
 
@@ -40,61 +99,125 @@ export function SongListView({ months }: { months: SongListMonth[] }) {
     .replace("{noun}", matchCount === 1 ? "song" : "songs")
     .replace("{month}", month.title);
 
+  const byId = new Map(allServices.map((service) => [service.id, service]));
+  const current = timeline.nowId ? (byId.get(timeline.nowId) ?? null) : null;
+  const next = timeline.nextId ? (byId.get(timeline.nextId) ?? null) : null;
+
   function changeMonth(index: number) {
+    setInteracted(true);
     setActiveIndex(index);
     setQuery("");
+    setKey("");
+    setShowEarlier(false);
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setKey("");
   }
 
   return (
     <div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <NextServiceSpotlight current={current} next={next} plays={plays} now={now} />
+
+      <div className="mt-12 flex flex-col gap-4 sm:mt-14 lg:flex-row lg:items-center lg:justify-between print:mt-0">
         {/* Tabs appear only when the spreadsheet actually has a second visible
             month. With one month there is no tab bar and no placeholder. */}
-        {months.length > 1 ? (
-          <MonthTabs
-            titles={months.map((item) => item.title)}
-            activeIndex={activeIndex}
-            onChange={changeMonth}
-            idPrefix={idPrefix}
-          />
-        ) : (
-          <h2 className="font-display text-2xl text-ink">{month.title}</h2>
-        )}
+        <div className="print:hidden">
+          {months.length > 1 ? (
+            <MonthTabs
+              titles={months.map((item) => item.title)}
+              activeIndex={activeIndex}
+              onChange={changeMonth}
+              idPrefix={idPrefix}
+            />
+          ) : (
+            <h2 className="font-display text-2xl text-ink sm:text-3xl">{month.title}</h2>
+          )}
+        </div>
+        {/* In print, the tab bar is replaced by the month's own heading. */}
+        <h2 className="hidden font-display text-2xl text-ink print:block">
+          {month.heading ?? month.title}
+        </h2>
 
         {month.services.length > 0 ? (
-          <SongSearch
-            value={query}
-            onChange={setQuery}
-            inputId={searchId}
-            describedBy={statusId}
-          />
+          <div className="flex w-full gap-3 lg:w-auto print:hidden">
+            <SongSearch
+              value={query}
+              onChange={updateQuery}
+              className="lg:w-72"
+              inputId={searchId}
+              songs={songs}
+              describedBy={statusId}
+            />
+            <KeySearch
+              value={key}
+              onChange={updateKey}
+              inputId={keyId}
+              keys={keys}
+              describedBy={statusId}
+            />
+          </div>
         ) : null}
       </div>
 
-      {/* Announced to screen readers as the result count changes. */}
+      {/* Announced to screen readers as the result count changes. Its line
+          is always reserved, so results appearing never push the page down. */}
       <p
         id={statusId}
         role="status"
         aria-live="polite"
-        className={searching ? "mt-4 text-sm text-muted" : "sr-only"}
+        className="mt-4 flex min-h-6 items-center text-sm text-muted print:hidden"
       >
-        {searching ? resultsMessage : ""}
+        {filtering ? (
+          <span className="animate-enter flex items-center gap-3">
+            <span>{resultsMessage}</span>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
+            >
+              {search.clearFilters}
+            </button>
+          </span>
+        ) : null}
       </p>
 
       <div
         id={months.length > 1 ? `${idPrefix}-panel-${activeIndex}` : undefined}
         role={months.length > 1 ? "tabpanel" : undefined}
-        aria-labelledby={
-          months.length > 1 ? `${idPrefix}-tab-${activeIndex}` : undefined
-        }
+        aria-labelledby={months.length > 1 ? `${idPrefix}-tab-${activeIndex}` : undefined}
         tabIndex={months.length > 1 ? 0 : undefined}
-        className="mt-6 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark"
+        className="mt-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark print:mt-4"
       >
         <MonthBody
           month={month}
           services={visibleServices}
-          searching={searching}
+          filtering={filtering}
+          timeline={timeline}
+          plays={plays}
+          now={now}
+          showEarlier={showEarlier}
+          onToggleEarlier={() => setShowEarlier((value) => !value)}
+          animateIn={interacted}
+          idPrefix={idPrefix}
         />
+      </div>
+
+      {month.note ? (
+        <p className="mt-8 text-center text-sm italic text-muted print:mt-4">{month.note}</p>
+      ) : null}
+
+      <div className="mt-12 flex justify-center print:hidden">
+        <Link
+          href="/song-list/archive"
+          className="group inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-6 text-sm font-medium text-ink transition-colors hover:border-gold"
+        >
+          {songListContent.archiveLinkLabel}
+          <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+            →
+          </span>
+        </Link>
       </div>
     </div>
   );
@@ -103,11 +226,26 @@ export function SongListView({ months }: { months: SongListMonth[] }) {
 function MonthBody({
   month,
   services,
-  searching,
+  filtering,
+  timeline,
+  plays,
+  now,
+  showEarlier,
+  onToggleEarlier,
+  idPrefix,
+  animateIn,
 }: {
   month: SongListMonth;
-  services: ReturnType<typeof filterServices>;
-  searching: boolean;
+  services: Service[];
+  filtering: boolean;
+  timeline: Timeline;
+  plays: PlayIndex | null;
+  now: number;
+  showEarlier: boolean;
+  onToggleEarlier: () => void;
+  idPrefix: string;
+  /** Fade cards in as they appear (once the visitor has searched or switched). */
+  animateIn: boolean;
 }) {
   if (month.fallbackRows) {
     return <FallbackTable rows={month.fallbackRows} />;
@@ -117,24 +255,95 @@ function MonthBody({
     return <SongListEmpty />;
   }
 
-  if (services.length === 0 && searching) {
+  if (services.length === 0 && filtering) {
     return (
-      <p className="rounded-card border border-line bg-surface px-5 py-10 text-center text-muted">
+      <p className="animate-enter rounded-card border border-line bg-surface px-5 py-10 text-center text-muted">
         {songListContent.search.noResults}
       </p>
     );
   }
 
+  // While searching, show every match in date order - the question is "when
+  // do we sing this?", and a past date answers it as well as a future one.
+  const earlier = filtering ? [] : services.filter((s) => timeline.statusOf(s.id) === "past");
+  const later = filtering ? services : services.filter((s) => timeline.statusOf(s.id) !== "past");
+  const earlierId = `${idPrefix}-earlier`;
+  const { earlier: earlierCopy } = songListContent;
+
   return (
-    <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-      {services.map((service, index) => (
-        // The offset is by column, not by position in the list: cards reveal as
-        // you scroll past them, so a running index-based delay would leave the
-        // last ones waiting.
-        <Reveal key={service.id} delay={(index % 2) * 70}>
-          <ServiceCard service={service} />
-        </Reveal>
-      ))}
+    <div>
+      {earlier.length > 0 ? (
+        <div className="mb-6 print:mb-0">
+          <button
+            type="button"
+            onClick={onToggleEarlier}
+            aria-expanded={showEarlier}
+            aria-controls={earlierId}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full px-1 text-sm font-medium text-muted transition-colors hover:text-ink print:hidden"
+          >
+            <svg
+              aria-hidden="true"
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              className={cn("transition-transform duration-200", showEarlier && "rotate-90")}
+            >
+              <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+            </svg>
+            {showEarlier
+              ? earlierCopy.hide
+              : earlierCopy.show.replace("{count}", String(earlier.length))}
+          </button>
+
+          {/* Opens and closes smoothly by animating the grid row between 0 and
+              its natural height. Always in the DOM, so the printed page shows
+              the whole month; `inert` keeps collapsed cards out of the tab order. */}
+          <div
+            id={earlierId}
+            inert={!showEarlier}
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] print:grid-rows-[1fr] print:opacity-100",
+              showEarlier ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+            )}
+          >
+            {/* `relative` matters: overflow only clips absolutely positioned
+                descendants (the cards' screen-reader table headers) when the
+                clipping box is itself positioned. Without it they escape the
+                collapsed section and stretch the page below the footer. */}
+            <div className="relative min-h-0 overflow-hidden">
+              <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-2 print:grid-cols-2 print:gap-3 print:pt-0">
+                {earlier.map((service) => (
+                  <ServiceCard
+                    key={`${month.title}:${service.id}`}
+                    service={service}
+                    status="past"
+                    plays={plays}
+                    now={now}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2 print:grid-cols-2 print:gap-3">
+        {later.map((service, index) => (
+          // The offset is by column, not by position in the list: cards reveal as
+          // you scroll past them, so a running index-based delay would leave the
+          // last ones waiting.
+          // Keyed by month too, so switching months brings in fresh cards.
+          <Reveal key={`${month.title}:${service.id}`} delay={(index % 2) * 70}>
+            <ServiceCard
+              animateIn={animateIn}
+              service={service}
+              status={timeline.statusOf(service.id)}
+              plays={plays}
+              now={now}
+            />
+          </Reveal>
+        ))}
+      </div>
     </div>
   );
 }

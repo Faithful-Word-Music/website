@@ -52,11 +52,51 @@ export const siteConfig = {
     spreadsheetUrl:
       "https://docs.google.com/spreadsheets/d/1ei9QUOHQ8l69pIXH09d5RlE90ZKbYJjYz1dTyup7nQ0/edit",
 
-    /** How long (seconds) a fetched copy of the sheet is reused before refreshing. */
-    revalidateSeconds: 60,
+    /**
+     * How long (seconds) a fetched copy of the sheet is reused before refreshing.
+     * Each refresh is 2 Sheets API requests and only happens when someone visits,
+     * so 10s is at most 12 requests a minute against a 300/minute quota.
+     * Keep in step with `revalidate` in src/app/song-list/page.tsx and
+     * src/app/song-list/archive/page.tsx, which Next.js needs as literal numbers.
+     */
+    revalidateSeconds: 10,
 
     /** Maximum number of visible worksheet tabs shown on the site. */
     maxMonths: 2,
+
+    /**
+     * When each service starts, in church time (24-hour "HH:MM").
+     *
+     * The sheet marks every date AM or PM but never gives a time, so the site
+     * supplies it here. These drive the "Next" and "Now" markers: a service is
+     * "Next" right up to its start time, then "Now" for `serviceDurationMinutes`.
+     * "otherDay" covers Wednesdays and special meetings such as the Missions
+     * Conference.
+     */
+    serviceTimes: {
+      sunday: { AM: "10:30", PM: "18:00" },
+      otherDay: { AM: "10:30", PM: "19:00" },
+    },
+
+    /**
+     * Show the "First time ever" / "First time this year" hints under upcoming
+     * songs. Off while the song history is still being filled in: records only
+     * go back to October 2025, so "first time ever" is not yet trustworthy.
+     * The "Last sung..." hints are unaffected.
+     */
+    showFirstTimeHints: false,
+
+    /** How long a service is treated as "happening now" after it starts. */
+    serviceDurationMinutes: 90,
+
+    /**
+     * The church's timezone. Arizona does not observe daylight saving time, so
+     * the offset is -07:00 all year - which is why a fixed offset is safe here.
+     * Visitors elsewhere also see the time converted to their own zone.
+     */
+    timeZone: "America/Phoenix",
+    utcOffset: "-07:00",
+    timeZoneLabel: "Arizona time",
   },
 
   /**
