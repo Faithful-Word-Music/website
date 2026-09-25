@@ -2,7 +2,13 @@ import { withBotId } from "botid/next/config";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  /**
+   * The song list PDF is drawn at request time in the site's own typefaces,
+   * read from disk - so the font files must ship with that function.
+   */
+  outputFileTracingIncludes: {
+    "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
+  },
 };
 
 /**

@@ -33,7 +33,7 @@ export function NextServiceSpotlight({
 
   if (!featured || !featured.startsAt) {
     return (
-      <Card className="p-6 text-center sm:p-10 print:hidden">
+      <Card className="p-6 text-center sm:p-10">
         <h2 className="font-display text-2xl text-ink">{spotlight.noneTitle}</h2>
         <p className="mx-auto mt-2 max-w-md text-muted">{spotlight.noneBody}</p>
       </Card>
@@ -45,7 +45,7 @@ export function NextServiceSpotlight({
   const headingId = "spotlight-heading";
 
   return (
-    <section aria-labelledby={headingId} className="print:hidden">
+    <section aria-labelledby={headingId}>
       <Card className="relative overflow-hidden p-6 sm:p-8 lg:p-10">
         {/* Gold rule across the top: the one strong accent on the page. */}
         <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gold" />

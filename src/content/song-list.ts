@@ -12,8 +12,11 @@ export const songListContent = {
   /** Button linking to the original public spreadsheet. */
   sheetLinkLabel: "View in Google Sheets",
 
-  /** Button that prints the open month, laid out like the spreadsheet. */
-  printLabel: "Print",
+  /**
+   * Button that opens the open month as a PDF, laid out like the spreadsheet,
+   * ready to print or save.
+   */
+  pdfLabel: "PDF",
 
   /** Link from the schedule to the archive. */
   archiveLinkLabel: "Browse every song we've sung",

@@ -159,9 +159,13 @@ It shows times sung, first and last sung, the keys used with counts, any upcomin
 date, grouped by year. Song titles in the archive and on the schedule link there. A song only scheduled
 so far still gets a page. The address comes from `songSlug()` in `src/lib/song-list.ts`.
 
-**Printing.** The Print button (or Ctrl+P) on `/song-list` prints the open month in a layout that mirrors
-the spreadsheet's printout (`src/components/song-list/PrintSchedule.tsx`): the full month, two columns
-reading down, on one page. Nothing live is printed: no Next/Now, no hints, and no search filter.
+**Printing.** The "PDF" button on `/song-list` opens the open month as a PDF in a new tab
+(`/song-list/pdf/<month>`, e.g. `/song-list/pdf/september`). The browser's PDF viewer handles print and
+download, so the printout is the same on every device, phones included. The layout mirrors the
+spreadsheet's printout (`src/components/song-list/SongListPdf.tsx`): the full month, two columns reading
+down, on one page. Row height and the column split are fitted to the page in `src/lib/song-list-pdf.ts`.
+Nothing live is printed: no Next/Now, no hints, and no search filter. The PDF is built on request from the
+sheet, so it is exactly as fresh as the page. It uses the TTF fonts in `assets/fonts`.
 
 **Freshness.** `revalidate = 10` on both the data fetches and the pages. Editing the sheet reaches the
 site within seconds (at most 12 Sheets API requests a minute, against a 300/minute quota), with no rebuild and no redeploy. Nothing is baked into the build.

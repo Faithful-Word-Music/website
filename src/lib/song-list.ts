@@ -1,5 +1,5 @@
 import { songListContent } from "@/content/song-list";
-import { parseDateLabel, parseSlot, startsAtFor } from "@/lib/service-time";
+import { getTimeline, parseDateLabel, parseSlot, startsAtFor } from "@/lib/service-time";
 import type {
   DatedService,
   Service,
@@ -290,6 +290,21 @@ export function datedServices(months: SongListMonth[]): DatedService[] {
     }
   }
   return result;
+}
+
+/**
+ * The month tab to open on: the one holding the service in progress or the
+ * next one, so late in a month with the next already posted, the visitor
+ * lands on the right tab. The first tab if neither is listed.
+ */
+export function openingMonthIndex(months: SongListMonth[], now: number): number {
+  const timeline = getTimeline(
+    months.flatMap((month) => month.services),
+    now,
+  );
+  const target = timeline.nowId ?? timeline.nextId;
+  const index = months.findIndex((month) => month.services.some((s) => s.id === target));
+  return index >= 0 ? index : 0;
 }
 
 /**
