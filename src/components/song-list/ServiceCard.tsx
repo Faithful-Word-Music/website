@@ -3,7 +3,6 @@
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
-import { SongLink } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import { songHint, type PlayIndex } from "@/lib/song-history";
 import { songKey } from "@/lib/song-list";
@@ -114,7 +113,7 @@ export function ServiceCard({
                   {song.number ?? <span aria-hidden="true">·</span>}
                 </td>
                 <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base">
-                  <SongLink title={song.title} />
+                  {song.title}
                   {hint ? (
                     <span>
                       <SongHintText hint={hint} now={now} />

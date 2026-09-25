@@ -4,8 +4,10 @@ import { cn } from "@/components/ui/cn";
 import { songSlug } from "@/lib/song-list";
 
 /**
- * A song title that opens that song's page in the archive. Looks like plain
- * text until hovered, so lists of songs still read as lists.
+ * A song title in the archive that opens that song's page. With a mouse it
+ * looks like plain text until hovered, so the list still reads as a list. On
+ * a touch screen there is no hover to find it by, so it carries a faint gold
+ * underline from the start - a tap should never be a surprise.
  */
 export function SongLink({ title, className }: { title: string; className?: string }) {
   return (
@@ -13,6 +15,7 @@ export function SongLink({ title, className }: { title: string; className?: stri
       href={`/song-list/archive/${songSlug(title)}`}
       className={cn(
         "decoration-gold decoration-1 underline-offset-4 transition-colors hover:underline",
+        "pointer-coarse:underline pointer-coarse:decoration-gold/50",
         className,
       )}
     >

@@ -156,7 +156,7 @@ time ever") come from the same history. It only knows about services since the a
 
 **Song pages.** Every song has its own page at `/song-list/archive/<song>` (e.g. `/song-list/archive/amazing-grace`).
 It shows times sung, first and last sung, the keys used with counts, any upcoming services, and every
-date, grouped by year. Song titles in the archive and on the schedule link there. A song only scheduled
+date, grouped by year. Song titles in the archive link there; on the schedule they are plain text. A song only scheduled
 so far still gets a page. The address comes from `songSlug()` in `src/lib/song-list.ts`.
 
 **Printing.** The "PDF" button on `/song-list` opens the open month as a PDF in a new tab
