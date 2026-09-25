@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PrintButton } from "@/components/song-list/PrintButton";
 import { SheetLink } from "@/components/song-list/SheetLink";
 import { SongListError } from "@/components/song-list/SongListStates";
 import { SongListView } from "@/components/song-list/SongListView";
@@ -45,7 +46,9 @@ export default async function SongListPage() {
             <p className="text-base sm:text-lg">{songListContent.lead}</p>
           </SectionHeading>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 flex-wrap gap-3">
+            {/* Only when there is a schedule to print. */}
+            {result.ok && result.months.length > 0 ? <PrintButton /> : null}
             <SheetLink />
           </div>
         </div>

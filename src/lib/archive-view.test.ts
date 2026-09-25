@@ -11,22 +11,22 @@ const records: SongRecord[] = [
     title: "Amazing Grace",
     number: "244",
     plays: [
-      { startsAt: "2025-10-05T10:30:00-07:00", key: "F" },
-      { startsAt: "2026-02-01T10:30:00-07:00", key: "F " },
-      { startsAt: "2026-09-06T10:30:00-07:00", key: "G" },
+      { startsAt: "2025-10-05T10:30:00-07:00", slot: "AM", key: "F" },
+      { startsAt: "2026-02-01T10:30:00-07:00", slot: "AM", key: "F " },
+      { startsAt: "2026-09-06T10:30:00-07:00", slot: "AM", key: "G" },
     ],
   },
   {
     id: "psalm 54",
     title: "Psalm 54",
     number: null,
-    plays: [{ startsAt: "2026-09-20T10:30:00-07:00", key: "Cm" }],
+    plays: [{ startsAt: "2026-09-20T10:30:00-07:00", slot: "AM", key: "Cm" }],
   },
   {
     id: "autumn hymn",
     title: "Autumn Hymn",
     number: "12",
-    plays: [{ startsAt: "2025-09-01T19:00:00-07:00", key: "D" }],
+    plays: [{ startsAt: "2025-09-01T19:00:00-07:00", slot: "PM", key: "D" }],
   },
 ];
 

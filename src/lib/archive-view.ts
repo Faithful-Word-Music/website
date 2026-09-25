@@ -95,10 +95,7 @@ export const FIRST_DIRECTION: Record<SortColumn, SortDirection> = {
   last: "desc",
 };
 
-/**
- * The fixed choices in the phone-sized Sort menu, where not every column is
- * on screen to click.
- */
+/** Named orders, for code that needs a fixed one (the search suggests the most sung first). */
 export const SORT_PRESETS: Record<ArchiveSort, ArchiveSortState> = {
   recent: { column: "last", direction: "desc" },
   longestAgo: { column: "last", direction: "asc" },

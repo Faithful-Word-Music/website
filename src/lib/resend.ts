@@ -109,3 +109,39 @@ export async function sendContactEmail(
     return { ok: false, reason: "send-failed" };
   }
 }
+
+/**
+ * Sends a short plain-text alert to whoever looks after the site - used when
+ * something that runs unattended (the nightly archive sync) goes wrong.
+ * Goes to siteConfig.songList.alertEmail. Never throws: a failed alert is
+ * logged, and must not hide the problem it was reporting.
+ */
+export async function sendAlertEmail(subject: string, text: string): Promise<SendResult> {
+  const resend = getClient();
+  if (!resend) return { ok: false, reason: "not-configured" };
+
+  try {
+    const { error } = await resend.emails.send({
+      from: siteConfig.mail.from,
+      to: [siteConfig.songList.alertEmail],
+      subject: `[${siteConfig.name}] ${subject}`,
+      text,
+    });
+
+    if (error) {
+      console.error(
+        "[alert] Resend rejected the alert:",
+        `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
+      );
+      return { ok: false, reason: "send-failed" };
+    }
+
+    return { ok: true };
+  } catch (caught) {
+    console.error(
+      "[alert] Could not reach Resend:",
+      caught instanceof Error ? caught.message : "unknown error",
+    );
+    return { ok: false, reason: "send-failed" };
+  }
+}

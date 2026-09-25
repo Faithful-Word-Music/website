@@ -7,8 +7,10 @@ import { PillSelect } from "@/components/song-list/PillSelect";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { useNow } from "@/components/song-list/use-now";
 import { Card } from "@/components/ui/Card";
+import { StatTile } from "@/components/ui/StatTile";
 import { cn } from "@/components/ui/cn";
 import { siteConfig } from "@/config/site";
+import { SongLink } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import {
   DEFAULT_SORT,
@@ -18,7 +20,6 @@ import {
   sortSummaries,
   summarize,
   type ArchiveRange,
-  type ArchiveSort,
   type ArchiveSortState,
   type SongSummary,
   type SortColumn,
@@ -92,13 +93,6 @@ export function ArchiveView({
     );
   }
 
-  // The phone Sort menu shows whichever preset matches the current order.
-  const presetValue =
-    (Object.keys(SORT_PRESETS) as ArchiveSort[]).find(
-      (name) =>
-        SORT_PRESETS[name].column === sort.column && SORT_PRESETS[name].direction === sort.direction,
-    ) ?? "custom";
-
   const shown = rows.slice(0, limit);
   const remaining = rows.length - shown.length;
   const nextPage = Math.min(PAGE_SIZE, remaining);
@@ -111,9 +105,9 @@ export function ArchiveView({
   return (
     <div>
       <dl className="grid grid-cols-3 gap-3 sm:gap-5">
-        <Stat label={archive.stats.services} value={serviceCount.toLocaleString("en-US")} />
-        <Stat label={archive.stats.songs} value={records.length.toLocaleString("en-US")} />
-        <Stat
+        <StatTile label={archive.stats.services} value={serviceCount.toLocaleString("en-US")} />
+        <StatTile label={archive.stats.songs} value={records.length.toLocaleString("en-US")} />
+        <StatTile
           label={archive.stats.since}
           value={since ? formatMonthYear(since) : "-"}
         />
@@ -138,43 +132,19 @@ export function ArchiveView({
             describedBy={statusId}
           />
         </div>
-        <div className="flex gap-3">
-          <PillSelect
-            id={`${idPrefix}-range`}
-            label={archive.range.label}
-            value={range}
-            onChange={interact(setRange)}
-            options={[
-              { value: "all", label: archive.range.all },
-              { value: "year", label: archive.range.year },
-              { value: "twelveMonths", label: archive.range.twelveMonths },
-            ]}
-            className="flex-1 md:flex-none md:w-40"
-          />
-          {/* On phones not every column is on screen to click, so sorting is
-              a menu there. From md up, the column headers do the job. */}
-          <PillSelect
-            id={`${idPrefix}-sort`}
-            label={archive.sort.label}
-            value={presetValue}
-            onChange={(name) => {
-              if (name === "custom") return;
-              changed();
-              setSort(SORT_PRESETS[name]);
-            }}
-            options={[
-              { value: "recent", label: archive.sort.recent },
-              { value: "longestAgo", label: archive.sort.longestAgo },
-              { value: "mostSung", label: archive.sort.mostSung },
-              { value: "title", label: archive.sort.title },
-              { value: "number", label: archive.sort.number },
-              ...(presetValue === "custom"
-                ? [{ value: "custom" as const, label: archive.sort.custom }]
-                : []),
-            ]}
-            className="flex-1 md:hidden"
-          />
-        </div>
+        {/* Sorting is done by tapping the column headers, on every screen size. */}
+        <PillSelect
+          id={`${idPrefix}-range`}
+          label={archive.range.label}
+          value={range}
+          onChange={interact(setRange)}
+          options={[
+            { value: "all", label: archive.range.all },
+            { value: "year", label: archive.range.year },
+            { value: "twelveMonths", label: archive.range.twelveMonths },
+          ]}
+          className="lg:w-40"
+        />
       </div>
 
       <p id={statusId} role="status" aria-live="polite" className="mt-4 text-sm text-muted">
@@ -196,14 +166,14 @@ export function ArchiveView({
                   label={archive.columns.number}
                   sort={sort}
                   onSort={sortBy}
-                  className="w-16 rounded-tl-card pl-4 pr-2 sm:pl-6"
+                  className="w-12 rounded-tl-card pl-2.5 pr-1 sm:w-16 sm:pl-6 sm:pr-2"
                 />
                 <SortHeader
                   column="title"
                   label={archive.columns.title}
                   sort={sort}
                   onSort={sortBy}
-                  className="pr-3"
+                  className="pr-2 sm:pr-3"
                 />
                 <SortHeader
                   column="count"
@@ -211,20 +181,20 @@ export function ArchiveView({
                   sort={sort}
                   onSort={sortBy}
                   align="right"
-                  className="w-28 rounded-tr-card pr-4 sm:w-36 sm:pr-8 md:rounded-tr-none"
+                  className="w-16 pr-2 sm:w-36 sm:pr-8"
                 />
                 <SortHeader
                   column="last"
                   label={archive.columns.last}
                   sort={sort}
                   onSort={sortBy}
-                  className="hidden w-44 pr-3 md:table-cell md:rounded-tr-card lg:rounded-tr-none"
+                  className="w-24 rounded-tr-card pr-2.5 sm:pr-3 md:w-44 min-[860px]:rounded-tr-none"
                 />
                 <th
                   scope="col"
                   className={cn(
                     stickyHeaderCell,
-                    "hidden w-40 py-3 pr-6 font-semibold lg:table-cell lg:rounded-tr-card",
+                    "hidden w-40 py-3 pr-6 font-semibold min-[860px]:table-cell min-[860px]:rounded-tr-card",
                   )}
                 >
                   {archive.columns.keys}
@@ -290,28 +260,28 @@ function ArchiveRow({
         animateIn && "animate-enter",
       )}
     >
-      <td className="tnum py-3 pl-4 pr-2 text-sm font-medium text-muted sm:pl-6">
+      <td className="tnum py-3 pl-2.5 pr-1 text-sm font-medium text-muted sm:pl-6 sm:pr-2">
         {row.number ?? <span aria-hidden="true">·</span>}
       </td>
-      <td className="py-3 pr-3">
-        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base">{row.title}</span>
-        {/* Below md the last-sung and keys columns fold under the title. */}
-        <span className="mt-0.5 block text-xs text-muted md:hidden">
-          <time dateTime={row.last}>{capitalize(lastAgo)}</time>
-          {keyText ? ` · ${keyText}` : ""}
-        </span>
-        <span className="mt-0.5 hidden text-xs text-muted md:block lg:hidden">{keyText}</span>
+      <td className="py-3 pr-2 sm:pr-3">
+        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base"><SongLink title={row.title} /></span>
+        {/* Below 860px the keys column folds under the title: the least
+            important detail, so the one that gives up its column. */}
+        {keyText ? (
+          <span className="mt-0.5 block text-xs text-muted min-[860px]:hidden">{keyText}</span>
+        ) : null}
       </td>
-      <td className="tnum py-3 pr-4 text-right text-sm font-semibold text-ink sm:pr-8">
+      <td className="tnum py-3 pr-2 text-right text-sm font-semibold text-ink sm:pr-8">
         {row.count}
       </td>
-      <td className="hidden py-3 pr-3 text-sm md:table-cell">
-        <time dateTime={row.last} className="block text-ink">
+      <td className="py-3 pr-2.5 text-sm sm:pr-3">
+        {/* Phones get the relative time only; wider screens add the date. */}
+        <time dateTime={row.last} className="hidden text-ink md:block">
           {formatLongDate(row.last)}
         </time>
-        <span className="block text-xs text-muted">{capitalize(lastAgo)}</span>
+        <span className="block text-xs text-ink-soft md:text-muted">{capitalize(lastAgo)}</span>
       </td>
-      <td className="hidden py-3 pr-6 lg:table-cell">
+      <td className="hidden py-3 pr-6 min-[860px]:table-cell">
         <span className="flex flex-wrap gap-1.5">
           {row.keys.map((entry) => (
             <span
@@ -376,7 +346,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(column)}
         className={cn(
-          "group -mx-1.5 inline-flex min-h-9 items-center gap-1 rounded-md px-1.5 uppercase tracking-[0.14em] transition-colors duration-150 hover:text-ink",
+          "group -mx-1.5 inline-flex min-h-9 items-center gap-1 rounded-md px-1.5 uppercase tracking-[0.14em] transition-colors duration-150 hover:text-ink sm:whitespace-nowrap",
           active ? "text-ink" : "text-muted",
           align === "right" && "flex-row-reverse",
         )}
@@ -397,17 +367,6 @@ function SortHeader({
         </svg>
       </button>
     </th>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="px-4 py-4 sm:px-6 sm:py-5">
-      <dt className="font-sans text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted sm:text-[0.7rem]">
-        {label}
-      </dt>
-      <dd className="tnum mt-1 font-display text-2xl text-ink sm:text-3xl">{value}</dd>
-    </Card>
   );
 }
 

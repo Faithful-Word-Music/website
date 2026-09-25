@@ -3,6 +3,7 @@
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { SongLink } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import { songHint, type PlayIndex } from "@/lib/song-history";
 import { songKey } from "@/lib/song-list";
@@ -45,7 +46,7 @@ export function ServiceCard({
     <Card
       barline
       className={cn(
-        "h-full p-5 transition-shadow duration-300 sm:p-6 print:break-inside-avoid print:p-3 print:shadow-none",
+        "h-full p-5 transition-shadow duration-300 sm:p-6",
         animateIn && "animate-enter",
         highlighted && "ring-2 ring-gold ring-offset-2 ring-offset-paper",
         past && "bg-surface/70",
@@ -75,7 +76,7 @@ export function ServiceCard({
           ) : null}
         </div>
         {status === "next" || status === "now" ? (
-          <div className="shrink-0 pt-0.5 print:hidden">
+          <div className="shrink-0 pt-0.5">
             <StatusPill status={status} />
           </div>
         ) : null}
@@ -109,20 +110,20 @@ export function ServiceCard({
                 key={`${service.id}-${index}`}
                 className="align-baseline border-line [&:not(:last-child)]:border-b"
               >
-                <td className="tnum py-2.5 pr-3 text-sm font-medium text-muted sm:text-base print:py-1">
+                <td className="tnum py-2.5 pr-3 text-sm font-medium text-muted sm:text-base">
                   {song.number ?? <span aria-hidden="true">·</span>}
                 </td>
-                <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base print:py-1">
-                  {song.title}
+                <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base">
+                  <SongLink title={song.title} />
                   {hint ? (
-                    <span className="print:hidden">
+                    <span>
                       <SongHintText hint={hint} now={now} />
                     </span>
                   ) : null}
                 </td>
                 <td
                   className={cn(
-                    "tnum py-2.5 text-right text-sm font-medium sm:text-base print:py-1",
+                    "tnum py-2.5 text-right text-sm font-medium sm:text-base",
                     past ? "text-muted" : "text-gold-dark",
                   )}
                 >
@@ -135,11 +136,11 @@ export function ServiceCard({
               its songs are not chosen yet. */}
           {Array.from({ length: service.pendingSongs }, (_, index) => (
             <tr key={`pending-${index}`} className="align-baseline border-line [&:not(:last-child)]:border-b">
-              <td className="py-2.5 pr-3 print:py-1" />
-              <td className="py-2.5 pr-3 text-[0.95rem] italic text-muted sm:text-base print:py-1">
+              <td className="py-2.5 pr-3" />
+              <td className="py-2.5 pr-3 text-[0.95rem] italic text-muted sm:text-base">
                 {songListContent.states.pendingSong}
               </td>
-              <td className="py-2.5 print:py-1" />
+              <td className="py-2.5" />
             </tr>
           ))}
         </tbody>

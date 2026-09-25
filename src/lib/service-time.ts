@@ -240,3 +240,15 @@ export function splitDateLabel(label: string): { weekday: string | null; day: st
   const match = /^\s*([A-Za-z]+),\s*([A-Za-z]+\.?\s+\d{1,2})(?:,\s*\d{4})?\s*$/.exec(label);
   return match ? { weekday: match[1], day: match[2] } : { weekday: null, day: null };
 }
+
+const dayDate = new Intl.DateTimeFormat("en-US", {
+  timeZone,
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+});
+
+/** "Sunday, September 6" - for lists already grouped by year. */
+export function formatDayDate(startsAt: string): string {
+  return dayDate.format(new Date(startsAt));
+}

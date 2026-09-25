@@ -9,6 +9,7 @@ import {
   listKeys,
   parseMonthGrid,
   songKey,
+  songSlug,
 } from "@/lib/song-list";
 
 describe("parseMonthGrid on the real September 2026 tab", () => {
@@ -52,6 +53,12 @@ describe("parseMonthGrid on the real September 2026 tab", () => {
     expect(first.songs[2]).toEqual({ number: null, title: "This World is Not My Home", key: "F" });
     const resolved = month.services.find((service) => service.date === "2026-09-06" && service.slot === "PM");
     expect(resolved?.songs[0]).toEqual({ number: "288", title: "I Am Resolved", key: "Ab" });
+  });
+
+  it("has no unfilled slots - the footnote row is not one", () => {
+    expect(month.services.map((service) => service.pendingSongs)).toEqual(
+      month.services.map(() => 0),
+    );
   });
 
   it("captures the footnote without its asterisks", () => {
@@ -197,6 +204,11 @@ describe("keyMatches (typed key search)", () => {
 });
 
 describe("helpers", () => {
+  it("songSlug gives one tidy address per song", () => {
+    expect(songSlug("Hallelujah, 'Tis Done")).toBe("hallelujah-tis-done");
+    expect(songSlug("Jesus, I My Cross Have Taken")).toBe(songSlug("Jesus I My Cross Have Taken"));
+  });
+
   it("songKey groups spellings", () => {
     expect(songKey("Hallelujah, 'Tis Done")).toBe(songKey("hallelujah  'tis done!"));
   });

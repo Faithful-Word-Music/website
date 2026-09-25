@@ -2,6 +2,7 @@
 
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { Card } from "@/components/ui/Card";
+import { SongLink } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import { formatCountdown, formatShortDate, splitDateLabel } from "@/lib/service-time";
 import { songHint, type PlayIndex } from "@/lib/song-history";
@@ -103,7 +104,7 @@ export function NextServiceSpotlight({
                     {song.number ? null : <span className="sr-only">No number</span>}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-lg leading-snug text-ink sm:text-xl">{song.title}</span>
+                    <span className="block text-lg leading-snug text-ink sm:text-xl"><SongLink title={song.title} /></span>
                     {hint ? <SongHintText hint={hint} now={now} /> : null}
                   </span>
                   {song.key ? (

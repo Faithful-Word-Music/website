@@ -75,7 +75,7 @@ export function buildSongRecords(services: DatedService[]): SongRecord[] {
       // Walking oldest to newest, so the latest spelling and number win.
       record.title = song.title;
       if (song.number) record.number = song.number;
-      record.plays.push({ startsAt: service.startsAt, key: song.key });
+      record.plays.push({ startsAt: service.startsAt, slot: service.slot, key: song.key });
       records.set(id, record);
     }
   }

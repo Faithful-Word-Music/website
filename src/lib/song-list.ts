@@ -119,8 +119,12 @@ export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
       if (songTitle === "") {
         // A row that had something in it, but only placeholders ("TBD",
         // "#N/A"), is a song slot not filled in yet. Counted, not shown as a song.
-        const hadContent = [numberCol, titleCol, keyCol].some((index) => cell(row, index) !== "");
-        if (hadContent && current) current.pendingSongs += 1;
+        // Only a real placeholder counts: other text here (such as the sheet's
+        // footnote in column A) is not a song slot.
+        const hadPlaceholder = [numberCol, titleCol, keyCol].some((index) =>
+          isPlaceholder(cell(row, index)),
+        );
+        if (hadPlaceholder && current) current.pendingSongs += 1;
         continue;
       }
 
@@ -300,6 +304,15 @@ export function songKey(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+/**
+ * The song's address in the archive: its identity with hyphens, so
+ * "Hallelujah, 'Tis Done" lives at /song-list/archive/hallelujah-tis-done.
+ * One song, one address, however its title was punctuated in the sheet.
+ */
+export function songSlug(title: string): string {
+  return songKey(title).replace(/ /g, "-");
 }
 
 /**

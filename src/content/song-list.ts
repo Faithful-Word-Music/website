@@ -12,6 +12,9 @@ export const songListContent = {
   /** Button linking to the original public spreadsheet. */
   sheetLinkLabel: "View in Google Sheets",
 
+  /** Button that prints the open month, laid out like the spreadsheet. */
+  printLabel: "Print",
+
   /** Link from the schedule to the archive. */
   archiveLinkLabel: "Browse every song we've sung",
 
@@ -109,6 +112,27 @@ export const songListContent = {
       "This month's schedule is laid out differently than usual, so it is shown below exactly as it appears in the spreadsheet.",
   },
 
+  /** One song's page in the archive, /song-list/archive/[song]. */
+  songPage: {
+    backLabel: "Back to the archive",
+    /** {number} is replaced at render time. */
+    numberEyebrow: "Hymn No. {number}",
+    fallbackEyebrow: "Song archive",
+    stats: {
+      count: "Times sung",
+      first: "First sung",
+      last: "Last sung",
+      none: "Not yet",
+    },
+    keysTitle: "Keys",
+    /** {count} is replaced at render time. */
+    keyCount: "{count}×",
+    upcomingTitle: "Coming up",
+    historyTitle: "Every time we've sung it",
+    noHistory: "There is no record of this song being sung yet. Records begin in October 2025.",
+    notFoundTitle: "Song not found",
+  },
+
   archive: {
     title: "Song Archive",
     lead: "Every song sung in our services, how often we have sung it, and when we last did.",
@@ -128,16 +152,7 @@ export const songListContent = {
       year: "This year",
       twelveMonths: "Last 12 months",
     },
-    sort: {
-      label: "Sort by",
-      mostSung: "Most sung",
-      recent: "Recently sung",
-      longestAgo: "Longest since sung",
-      title: "Title (A-Z)",
-      number: "Hymnal number",
-      /** Shown when the table was sorted by clicking a column in an order the menu doesn't list. */
-      custom: "Custom order",
-    },
+    /** Column headings. Each is also the button that sorts by that column. */
     columns: {
       number: "No.",
       title: "Song",

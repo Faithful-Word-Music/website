@@ -97,6 +97,13 @@ export const siteConfig = {
     timeZone: "America/Phoenix",
     utcOffset: "-07:00",
     timeZoneLabel: "Arizona time",
+
+    /**
+     * Where to send an email if the nightly archive sync fails, so the song
+     * history never silently stops being saved. Change it to send alerts to
+     * someone other than the main inbox.
+     */
+    alertEmail: "contact@faithfulwordmusic.com",
   },
 
   /**

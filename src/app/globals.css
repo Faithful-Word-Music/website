@@ -322,8 +322,18 @@ html.motion-ready .reveal {
    services in two columns. Components opt elements out with `print:hidden`.
    =========================================================================== */
 @media print {
+  /* Any other page printed gets a plain half-inch margin. */
   @page {
-    margin: 12mm;
+    margin: 0.5in;
+  }
+
+  /* The printed song list (PrintSchedule.tsx) brings its own white space, so
+     it looks the same whatever the print dialog's Margins setting is -
+     "None" and "Minimum" otherwise run the text to the edge of the paper.
+     A zero margin here also leaves no room for the browser's date/URL
+     header and footer, which have no place on a printed schedule. */
+  @page song-list {
+    margin: 0;
   }
 
   html,

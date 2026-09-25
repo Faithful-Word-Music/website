@@ -7,6 +7,7 @@ import { FallbackTable } from "@/components/song-list/FallbackTable";
 import { KeySearch } from "@/components/song-list/KeySearch";
 import { MonthTabs } from "@/components/song-list/MonthTabs";
 import { NextServiceSpotlight } from "@/components/song-list/NextServiceSpotlight";
+import { PrintSchedule } from "@/components/song-list/PrintSchedule";
 import { ServiceCard } from "@/components/song-list/ServiceCard";
 import { SongListEmpty } from "@/components/song-list/SongListStates";
 import { SongSearch } from "@/components/song-list/SongSearch";
@@ -117,109 +118,110 @@ export function SongListView({
   }
 
   return (
-    <div>
-      <NextServiceSpotlight current={current} next={next} plays={plays} now={now} />
+    <>
+      {/* Printing gets its own layout (PrintSchedule, below): the plain month
+          as in the spreadsheet, with nothing live - so none of this prints. */}
+      <div className="print:hidden">
+        <NextServiceSpotlight current={current} next={next} plays={plays} now={now} />
 
-      <div className="mt-12 flex flex-col gap-4 sm:mt-14 lg:flex-row lg:items-center lg:justify-between print:mt-0">
-        {/* Tabs appear only when the spreadsheet actually has a second visible
-            month. With one month there is no tab bar and no placeholder. */}
-        <div className="print:hidden">
-          {months.length > 1 ? (
-            <MonthTabs
-              titles={months.map((item) => item.title)}
-              activeIndex={activeIndex}
-              onChange={changeMonth}
-              idPrefix={idPrefix}
-            />
-          ) : (
-            <h2 className="font-display text-2xl text-ink sm:text-3xl">{month.title}</h2>
-          )}
-        </div>
-        {/* In print, the tab bar is replaced by the month's own heading. */}
-        <h2 className="hidden font-display text-2xl text-ink print:block">
-          {month.heading ?? month.title}
-        </h2>
-
-        {month.services.length > 0 ? (
-          <div className="flex w-full gap-3 lg:w-auto print:hidden">
-            <SongSearch
-              value={query}
-              onChange={updateQuery}
-              className="lg:w-72"
-              inputId={searchId}
-              songs={songs}
-              describedBy={statusId}
-            />
-            <KeySearch
-              value={key}
-              onChange={updateKey}
-              inputId={keyId}
-              keys={keys}
-              describedBy={statusId}
-            />
+        <div className="mt-12 flex flex-col gap-4 sm:mt-14 lg:flex-row lg:items-center lg:justify-between">
+          {/* Tabs appear only when the spreadsheet actually has a second visible
+              month. With one month there is no tab bar and no placeholder. */}
+          <div>
+            {months.length > 1 ? (
+              <MonthTabs
+                titles={months.map((item) => item.title)}
+                activeIndex={activeIndex}
+                onChange={changeMonth}
+                idPrefix={idPrefix}
+              />
+            ) : (
+              <h2 className="font-display text-2xl text-ink sm:text-3xl">{month.title}</h2>
+            )}
           </div>
-        ) : null}
-      </div>
+          {month.services.length > 0 ? (
+            <div className="flex w-full gap-3 lg:w-auto">
+              <SongSearch
+                value={query}
+                onChange={updateQuery}
+                className="lg:w-72"
+                inputId={searchId}
+                songs={songs}
+                describedBy={statusId}
+              />
+              <KeySearch
+                value={key}
+                onChange={updateKey}
+                inputId={keyId}
+                keys={keys}
+                describedBy={statusId}
+              />
+            </div>
+          ) : null}
+        </div>
 
-      {/* Announced to screen readers as the result count changes. Its line
-          is always reserved, so results appearing never push the page down. */}
-      <p
-        id={statusId}
-        role="status"
-        aria-live="polite"
-        className="mt-4 flex min-h-6 items-center text-sm text-muted print:hidden"
-      >
-        {filtering ? (
-          <span className="animate-enter flex items-center gap-3">
-            <span>{resultsMessage}</span>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
-            >
-              {search.clearFilters}
-            </button>
-          </span>
-        ) : null}
-      </p>
-
-      <div
-        id={months.length > 1 ? `${idPrefix}-panel-${activeIndex}` : undefined}
-        role={months.length > 1 ? "tabpanel" : undefined}
-        aria-labelledby={months.length > 1 ? `${idPrefix}-tab-${activeIndex}` : undefined}
-        tabIndex={months.length > 1 ? 0 : undefined}
-        className="mt-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark print:mt-4"
-      >
-        <MonthBody
-          month={month}
-          services={visibleServices}
-          filtering={filtering}
-          timeline={timeline}
-          plays={plays}
-          now={now}
-          showEarlier={showEarlier}
-          onToggleEarlier={() => setShowEarlier((value) => !value)}
-          animateIn={interacted}
-          idPrefix={idPrefix}
-        />
-      </div>
-
-      {month.note ? (
-        <p className="mt-8 text-center text-sm italic text-muted print:mt-4">{month.note}</p>
-      ) : null}
-
-      <div className="mt-12 flex justify-center print:hidden">
-        <Link
-          href="/song-list/archive"
-          className="group inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-6 text-sm font-medium text-ink transition-colors hover:border-gold"
+        {/* Announced to screen readers as the result count changes. Its line
+            is always reserved, so results appearing never push the page down. */}
+        <p
+          id={statusId}
+          role="status"
+          aria-live="polite"
+          className="mt-4 flex min-h-6 items-center text-sm text-muted"
         >
-          {songListContent.archiveLinkLabel}
-          <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
-            →
-          </span>
-        </Link>
+          {filtering ? (
+            <span className="animate-enter flex items-center gap-3">
+              <span>{resultsMessage}</span>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
+              >
+                {search.clearFilters}
+              </button>
+            </span>
+          ) : null}
+        </p>
+
+        <div
+          id={months.length > 1 ? `${idPrefix}-panel-${activeIndex}` : undefined}
+          role={months.length > 1 ? "tabpanel" : undefined}
+          aria-labelledby={months.length > 1 ? `${idPrefix}-tab-${activeIndex}` : undefined}
+          tabIndex={months.length > 1 ? 0 : undefined}
+          className="mt-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark"
+        >
+          <MonthBody
+            month={month}
+            services={visibleServices}
+            filtering={filtering}
+            timeline={timeline}
+            plays={plays}
+            now={now}
+            showEarlier={showEarlier}
+            onToggleEarlier={() => setShowEarlier((value) => !value)}
+            animateIn={interacted}
+            idPrefix={idPrefix}
+          />
+        </div>
+
+        {month.note ? (
+          <p className="mt-8 text-center text-sm italic text-muted">{month.note}</p>
+        ) : null}
+
+        <div className="mt-12 flex justify-center">
+          <Link
+            href="/song-list/archive"
+            className="group inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-6 text-sm font-medium text-ink transition-colors hover:border-gold"
+          >
+            {songListContent.archiveLinkLabel}
+            <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
+          </Link>
+        </div>
       </div>
-    </div>
+
+      <PrintSchedule month={month} />
+    </>
   );
 }
 
@@ -273,13 +275,13 @@ function MonthBody({
   return (
     <div>
       {earlier.length > 0 ? (
-        <div className="mb-6 print:mb-0">
+        <div className="mb-6">
           <button
             type="button"
             onClick={onToggleEarlier}
             aria-expanded={showEarlier}
             aria-controls={earlierId}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full px-1 text-sm font-medium text-muted transition-colors hover:text-ink print:hidden"
+            className="inline-flex min-h-10 items-center gap-2 rounded-full px-1 text-sm font-medium text-muted transition-colors hover:text-ink"
           >
             <svg
               aria-hidden="true"
@@ -296,13 +298,12 @@ function MonthBody({
           </button>
 
           {/* Opens and closes smoothly by animating the grid row between 0 and
-              its natural height. Always in the DOM, so the printed page shows
-              the whole month; `inert` keeps collapsed cards out of the tab order. */}
+              its natural height; `inert` keeps collapsed cards out of the tab order. */}
           <div
             id={earlierId}
             inert={!showEarlier}
             className={cn(
-              "grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] print:grid-rows-[1fr] print:opacity-100",
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
               showEarlier ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
             )}
           >
@@ -311,7 +312,7 @@ function MonthBody({
                 clipping box is itself positioned. Without it they escape the
                 collapsed section and stretch the page below the footer. */}
             <div className="relative min-h-0 overflow-hidden">
-              <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-2 print:grid-cols-2 print:gap-3 print:pt-0">
+              <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-2">
                 {earlier.map((service) => (
                   <ServiceCard
                     key={`${month.title}:${service.id}`}
@@ -327,7 +328,7 @@ function MonthBody({
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2 print:grid-cols-2 print:gap-3">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
         {later.map((service, index) => (
           // The offset is by column, not by position in the list: cards reveal as
           // you scroll past them, so a running index-based delay would leave the

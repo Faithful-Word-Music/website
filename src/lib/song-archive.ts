@@ -11,9 +11,10 @@ import {
   pastServices,
   type PlayIndex,
 } from "@/lib/song-history";
-import { datedServices, songKey } from "@/lib/song-list";
+import { datedServices, songKey, songSlug } from "@/lib/song-list";
 import type {
   DatedService,
+  ServiceSlot,
   SongListMonth,
   SongListResult,
   SongRecord,
@@ -134,6 +135,68 @@ export async function getArchiveData(): Promise<ArchiveData> {
     serviceCount: past.length,
     since: past[0]?.startsAt ?? null,
     persistent: history.persistent,
+    loadedAt,
+  };
+}
+
+/** One time a song was (or will be) sung. */
+export interface SongPlay {
+  startsAt: string;
+  slot: ServiceSlot;
+  key: string | null;
+}
+
+export interface SongPageData {
+  title: string;
+  number: string | null;
+  /** Every time it has been sung, newest first. */
+  plays: SongPlay[];
+  /** Services it is scheduled for that have not happened yet, soonest first. */
+  upcoming: SongPlay[];
+  loadedAt: number;
+}
+
+/**
+ * Everything about one song, for /song-list/archive/[song]: its full history
+ * from the archive, plus any upcoming services it is already scheduled for.
+ *
+ * A song scheduled for the first time has no history yet but still gets a
+ * page, so links from the schedule never lead nowhere. Returns null for an
+ * address that matches no song at all.
+ */
+export async function getSongPage(slug: string): Promise<SongPageData | null> {
+  const [archive, sheet] = await Promise.all([getArchiveData(), getSongList()]);
+  const loadedAt = archive.ok ? archive.loadedAt : Date.now();
+
+  const record = archive.ok
+    ? archive.records.find((candidate) => songSlug(candidate.title) === slug)
+    : undefined;
+
+  const upcoming: Array<SongPlay & { title: string; number: string | null }> = [];
+  if (sheet.ok) {
+    for (const service of datedServices(sheet.months)) {
+      if (Date.parse(service.startsAt) <= loadedAt) continue;
+      for (const song of service.songs) {
+        if (songSlug(song.title) !== slug) continue;
+        upcoming.push({
+          startsAt: service.startsAt,
+          slot: service.slot,
+          key: song.key,
+          title: song.title,
+          number: song.number,
+        });
+      }
+    }
+  }
+  upcoming.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+
+  if (!record && upcoming.length === 0) return null;
+
+  return {
+    title: record?.title ?? upcoming[0].title,
+    number: record?.number ?? upcoming.find((play) => play.number)?.number ?? null,
+    plays: [...(record?.plays ?? [])].reverse(),
+    upcoming: upcoming.map(({ startsAt, slot, key }) => ({ startsAt, slot, key })),
     loadedAt,
   };
 }

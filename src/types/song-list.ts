@@ -89,5 +89,5 @@ export interface SongRecord {
   /** Most recent hymnal number, if it has ever had one. */
   number: string | null;
   /** Each time it was sung, oldest first. */
-  plays: Array<{ startsAt: string; key: string | null }>;
+  plays: Array<{ startsAt: string; slot: ServiceSlot; key: string | null }>;
 }

@@ -154,6 +154,15 @@ the searchable archive, and the hints under each upcoming song ("Last sung 3 wee
 time ever") come from the same history. It only knows about services since the archive began, so
 "First time ever" means "first time on record".
 
+**Song pages.** Every song has its own page at `/song-list/archive/<song>` (e.g. `/song-list/archive/amazing-grace`).
+It shows times sung, first and last sung, the keys used with counts, any upcoming services, and every
+date, grouped by year. Song titles in the archive and on the schedule link there. A song only scheduled
+so far still gets a page. The address comes from `songSlug()` in `src/lib/song-list.ts`.
+
+**Printing.** The Print button (or Ctrl+P) on `/song-list` prints the open month in a layout that mirrors
+the spreadsheet's printout (`src/components/song-list/PrintSchedule.tsx`): the full month, two columns
+reading down, on one page. Nothing live is printed: no Next/Now, no hints, and no search filter.
+
 **Freshness.** `revalidate = 10` on both the data fetches and the pages. Editing the sheet reaches the
 site within seconds (at most 12 Sheets API requests a minute, against a 300/minute quota), with no rebuild and no redeploy. Nothing is baked into the build.
 
@@ -286,6 +295,11 @@ The integration is read-only; the site never writes to the spreadsheet.
    The response reports how many services were `added`, `refreshed` and `frozen`. Running it again
    is harmless.
 5. After that, Vercel runs it every night at 3 AM Arizona time. Check **Settings, Cron Jobs**.
+
+**Failure alerts.** If a nightly run fails, or finds no past services in the sheet (usually a layout
+change), an email goes to `siteConfig.songList.alertEmail` through Resend. This only happens in
+production, never from local runs. If the whole site is down the job can't run at all; Vercel's cron logs
+show that case.
 
 Without a database the site still works: the archive and hints use the sheet's twelve months.
 
