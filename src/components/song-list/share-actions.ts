@@ -1,6 +1,7 @@
 /**
- * The ways a list of songs leaves the page: the device's share sheet, the
- * clipboard, or an email. Browser only - call these from event handlers.
+ * The ways a list of songs leaves the page, as text or as a picture: the
+ * device's share sheet, the clipboard, a download, or an email. Browser only
+ * - call these from event handlers.
  */
 
 export interface SharePayload {
@@ -27,7 +28,7 @@ export function prefersShareSheet(): boolean {
  * then closed it, which is a choice, not a failure. False if it could not
  * open at all, so the caller can offer the menu instead.
  */
-export async function shareNatively(payload: SharePayload): Promise<boolean> {
+export async function shareNatively(payload: ShareData): Promise<boolean> {
   try {
     await navigator.share(payload);
     return true;
@@ -64,4 +65,45 @@ export function emailHref({ title, text }: SharePayload): string {
   // Mail clients expect CRLF line breaks in a mailto body.
   const body = text.replace(/\r?\n/g, "\r\n");
   return `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+}
+
+/** The browser can put files (the picture) in its share sheet. */
+export function canShareFiles(file: File): boolean {
+  return canShareNatively() && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
+}
+
+/** Share sheet with the picture, and the link beside it. True if it was shown (or dismissed). */
+export async function sharePicture(file: File, { title, url }: { title: string; url: string }) {
+  return shareNatively({ title, text: url, files: [file] });
+}
+
+/** The browser can put an image on the clipboard (Chrome, Edge, Safari). */
+export function canCopyPicture(): boolean {
+  return (
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function" &&
+    (typeof ClipboardItem.supports !== "function" || ClipboardItem.supports("image/png"))
+  );
+}
+
+export async function copyPicture(file: File): Promise<boolean> {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Downloads the picture under its own name. */
+export function savePicture(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Give the download a moment to start before the address is released.
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

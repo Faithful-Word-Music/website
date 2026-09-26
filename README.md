@@ -1,230 +1,291 @@
 # Faithful Word Music
 
-Production website for **Faithful Word Music**, the music ministry of
+The website of **Faithful Word Music**, the music ministry of
 [Faithful Word Baptist Church](https://www.faithfulwordbaptist.org/) in Phoenix, Arizona.
 
-Canonical domain: **https://faithfulwordmusic.com** (secondary: `fwbcmusic.org`, which redirects to it).
-Contact mail is on the same domain: **contact@faithfulwordmusic.com**, which is what Resend must
-verify.
+- **Live site:** https://faithfulwordmusic.com
+- **Contact inbox:** contact@faithfulwordmusic.com
+- **Editing words, links or the song list?** See **[CONTENT-GUIDE.md](./CONTENT-GUIDE.md)**, which needs no coding. This file is for developers.
 
-Three routes:
+---
 
-| Route | Purpose |
+## Contents
+
+1. [At a glance](#at-a-glance)
+2. [Quick start](#quick-start)
+3. [Environment variables](#environment-variables)
+4. [Project structure](#project-structure)
+5. [How it works](#how-it-works)
+   - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
+   - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
+6. [Design conventions](#design-conventions)
+7. [Testing](#testing)
+8. [Deploying to Vercel](#deploying-to-vercel)
+9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Resend](#resend)
+10. [Gotchas](#gotchas)
+11. [Accessibility and SEO](#accessibility-and-seo)
+
+---
+
+## At a glance
+
+One Next.js app on Vercel. There's no separate backend, CMS or login. The song list is read live from a public Google Sheet, and nothing about it is baked into the build.
+
+| Address | What it is |
 |---|---|
-| `/` | Home - what the ministry is, and the two things visitors want |
-| `/song-list` | The congregational song list, read live from Google Sheets |
-| `/contact` | A working contact form that emails the ministry via Resend |
+| `/` | Home: what the ministry is, with links to the song list and contact page |
+| `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
+| `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
+| `/song-list/archive/<song>` | One song's history: times sung, keys used, upcoming services |
+| `/song-list/pdf/<month>` | A month as a one-page printable PDF |
+| `/song-list/image/<month>?s=<ids>` | One to three services as a PNG picture, for sharing |
+| `/contact` | Contact form, emailed to the ministry through Resend |
+| `POST /api/contact` | The contact form's endpoint |
+| `GET /api/cron/sync-archive` | Nightly job that saves past services to the archive database |
 
-For day-to-day content edits, see **[CONTENT-GUIDE.md](./CONTENT-GUIDE.md)**. This file is for developers.
+**Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Google Sheets API ·
+Neon Postgres (song archive) · Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) ·
+`next/og` (pictures and link previews) · Zod · Vitest.
+
+> **Heads-up for contributors:** this is Next.js 16, which has breaking changes from older versions.
+> Before writing Next-specific code, read the relevant guide in `node_modules/next/dist/docs/`
+> (see [AGENTS.md](./AGENTS.md)).
 
 ---
 
-## Tech stack
-
-- **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Tailwind CSS v4** - CSS-first; design tokens live in `src/app/globals.css`, there is no `tailwind.config.ts`
-- **Resend** - contact form delivery
-- **Google Sheets API v4** - read-only song list
-- **Zod** - one validation schema shared by client and server
-- Deployed on **Vercel**
-
-One conventional full-stack Next.js app. No separate backend, no database, no ORM, no CMS, no auth.
-
----
-
-## Local setup
+## Quick start
 
 ```bash
 npm install
-cp .env.example .env.local     # then fill in real values
+cp .env.example .env.local     # then fill in real values (see below)
 npm run dev                    # http://localhost:3000
 ```
 
-The site runs without any keys: the song list shows a "not connected" state and the contact form
-returns a clear error. Add the keys to exercise those features.
+The site runs without any keys. The song list shows a "not connected" message and the contact form returns a clear error until the keys are added.
 
-### Commands
-
-| Command | Does |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Development server |
+| `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build locally |
+| `npm test` | Unit tests (Vitest) |
 | `npm run lint` | ESLint |
-| `npm test` | Unit tests (Vitest) for the song-list parser, timing and history logic |
 | `npx tsc --noEmit` | Type check |
+| `npx next typegen` | Regenerate route types (needed after adding a route; see [Gotchas](#gotchas)) |
+
+**Handy in development:** add `?now=2026-09-27T10:29:00-07:00` to `/song-list` to pretend it's that moment, which lets you check the Next/Now markers.
 
 ---
 
 ## Environment variables
 
-All are **server-only secrets**. None is prefixed `NEXT_PUBLIC_`, because that prefix bundles a
-value into browser JavaScript and makes it public.
+All four are **server-only secrets**. None starts with `NEXT_PUBLIC_`, because that prefix puts a value into the browser's JavaScript, where anyone can read it.
 
-| Variable | Used by | Needed in |
-|---|---|---|
-| `GOOGLE_SHEETS_API_KEY` | `src/lib/google-sheets.ts` | Development, Preview, Production |
-| `RESEND_API_KEY` | `src/lib/resend.ts` | Development, Preview, Production |
-| `DATABASE_URL` | `src/lib/db.ts` (song archive) | Development, Preview, Production - set automatically by the Neon integration |
-| `CRON_SECRET` | `src/app/api/cron/sync-archive/route.ts` | Production (and anywhere you trigger the sync by hand) |
+| Variable | Powers | Where it's read | Needed in |
+|---|---|---|---|
+| `GOOGLE_SHEETS_API_KEY` | The song list | `src/lib/google-sheets.ts` | Development, Preview, Production |
+| `RESEND_API_KEY` | The contact form and archive alerts | `src/lib/resend.ts` | Development, Preview, Production |
+| `DATABASE_URL` | The permanent song archive (optional) | `src/lib/db.ts` | All, and added automatically by the Neon integration |
+| `CRON_SECRET` | Protects the nightly archive sync | `src/app/api/cron/sync-archive/route.ts` | Production, and locally if you run the sync by hand |
 
-- **`.env.local`** - real values, local only, git-ignored.
-- **`.env.example`** - placeholders, committed, documents what exists.
-- **Production** - set in Vercel, Settings, Environment Variables. Never in a committed file.
+- **`.env.local`** holds the real values for your machine. It's git-ignored.
+- **`.env.example`** holds placeholders and documents what exists. It's committed.
+- **Production values** are set in **Vercel → Settings → Environment Variables**, never in a committed file. Changing one requires a redeploy.
+- To pull them down locally: `npx vercel env pull .env.local`.
 
-Both are read in exactly one file each, and both of those files import `server-only`, so importing
-them from a client component fails the build rather than leaking a key. Missing configuration
-degrades gracefully; it never crashes a page or exposes a value in an error message.
+The files that read secrets import `server-only`, so accidentally importing one into browser code fails the build instead of leaking a key. A missing key never crashes a page; the feature just shows a friendly error.
 
-Everything non-secret - the contact address, external links, the spreadsheet ID - lives in
-`src/config/site.ts` instead, because a public value does not need to be an environment variable.
+Anything **public** (the contact address, links, the spreadsheet ID, service times) lives in `src/config/site.ts`, not in environment variables.
 
 ---
 
-## Architecture
+## Project structure
 
 ```
+assets/fonts/                 TTF/WOFF fonts for the PDF, pictures and link previews
 src/
 ├── app/
-│   ├── api/contact/route.ts   POST /api/contact
-│   ├── song-list/page.tsx     server component: fetch + parse, then a client island
+│   ├── page.tsx                      Home
+│   ├── song-list/
+│   │   ├── page.tsx                  Song list (server: fetch + parse, then the interactive view)
+│   │   ├── archive/                  Archive and per-song pages
+│   │   ├── pdf/[month]/route.tsx     Printable PDF of a month
+│   │   └── image/[month]/route.ts    Shareable PNG of 1–3 services
 │   ├── contact/page.tsx
-│   ├── layout.tsx             fonts, header/footer, base metadata
-│   ├── page.tsx               home
-│   ├── globals.css            design tokens (@theme) + musical details
-│   ├── sitemap.ts / robots.ts / icon.svg / not-found.tsx
+│   ├── api/contact/route.ts          Contact form endpoint
+│   ├── api/cron/sync-archive/        Nightly archive sync
+│   ├── layout.tsx                    Fonts, header, footer, base metadata
+│   ├── globals.css                   Design tokens (@theme), motion, print
+│   └── opengraph-image.tsx, sitemap.ts, robots.ts, icon.svg, not-found.tsx
 ├── components/
-│   ├── layout/  home/  song-list/  contact/  ui/
-├── config/site.ts             single source of truth for public values
-├── content/                   editable page copy
-├── lib/
-│   ├── google-sheets.ts       all Google-specific code (server-only)
-│   ├── song-list.ts           sheet grid to services (pure, no I/O)
-│   ├── resend.ts              email sending (server-only)
-│   └── validation.ts          shared Zod schema
-└── types/song-list.ts
+│   ├── song-list/                    Everything on /song-list (see below)
+│   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
+│   └── layout/  home/  contact/
+├── config/site.ts                    Every public setting, in one place
+├── content/                          All page wording (edit without touching components)
+├── lib/                              Logic, kept free of UI (see below)
+└── types/song-list.ts                The song list's data shapes
 ```
 
-Content, configuration, presentation and integration are kept apart. Only three components ship
-JavaScript to the browser - the header (mobile menu), the song list (live Next/Now, tabs, search), the
-song archive (search, filters) and the contact form. Everything else is a Server Component.
+**`src/lib`, the logic:**
 
-### How the song list works
+| File | Job |
+|---|---|
+| `google-sheets.ts` | Fetches the spreadsheet (server-only) |
+| `song-list.ts` | Turns the sheet's grid into services and songs (pure, no I/O) |
+| `service-time.ts` | Service times, Next/Now timeline, date formatting (Arizona time) |
+| `song-history.ts`, `song-archive.ts`, `archive-store.ts`, `archive-view.ts`, `db.ts` | Song history and the archive database |
+| `song-list-pdf.ts` | Fits a month onto one PDF page (row height, column split) |
+| `share-services.ts` | The shared text format, and the three-service limit |
+| `service-picture.tsx` | Draws the shareable picture |
+| `text-measure.ts` | Predicts where Inter text wraps (used by the PDF and the picture) |
+| `og.tsx` | Link-preview cards, plus the fonts, logo and colours the picture reuses |
+| `resend.ts`, `validation.ts` | Email sending and the shared form schema |
 
-```
-Google Sheets  ->  src/lib/google-sheets.ts  ->  src/lib/song-list.ts  ->  native UI
-                   (fetch, read-only)            (parse into services)
-```
+**`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
+`NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
+`ShareButton`/`ShareBar`/`share-actions` (sharing), `SongListPdf` (the PDF layout), and
+`active-month` (keeps the PDF button in step with the open tab).
 
-Two requests, both cached for 10 seconds (`siteConfig.songList.revalidateSeconds`):
+Content, configuration, presentation and integrations are kept apart. Most pages are Server Components. Only the interactive parts run in the browser: the header's mobile menu, the song list, the archive and the contact form.
 
-1. **Sheet metadata** - `?fields=sheets.properties(title,index,hidden)`
-   Tabs are sorted by tab index. The **first two visible** tabs are the schedule; hidden tabs are
-   read only for song history (services that have already happened) and never shown as a schedule.
-2. **Cell values** - `values:batchGet` with `valueRenderOption=FORMATTED_VALUE`, one range per tab.
+---
 
-**Why the API and not a CSV export.** The workbook holds all twelve months; only the current one is
-visible and the other eleven still contain last year's dates. The CSV and `gviz` endpoints serve
-hidden sheets and report nothing about visibility or order, so they would publish every hidden tab.
-Only the Sheets API exposes `hidden` and `index`.
+## How it works
 
-**Formulas.** `FORMATTED_VALUE` returns what the spreadsheet displays, so `IMPORTRANGE` and other
-formulas arrive already resolved. The site never parses a formula.
-
-**Sheet layout.** Row 1 is a heading; then repeating groups of a date row plus its song rows, in two
-side-by-side blocks (columns `A/B/C` and `E/F/G`, with `D` a spacer). A date row carries `AM` or
-`PM` in the number column and has no key; every song has a key. That marker names the service
-(Morning/Evening) and, with the times in `siteConfig.songList.serviceTimes`, gives it an exact start
-time. If the layout stops matching, the page falls back to a plain table rather than rendering nothing.
-
-**Next and Now.** Every service is an absolute instant in Arizona time (UTC-7 all year), so the
-markers are right for visitors in any timezone. The browser keeps its own clock
-(`src/components/song-list/use-now.ts`): a service is **Next** right up to its start time, then
-**Now** for 90 minutes while Next moves to the following service. No reload is needed. In
-development, `?now=2026-09-27T10:29:00-07:00` pretends it is that moment.
-
-**Song history and the archive.** The sheet only keeps a rolling twelve months, so every past
-service is copied nightly into a Neon Postgres database (`src/lib/archive-store.ts`) by a Vercel
-Cron job (`vercel.json`, calling `/api/cron/sync-archive`). A service stays *fresh* for 30 days, and
-during that time the sheet's version wins so corrections are picked up. After that it is *frozen*,
-so rewriting a tab for next year can never change last year's record. Pages combine the database
-with the sheet (`src/lib/song-history.ts`), so the history is current before the nightly run, and if
-the database is unavailable they carry on with the sheet's twelve months. `/song-list/archive` is
-the searchable archive, and the hints under each upcoming song ("Last sung 3 weeks ago", "First
-time ever") come from the same history. It only knows about services since the archive began, so
-"First time ever" means "first time on record".
-
-**Song pages.** Every song has its own page at `/song-list/archive/<song>` (e.g. `/song-list/archive/amazing-grace`).
-It shows times sung, first and last sung, the keys used with counts, any upcoming services, and every
-date, grouped by year. Song titles in the archive link there; on the schedule they are plain text. A song only scheduled
-so far still gets a page. The address comes from `songSlug()` in `src/lib/song-list.ts`.
-
-**Printing.** The "PDF" button on `/song-list` opens the open month as a PDF in a new tab
-(`/song-list/pdf/<month>`, e.g. `/song-list/pdf/september`). The browser's PDF viewer handles print and
-download, so the printout is the same on every device, phones included. The layout mirrors the
-spreadsheet's printout (`src/components/song-list/SongListPdf.tsx`): the full month, two columns reading
-down, on one page. Row height and the column split are fitted to the page in `src/lib/song-list-pdf.ts`.
-Nothing live is printed: no Next/Now, no hints, and no search filter. The PDF is built on request from the
-sheet, so it is exactly as fresh as the page. It uses the TTF fonts in `assets/fonts`.
-
-**Freshness.** `revalidate = 10` on both the data fetches and the pages. Editing the sheet reaches the
-site within seconds (at most 12 Sheets API requests a minute, against a 300/minute quota), with no rebuild and no redeploy. Nothing is baked into the build.
-
-**Failure.** `getSongList()` returns a result object and never throws, so a Sheets outage or a
-missing key shows an error state - which still links to the spreadsheet - instead of a broken site.
-
-### How the contact form works
+### The song list
 
 ```
-visitor -> /contact -> POST /api/contact -> BotID -> honeypot -> Zod validation -> Resend -> contact@faithfulwordmusic.com
+Google Sheet  ──►  lib/google-sheets.ts  ──►  lib/song-list.ts  ──►  the page
+                   (read-only fetch)          (grid → services)
 ```
 
-- The same Zod schema runs in the browser and on the server. The server never trusts the client.
-- **Addressing:** `From:` the site's own verified address, `To:` the ministry inbox, and
-  `Reply-To:` **the visitor**. Replying answers them directly, without the message pretending to
-  come from their address (which would fail SPF/DKIM).
-- A hidden honeypot field catches bots; a filled honeypot returns `200` and sends nothing, so a bot
-  cannot detect it.
-- Status codes: `400` invalid, `403` BotID, `502` Resend failed, `503` not configured, `200` sent.
-  Responses are generic - no stack traces, no environment values. Message contents are never logged.
+- **Two requests**, both cached for 10 seconds (`siteConfig.songList.revalidateSeconds`):
+  1. **Sheet metadata** (`fields=sheets.properties(title,index,hidden)`). Tabs are sorted by position. The **first two visible tabs** are the schedule (`maxMonths`). Hidden tabs are read only for song history.
+  2. **Cell values** (`values:batchGet`, `FORMATTED_VALUE`), so formulas like `IMPORTRANGE` arrive already worked out.
+- **Why the API and not a CSV export:** the workbook holds all twelve months, and only the current ones are visible. CSV and `gviz` exports include hidden tabs and don't say which are hidden. Only the Sheets API does.
+- **The sheet's layout:** row 1 is a heading, then repeating groups of a date row followed by its songs, in two side-by-side blocks (columns `A–C` and `E–G`). A date row has `AM` or `PM` in the number column, which names the service and, with `siteConfig.songList.serviceTimes`, gives its start time.
+  - If the layout ever stops matching, the page shows the sheet as a plain table rather than nothing.
+- **Freshness:** a sheet edit reaches the site within about 10–20 seconds, with no rebuild or redeploy.
+- **Failure:** `getSongList()` never throws. An outage or missing key shows an error message that still links to the spreadsheet.
 
-**Spam and bot protection.** Three layers, none of which asks the visitor to do anything:
+### Next and Now
 
-1. **Vercel BotID** - an invisible challenge the browser solves in the background, verified on the
-   server with `checkBotId()`. The protected routes are listed in `src/instrumentation-client.ts`
-   and must match what `src/app/api/contact/route.ts` checks; `withBotId()` in `next.config.ts`
-   serves the challenge from this domain so an ad-blocker cannot drop it. A submission judged
-   automated gets `403` and copy that names `contact@faithfulwordmusic.com`, so a false positive still has
-   a way through. Free on every plan, including Hobby.
-   *Deep Analysis* (Kasada's ML model) is a Firewall toggle - Pro only, $1 per 1000 checks, and not
-   needed at this volume.
-2. **The honeypot**, as above.
-3. **A WAF rate-limit rule**, configured in the Vercel dashboard rather than in code - an in-memory
-   limiter would not hold across serverless instances, but the edge one does. Firewall → Configure →
-   New Rule: if `Request Path` equals `/api/contact` **and** `Method` equals `POST`, then
-   **Rate Limit** (not Log - Log there throttles nothing), Fixed Window, `600s`, `10` requests,
-   keyed on `IP`. Leave the exceeded-action on **Log** for the first week, then switch it to
-   **Deny**. Hobby allows exactly one rate-limit rule per project; blocked requests are not billed.
+Every service is an exact moment in Arizona time (UTC−7 all year), so the markers are right for visitors anywhere. The browser keeps its own clock (`components/song-list/use-now.ts`):
+- A service is **Next** right up to its start time.
+- It's then **Now** for 90 minutes, while Next moves on to the following service.
 
-`checkBotId()` always returns `isBot: false` under `next dev` - real detection only happens on a
-Vercel deployment. To exercise the rejection path locally, pass
-`developmentOptions: { bypass: "BAD-BOT" }` to it temporarily.
+No reload is needed. The page opens on whichever month tab holds the next service.
+
+### Song history and the archive
+
+The sheet only keeps a rolling twelve months, so every past service is also saved to a **Neon Postgres** database by a nightly Vercel Cron job (`vercel.json` → `/api/cron/sync-archive`, 3 AM Arizona time).
+
+- **Fresh for 30 days:** a recent service can still be corrected in the sheet, and the sheet's version wins.
+- **Frozen after that:** reusing a tab for next year never changes last year's record.
+- **Always up to date:** pages combine the database with the sheet, so the history is current even before the nightly run. Without a database, the site falls back to the sheet's twelve months.
+- **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/song-list/archive/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
+  - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
+- **Links:** song titles link to their pages in the archive. On the schedule they're plain text.
+- **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
+
+### The printable PDF
+
+The **PDF** button opens the open month as a PDF in a new tab (`/song-list/pdf/september`). The browser's own PDF viewer then handles printing and downloading, so it comes out the same on every device, phones included. That's why it replaced printing the web page directly.
+
+- **Layout** (`components/song-list/SongListPdf.tsx`) mirrors the spreadsheet's own printout: the whole month, two columns reading down, on **one Letter page**.
+- **Fitting** (`lib/song-list-pdf.ts`): it measures real title widths to predict wrapping, picks the tallest rows that still fit, and balances the columns.
+  - A service is never split. An unusually long month moves whole services onto a second page rather than cutting any off.
+- **Nothing live** is printed: no Next/Now, no hints, no search filter.
+- Built on request from the sheet, so it's as fresh as the page.
+
+### Sharing services
+
+Each service card has a **share** button. **Select** (just above the cards) lets you tick **up to three** services and share them together from a bar at the bottom of the screen.
+- At three, the other cards grey out, and tapping one explains the limit.
+- The limit is `MAX_SHARED_SERVICES` in `lib/share-services.ts`, used by both the page and the picture.
+
+**Two formats:**
+
+| As text (`lib/share-services.ts`) | As a picture (`lib/service-picture.tsx`) |
+|---|---|
+| Readable right in the message, with nothing to open. | The site's look: gold rule, serif date, hymn numbers and key badges. |
+| `Sunday Morning · Sept 27 · 10:30 AM`, then one line per song (`#114  The Great Physician – Eb`, or `–` for songs without a number), then the link to the song list. | Always one column, phone-shaped. One service is roomy (1080 × ~1190). Two or three use a compact version, so three still fit one phone screen (≤ 1080 × 2340). Sent together with the link to the song list. |
+
+**What each device offers:**
+- **Phone:** *Send as text* or *Send as picture*, each opening the phone's share sheet.
+- **Computer:** *Copy text*, *Copy picture*, *Save picture*, *Email*, and *More options…* (the system share panel).
+
+Phones only allow a share right after a tap, so the picture is fetched as soon as the menu opens and is ready by the time it's chosen.
+
+> The share sheet and clipboard only work on **HTTPS** (or `localhost`). Opening the dev server from a phone at `http://192.168.x.x:3000` shows the Copy/Email fallback instead, which is expected.
+
+### The contact form
+
+```
+visitor → /contact → POST /api/contact → BotID → honeypot → Zod validation → Resend → contact@faithfulwordmusic.com
+```
+
+- **Validation:** the same Zod schema checks the form in the browser and again on the server.
+- **Addressing:** email is sent **from** the site's verified address, **to** the ministry inbox, with **Reply-To** set to the visitor, so pressing Reply answers them directly.
+- **Status codes:** `200` sent · `400` invalid · `403` blocked by BotID · `502` Resend rejected it · `503` not configured. Responses never include stack traces, and message contents are never logged.
+
+**Spam protection:** three layers, none of which asks the visitor to do anything.
+1. **Vercel BotID:** an invisible browser challenge, checked on the server with `checkBotId()`.
+   - The protected routes are listed in `src/instrumentation-client.ts` and must match the API route.
+   - `withBotId()` in `next.config.ts` serves the challenge from this domain, so ad-blockers can't drop it.
+   - A blocked visitor is shown the email address, so a false positive still has a way through.
+   - Under `next dev` it always passes. To test the rejection path, temporarily pass `developmentOptions: { bypass: "BAD-BOT" }`.
+2. **A honeypot field:** if a bot fills it in, the form returns `200` and sends nothing, so the bot can't tell it was caught.
+3. **A firewall rate limit,** set in the Vercel dashboard rather than in code (an in-memory limit wouldn't hold across serverless instances):
+   - **Firewall → Configure → New Rule:** Request Path equals `/api/contact` **and** Method equals `POST` → **Rate Limit**, Fixed Window, `600s`, `10` requests, keyed on IP.
+   - Leave the exceeded-action on **Log** for the first week, then switch it to **Deny**.
+
+---
+
+## Design conventions
+
+- **Design tokens** (colours, fonts, shadows, radius) live in the `@theme` block at the top of `src/app/globals.css`. There's no `tailwind.config.ts` (Tailwind v4 reads its settings from the CSS).
+- **Fonts:** Source Serif 4 for headings and Inter for text, self-hosted by `next/font`. The PDF, pictures and link previews can't use those web fonts, so they use the copies in `assets/fonts/`.
+- **Buttons:** use `Button`/`ButtonLink`, or `buttonClasses()` from `src/components/ui/Button.tsx`, so every button looks and behaves the same (gold-border hover, slight press-in). Primary buttons are ink, never gold, because gold text doesn't meet contrast (AA) on the paper background.
+- **Motion:** every hover and state change shares one easing, set site-wide in `globals.css` (`--default-transition-duration: 250ms` with the site's ease-out curve). So a plain `transition-colors` already matches everything else; avoid one-off durations.
+  - **Page transitions** use React's `<ViewTransition>` through `components/ui/PageTransition.tsx`, placed in each page (not the layout, which never re-mounts).
+  - **Scroll reveal** (`components/ui/Reveal.tsx`) fades content in as it scrolls into view. Anything already on screen when it loads just appears.
+  - **Fallbacks:** no View Transitions API means pages swap instantly. With JavaScript off, a `<noscript>` style shows everything. With `prefers-reduced-motion`, all motion is off (enforced in both CSS and JavaScript).
+- **Copy** lives in `src/content/`, never inside components, so wording can change without touching layout.
+
+---
+
+## Testing
+
+```bash
+npm test
+```
+
+Vitest covers the pure logic in `src/lib`:
+- reading the sheet (`song-list.test.ts`)
+- service times and Next/Now (`service-time.test.ts`)
+- song history and the archive (`song-history.test.ts`, `archive-view.test.ts`)
+- PDF page fitting (`song-list-pdf.test.ts`)
+- the shared text format (`share-services.test.ts`)
+
+The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.
+
+For anything visual (the page, the PDF, the pictures), run `npm run dev` and look:
+- `/song-list/pdf/september`
+- `/song-list/image/september?s=<id>,<id>` (service ids look like `1-22`)
 
 ---
 
 ## Deploying to Vercel
 
 ### 1. Import the repository
-
-1. Push this repository to GitHub.
-2. In Vercel: **Add New, Project**, then import the repo.
-3. Framework preset: **Next.js** (auto-detected). Root directory: `./`. Build command and output
-   directory: leave as the defaults. `vercel.json` only declares the nightly archive cron job.
-4. Add the environment variables below **before** the first deploy, then deploy.
+1. Push to GitHub, then in Vercel choose **Add New → Project** and import the repo.
+2. The framework (Next.js) is detected automatically. Leave the build settings as the defaults. `vercel.json` only declares the nightly cron job.
+3. Add the environment variables **before** the first deploy.
 
 ### 2. Environment variables
-
-**Settings, Environment Variables.** Add these, ticked for **Production, Preview and Development**:
+In **Settings → Environment Variables**, tick **Production, Preview and Development** for each:
 
 ```
 GOOGLE_SHEETS_API_KEY = <your key>
@@ -232,175 +293,100 @@ RESEND_API_KEY        = <your key>
 CRON_SECRET           = <a long random string>
 ```
 
-`DATABASE_URL` is added for you when the Neon database is connected (see
-[Setting up the song archive](#setting-up-the-song-archive)).
-
-Changing an environment variable requires a redeploy to take effect.
-
-To pull them down for local use later: `npx vercel env pull .env.local`.
+`DATABASE_URL` is added for you when Neon is connected (see [Song archive](#song-archive)).
 
 ### 3. Domains
+In **Settings → Domains**:
+1. Add `faithfulwordmusic.com` as the **primary** domain. It must match `siteConfig.url` in `src/config/site.ts`, which canonical URLs, the sitemap and the metadata are built from.
+2. Add `www.faithfulwordmusic.com` and accept Vercel's offer to redirect it to the main domain.
+3. Create the DNS records Vercel shows you at the domain registrar. Use Vercel's exact values.
+4. Wait for each domain to show **Valid Configuration**.
 
-**Settings, Domains.**
-
-1. Add `faithfulwordmusic.com` and set it as the **primary** domain. It must match `siteConfig.url`
-   in `src/config/site.ts`, which is what canonical URLs, the sitemap and metadata are built from.
-2. Add `www.faithfulwordmusic.com`; Vercel will offer to redirect it to the apex - accept.
-3. Add `fwbcmusic.org` (and `www.fwbcmusic.org`), and for each choose
-   **Redirect to** `faithfulwordmusic.com`, permanent (308).
-4. Vercel then shows the **exact DNS records** to create at your registrar - typically an `A` record
-   for the apex and a `CNAME` for `www`. **Use the values Vercel gives you**; they are not guessed here.
-5. Wait for each domain to show **Valid Configuration**.
-
-> **Note.** `fwbcmusic.org` already redirects to `faithfulwordmusic.com`; step 3 just reproduces
-> that redirect in Vercel.
-
-### 4. Verify
-
-- All three pages load, and the song list shows the current month's real data.
-- Edit a cell in the Google Sheet; within about 10-20 seconds a fresh page load shows the change, with no redeploy.
-- Send a real message through `/contact` and confirm it arrives, and that **Reply** addresses the visitor.
-- `https://faithfulwordmusic.com/sitemap.xml` and `/robots.txt` respond, and every URL inside them
-  is on `faithfulwordmusic.com` - not the old domain.
-- `fwbcmusic.org` redirects to `faithfulwordmusic.com`.
+### 4. Check it
+- [ ] All pages load, and the song list shows the current month's real data.
+- [ ] Editing a sheet cell shows up on a fresh page load within about 10–20 seconds.
+- [ ] The **PDF** button opens a one-page PDF.
+- [ ] On a phone, **Send as picture** and **Send as text** open the share sheet.
+- [ ] A message sent through `/contact` arrives, and **Reply** goes to the visitor.
+- [ ] `/sitemap.xml` and `/robots.txt` only list `faithfulwordmusic.com` addresses.
 
 ---
 
-## Setting up Google Sheets access
+## Setup guides
 
-The spreadsheet is public read-only, so an API key is enough - no OAuth, no service account.
+### Google Sheets
+The spreadsheet is public and read-only, so a simple API key is enough.
 
-1. Go to the [Google Cloud console](https://console.cloud.google.com/) and create or select a project.
-2. **APIs & Services, Library,** search **Google Sheets API**, then **Enable**.
-3. **APIs & Services, Credentials, Create credentials, API key.** Copy it.
-4. **Restrict the key** (recommended): edit it, and under **API restrictions** choose
-   **Restrict key**, then **Google Sheets API** only. Leave application restrictions as **None** -
-   the key is used server-side, where there is no referrer or fixed IP to restrict to.
+1. In the [Google Cloud console](https://console.cloud.google.com/), create or pick a project.
+2. **APIs & Services → Library** → **Google Sheets API** → **Enable**.
+3. **APIs & Services → Credentials → Create credentials → API key**, and copy it.
+4. **Restrict the key:**
+   - Under **API restrictions**, allow **Google Sheets API** only.
+   - Leave application restrictions as **None**. The key is only used on the server, where there's no browser address or fixed IP to restrict to.
 5. Put it in `.env.local` as `GOOGLE_SHEETS_API_KEY=...`, and add it in Vercel.
-6. Confirm the spreadsheet's sharing is **Anyone with the link, Viewer**. API-key access needs
-   this, and it keeps the sheet read-only to the public.
-7. Test: run the site and open `/song-list`. It should show the current month.
+6. Make sure the spreadsheet's sharing is **Anyone with the link → Viewer**.
+7. Open `/song-list`; it should show the current month.
 
-The integration is read-only; the site never writes to the spreadsheet.
-
----
-
-## Setting up the song archive
-
-1. In Vercel, open the project, go to **Storage, Create Database**, choose **Neon** (Marketplace,
-   free plan), and connect it to this project for all environments. This adds `DATABASE_URL`.
-2. Add `CRON_SECRET` (a long random string) in **Settings, Environment Variables**, then redeploy.
-3. Locally: `npx vercel link`, then `npx vercel env pull .env.local`, or copy `DATABASE_URL` and
-   `CRON_SECRET` into `.env.local` by hand.
-4. Seed the archive once. The tables create themselves on first run:
-   ```
+### Song archive
+1. In Vercel, go to **Storage → Create Database → Neon** (free plan) and connect it to this project for all environments. That adds `DATABASE_URL`.
+2. Add `CRON_SECRET` (any long random string), then redeploy.
+3. For local use, run `npx vercel link`, then `npx vercel env pull .env.local`.
+4. Seed it once. The tables create themselves, and running it again is harmless:
+   ```bash
    curl -H "Authorization: Bearer <CRON_SECRET>" https://faithfulwordmusic.com/api/cron/sync-archive
    ```
-   The response reports how many services were `added`, `refreshed` and `frozen`. Running it again
-   is harmless.
-5. After that, Vercel runs it every night at 3 AM Arizona time. Check **Settings, Cron Jobs**.
+   The response reports how many services were `added`, `refreshed` and `frozen`.
+5. From then on it runs nightly. Check **Settings → Cron Jobs**.
 
-**Failure alerts.** If a nightly run fails, or finds no past services in the sheet (usually a layout
-change), an email goes to `siteConfig.songList.alertEmail` through Resend. This only happens in
-production, never from local runs. If the whole site is down the job can't run at all; Vercel's cron logs
-show that case.
-
-Without a database the site still works: the archive and hints use the sheet's twelve months.
-
----
-
-## Setting up Resend
-
+### Resend
 1. Create an account at [resend.com](https://resend.com).
-2. **Domains, Add Domain,** `faithfulwordmusic.com` - this must be the domain in `mail.from`, which is not the same as the canonical site domain.
-3. Resend shows the **exact DNS records** to add (typically DKIM `TXT`, an SPF/`MX` pair for the
-   sending subdomain, and optionally DMARC). **Add the records Resend gives you** - they are
-   account-specific and are not reproduced here. Then click **Verify** and wait for *Verified*.
-4. **API Keys, Create API Key**, with **Sending access**. Copy it - it is shown only once.
+2. **Domains → Add Domain** → `faithfulwordmusic.com` (the domain of `mail.from` in `src/config/site.ts`).
+3. Add the DNS records Resend shows you, then click **Verify**.
+4. **API Keys → Create API Key** with sending access. It's shown only once.
 5. Put it in `.env.local` as `RESEND_API_KEY=...`, and add it in Vercel.
-6. Make sure **`contact@faithfulwordmusic.com` is a real mailbox you can read.** Verifying the domain lets
-   Resend *send* as that address; it does not create an inbox. Messages are delivered there.
-7. Test: submit `/contact`, confirm the message arrives, and confirm **Reply** goes to the visitor.
+6. Make sure `contact@faithfulwordmusic.com` is a **real mailbox**. Verifying a domain lets Resend *send* as that address; it doesn't create an inbox.
+7. Send a test message through `/contact`, and check that Reply goes to the visitor.
 
-If you ever send from a different address, change it in `src/config/site.ts` under `mail.from`. It
-must be on a domain verified in Resend.
+**If the contact form fails,** its status code (in the browser's Network tab, or Vercel → Logs) says which part is wrong:
 
-### Troubleshooting the contact form
-
-**Adding an API key and verifying a domain are two separate steps.** A working key is not enough:
-Resend refuses to send from a domain your account has not verified, and `mail.from` must always be
-on a verified domain.
-
-The status code tells you which half is wrong. Read it in the browser's Network tab, or in
-Vercel → Logs.
-
-| Status | Cause | Fix |
+| Status | Meaning | Fix |
 |---|---|---|
-| `503` | `RESEND_API_KEY` is not reaching the function - not set for that environment, or set but not redeployed since | Add it in Vercel for Production/Preview/Development, then redeploy |
-| `502` | Resend was reached and **rejected** the message. Usually an unverified sending domain; sometimes a revoked key or a rate limit | Read the exact reason in Vercel Logs, then fix it in Resend |
-| `400` | Validation - a field is empty, malformed or too long | Nothing to fix; the form reports it per field |
-| `403` | Vercel BotID judged the request automated. Expected for `curl` and other direct calls, which never solve the challenge | Nothing to fix if it was a bot. If a real visitor hit it, check Vercel → Firewall → BotID, and that `/api/contact` is listed in `src/instrumentation-client.ts` |
+| `503` | `RESEND_API_KEY` isn't reaching the server | Add it in Vercel for every environment, then redeploy |
+| `502` | Resend refused the message, usually because the domain isn't verified | Read the `[contact]` line in Vercel Logs, then fix it in Resend |
+| `400` | A field is empty or invalid | Nothing to fix; the form explains it to the visitor |
+| `403` | BotID judged the request automated (normal for `curl`) | If a real visitor hit it, check Vercel → Firewall → BotID |
 
-On a `502`, `src/lib/resend.ts` logs the reason Resend gave, prefixed `[contact]`:
+On a `502`, the log line looks like this:
 
 ```
 [contact] Resend rejected the message: validation_error (403) - The faithfulwordmusic.com domain is not verified.
 ```
 
-`validation_error (403)` means the domain needs verifying. `invalid_access (401)` means the key is
-bad or revoked. Nothing sensitive is logged - no key, no message contents.
+`validation_error (403)` means verify the domain. `invalid_access (401)` means the key is wrong or revoked.
 
-**Sending and receiving are independent.** Verifying the domain lets Resend send *as*
-`contact@faithfulwordmusic.com`; it does not create an inbox. Inbound mail is whatever the domain's `MX`
-records point at, and that address needs a real mailbox or forwarding rule there - otherwise
-messages will send successfully and land nowhere. Do not enable Resend's "Receiving" feature unless
-you intend to move inbound mail to Resend as well: it adds `MX` records at the root that would
-collide with the existing ones.
+Don't turn on Resend's "Receiving" feature: it adds mail records that would clash with the existing inbox.
 
 ---
 
-## Motion
+## Gotchas
 
-Two effects, both defined in the `MOTION` section of `src/app/globals.css`.
-
-**Page transitions** use React's `<ViewTransition>` via `src/components/ui/PageTransition.tsx`, which
-wraps the content of each `page.tsx`. It has to go in the pages, not the layout - layouts persist
-across navigation, so enter and exit would never fire. No `next.config.ts` flag is needed: the React
-build Next vendors for the App Router exports `ViewTransition`, even though the top-level
-`react` package in `node_modules` does not. The header and footer carry `view-transition-name`s and
-have their animations suppressed, so they stay anchored while the content changes.
-
-**Scroll reveal** uses `src/components/ui/Reveal.tsx`, a small client component sharing one
-`IntersectionObserver` across every instance on the page. It follows a single rule:
-
-> already on screen when it mounts → appear at once; below the fold → fade up when scrolled to.
-
-That one rule stops content animating in behind the page transition, keeps above-the-fold content
-readable immediately, and means the song list's search filter needs no special handling - filtered
-results render on screen, so they appear instantly instead of re-animating on every keystroke. Only
-wrap content that is normally below the fold. Revealing sets data attributes directly on the node
-rather than going through React state, so a dozen song cards cost no re-renders.
-
-A pure-CSS approach (`animation-timeline: view()`) was rejected: Firefox stable still has it behind a
-flag, and it scrubs with scroll position, so content un-reveals when you scroll back up.
-
-**Degradation.** No View Transitions API → pages swap instantly. JavaScript disabled → a `<noscript>`
-style in the root layout shows all revealed content. JavaScript broken → a CSS failsafe animation
-reveals everything after 800ms (the first `Reveal` to mount adds `motion-ready` to `<html>`, which
-cancels it). `prefers-reduced-motion: reduce` → both effects off, enforced in CSS *and* in JS.
-
-Note the reduced-motion block has to name the `::view-transition-*` pseudo-elements explicitly; they
-live in their own pseudo-element tree on the root, so the usual `*, *::before, *::after` reset does
-not reach them.
+- **Write file paths out in full.** The PDF, picture and link-preview code reads fonts with a literal `join(process.cwd(), "assets/fonts/Inter-Regular.ttf")`.
+  - Next reads those paths at build time to know which files to ship with each function.
+  - A helper that assembles paths from variables hides them, and Next then ships the **whole project** and warns about "dynamic filesystem access".
+- **New route, missing types?** Route handlers use Next's generated `RouteContext<"/path/[param]">` type. After adding a route, run `npx next typegen` (or start the dev server) before type-checking.
+- **A service's id** (e.g. `1-22`) comes from its position in the sheet. It's stable while the sheet is unchanged, which is all the picture addresses need, but don't store it long-term.
+- **Printing the web page directly** (Ctrl+P) isn't specially laid out anymore. The PDF is the printout.
+- **`AGENTS.md` / `CLAUDE.md`** are re-added by `next dev`. Committing them keeps the working tree clean.
 
 ---
 
 ## Accessibility and SEO
 
-Semantic landmarks, a skip link, visible focus states, labelled fields with `aria-describedby`
-errors, month tabs following the ARIA tabs pattern with arrow-key support, tables with scoped
-column headers, touch targets of at least 44px, `prefers-reduced-motion` support, and AA contrast
-throughout (gold is used decoratively because it does not meet AA for small text).
-
-Per-page titles and descriptions, canonical URLs, Open Graph and Twitter metadata, `sitemap.ts`,
-`robots.ts` and an SVG icon are all generated from `src/config/site.ts`.
+- **Structure:** semantic landmarks, a skip link, visible focus rings, and labelled form fields with linked error messages.
+- **Controls:**
+  - Month tabs follow the ARIA tabs pattern with arrow keys.
+  - The share menu works fully from the keyboard (arrows, Home/End, Escape).
+  - Select mode uses real checkboxes.
+- **Size and contrast:** touch targets are at least 44px, and contrast meets AA throughout (gold is only used decoratively).
+- **Motion:** `prefers-reduced-motion` is respected everywhere.
+- **SEO:** page titles, descriptions, canonical URLs, Open Graph and Twitter cards, `sitemap.ts`, `robots.ts` and the icon are all generated from `src/config/site.ts`.

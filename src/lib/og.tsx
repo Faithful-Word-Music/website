@@ -33,26 +33,35 @@ import { siteConfig } from "@/config/site";
  * runtime.
  */
 
-/** Tokens, mirroring src/app/globals.css. Satori cannot read CSS variables. */
-const PAPER = "#faf9f6";
-const INK = "#111111";
-const MUTED = "#6b6b68";
-const GOLD = "#b08d57";
-const GOLD_DARK = "#84683f";
+/**
+ * Tokens, mirroring src/app/globals.css. Satori cannot read CSS variables.
+ * Shared with the song list's service picture (src/lib/service-picture.tsx).
+ */
+export const PAPER = "#faf9f6";
+export const SURFACE = "#ffffff";
+export const INK = "#111111";
+export const INK_SOFT = "#2a2a28";
+export const MUTED = "#6b6b68";
+export const LINE = "#e5e5e2";
+export const GOLD = "#b08d57";
+export const GOLD_DARK = "#84683f";
 const STAFF = "#d2d1ca";
 
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 630;
 
-function fromRoot(...segments: string[]) {
-  return join(process.cwd(), ...segments);
-}
+/*
+ * Every file below is read with a literal `join(process.cwd(), "...")`, the
+ * pattern in Next's ImageResponse docs. The bundler reads these paths at build
+ * time to know which files each function needs. A helper that assembles the
+ * path from arguments hides it, and the bundler then ships the whole project.
+ */
 
 async function loadFonts() {
   const [serif, serifItalic, sans] = await Promise.all([
-    readFile(fromRoot("assets/fonts/SourceSerif4-SemiBold.woff")),
-    readFile(fromRoot("assets/fonts/SourceSerif4-Italic.woff")),
-    readFile(fromRoot("assets/fonts/Inter-Medium.woff")),
+    readFile(join(process.cwd(), "assets/fonts/SourceSerif4-SemiBold.woff")),
+    readFile(join(process.cwd(), "assets/fonts/SourceSerif4-Italic.woff")),
+    readFile(join(process.cwd(), "assets/fonts/Inter-Medium.woff")),
   ]);
 
   return [
@@ -63,13 +72,35 @@ async function loadFonts() {
 }
 
 /**
+ * The fonts for the service picture: the song list's own weights, in full
+ * TTF (the WOFFs above are subsets cut for the share cards' few words).
+ */
+export async function loadPictureFonts() {
+  const [serif, regular, italic, medium, semibold] = await Promise.all([
+    readFile(join(process.cwd(), "assets/fonts/SourceSerif4-Regular.ttf")),
+    readFile(join(process.cwd(), "assets/fonts/Inter-Regular.ttf")),
+    readFile(join(process.cwd(), "assets/fonts/Inter-Italic.ttf")),
+    readFile(join(process.cwd(), "assets/fonts/Inter-Medium.ttf")),
+    readFile(join(process.cwd(), "assets/fonts/Inter-SemiBold.ttf")),
+  ]);
+
+  return [
+    { name: "SourceSerif", data: serif, style: "normal" as const, weight: 400 as const },
+    { name: "Inter", data: regular, style: "normal" as const, weight: 400 as const },
+    { name: "Inter", data: italic, style: "italic" as const, weight: 400 as const },
+    { name: "Inter", data: medium, style: "normal" as const, weight: 500 as const },
+    { name: "Inter", data: semibold, style: "normal" as const, weight: 600 as const },
+  ];
+}
+
+/**
  * The mark is read from the favicon rather than redrawn here, so there is one
  * source of truth: change the logo and the share card follows automatically.
  * Width and height are injected because a bare viewBox leaves the SVG with no
  * intrinsic size for the rasteriser to work from.
  */
-async function loadMark() {
-  const svg = await readFile(fromRoot("src/app/icon.svg"), "utf8");
+export async function loadMark() {
+  const svg = await readFile(join(process.cwd(), "src/app/icon.svg"), "utf8");
   const sized = svg.replace("<svg ", '<svg width="64" height="64" ');
   return `data:image/svg+xml;base64,${Buffer.from(sized).toString("base64")}`;
 }

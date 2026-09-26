@@ -58,15 +58,26 @@ export const songListContent = {
     select: "Select",
     cancel: "Cancel",
     selectLabel: "Select {date}",
-    selectedCount: "{count} selected",
+    selectedCount: "{count} of {max} selected",
+    /** Shown in the share bar when a fourth service is tapped. */
+    limitReached: "You can share up to {max} services at a time",
     selectPrompt: "Tap services to share",
     share: "Share",
     done: "Done",
+    /** Phones: the two formats, each opening the share sheet. */
+    sendText: "Send as text",
+    sendPicture: "Send as picture",
+    /** Computers. */
     copy: "Copy text",
+    copyPicture: "Copy picture",
+    savePicture: "Save picture",
     email: "Email",
     systemShare: "More options…",
+    /** Feedback after an action. */
     copied: "Copied",
+    pictureCopied: "Picture copied",
     copyFailed: "Could not copy",
+    pictureFailed: "Could not make the picture",
     /** Email subject and share-sheet title. */
     titleOne: "Songs for {date}",
     titleMany: "Songs for {count} services",

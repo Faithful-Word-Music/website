@@ -40,25 +40,22 @@ const ROW_RULE = "#e2e2e2";
 
 /*
  * The site's own typefaces, as static TTFs (react-pdf reads TTF and WOFF, not
- * the WOFF2 next/font serves). They ship with the route via
- * outputFileTracingIncludes in next.config.ts.
+ * the WOFF2 next/font serves). Each path is written out in full, so the
+ * bundler can see at build time exactly which files ship with the route.
  */
-function font(file: string) {
-  return join(process.cwd(), "assets/fonts", file);
-}
 
 Font.register({
   family: "Inter",
   fonts: [
-    { src: font("Inter-Regular.ttf"), fontWeight: 400 },
-    { src: font("Inter-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
-    { src: font("Inter-Medium.ttf"), fontWeight: 500 },
-    { src: font("Inter-SemiBold.ttf"), fontWeight: 600 },
+    { src: join(process.cwd(), "assets/fonts/Inter-Regular.ttf"), fontWeight: 400 },
+    { src: join(process.cwd(), "assets/fonts/Inter-Italic.ttf"), fontWeight: 400, fontStyle: "italic" },
+    { src: join(process.cwd(), "assets/fonts/Inter-Medium.ttf"), fontWeight: 500 },
+    { src: join(process.cwd(), "assets/fonts/Inter-SemiBold.ttf"), fontWeight: 600 },
   ],
 });
 Font.register({
   family: "Source Serif",
-  fonts: [{ src: font("SourceSerif4-Regular.ttf"), fontWeight: 400 }],
+  fonts: [{ src: join(process.cwd(), "assets/fonts/SourceSerif4-Regular.ttf"), fontWeight: 400 }],
 });
 // Titles and dates are never broken with a hyphen - a word that does not fit
 // moves to the next line whole.

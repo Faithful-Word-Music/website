@@ -6,17 +6,25 @@ import type { Service } from "@/types/song-list";
 /**
  * Services as plain text, for sending in a message or an email:
  *
- *   Sunday, September 27 · Morning, 10:30 AM
- *   114  The Great Physician (Eb)
- *   How Great Thou Art (Bb)
+ *   Sunday Morning · Sept 27 · 10:30 AM
  *
- *   Songs and Keys are subject to change
+ *   #114  The Great Physician – Eb
+ *   –  How Great Thou Art – Bb
+ *
  *   https://faithfulwordmusic.com/song-list
  *
  * Plain text because it reads the same in every app, with nothing to open.
- * Numbers are not padded into a column: message apps use proportional
- * fonts, where padding spaces never line up anyway.
+ * Every song line starts the same way - "#number", or a dash for songs
+ * without one - so the list scans cleanly. Numbers are not padded into a
+ * column: message apps use proportional fonts, where padding never lines up.
  */
+
+/**
+ * The most services shared at once - a Sunday's two and the Wednesday after,
+ * at most. It keeps the picture phone-screen sized; the page's select mode
+ * and the picture route both hold to it.
+ */
+export const MAX_SHARED_SERVICES = 3;
 
 /** Where the shared text points back to. */
 export const SONG_LIST_URL = `${siteConfig.url}/song-list`;
@@ -37,24 +45,53 @@ export function serviceName(service: Service): string {
   return slot ? `${serviceDate(service)}, ${slot}` : serviceDate(service);
 }
 
-/** "Sunday, September 27 · Morning, 10:30 AM" */
+/** Short month names, newspaper style: "Sept", not Intl's "Sep". */
+const SHORT_MONTHS: Record<string, string> = {
+  January: "Jan",
+  February: "Feb",
+  March: "Mar",
+  April: "Apr",
+  May: "May",
+  June: "June",
+  July: "July",
+  August: "Aug",
+  September: "Sept",
+  October: "Oct",
+  November: "Nov",
+  December: "Dec",
+};
+
+/** "September 27" -> "Sept 27". Anything else is left as written. */
+function shortDay(day: string): string {
+  const [month, ...rest] = day.split(" ");
+  const short = SHORT_MONTHS[month];
+  return short ? [short, ...rest].join(" ") : day;
+}
+
+/** "Sunday Morning · Sept 27 · 10:30 AM" */
 export function formatServiceHeading(service: Service): string {
+  const { weekday, day } = splitDateLabel(service.dateLabel);
   const slot = service.slot ? songListContent.share.slotNames[service.slot] : null;
   const time = service.startsAt ? formatChurchTime(service.startsAt) : null;
-  const when = [slot, time].filter(Boolean).join(", ");
-  return when ? `${serviceDate(service)} · ${when}` : serviceDate(service);
+  const parts =
+    weekday && day
+      ? [slot ? `${weekday} ${slot}` : weekday, shortDay(day), time]
+      : [serviceDate(service), slot, time];
+  return parts.filter(Boolean).join(" · ");
+}
+
+/** "#114  The Great Physician – Eb", or "–  How Great Thou Art – Bb" without a number. */
+function formatSong(number: string | null, title: string, key: string | null): string {
+  const lead = number ? `#${number}` : "–";
+  return key ? `${lead}  ${title} – ${key}` : `${lead}  ${title}`;
 }
 
 function formatService(service: Service): string {
-  const songs = service.songs.map((song) => {
-    const title = song.key ? `${song.title} (${song.key})` : song.title;
-    return song.number ? `${song.number}  ${title}` : title;
-  });
-  const pending = Array.from(
-    { length: service.pendingSongs },
-    () => songListContent.states.pendingSong,
+  const songs = service.songs.map((song) => formatSong(song.number, song.title, song.key));
+  const pending = Array.from({ length: service.pendingSongs }, () =>
+    formatSong(null, songListContent.states.pendingSong, null),
   );
-  return [formatServiceHeading(service), ...songs, ...pending].join("\n");
+  return [formatServiceHeading(service), "", ...songs, ...pending].join("\n");
 }
 
 /** Services in date order - the order they happen, not the order they were picked. */
@@ -74,19 +111,19 @@ export function inDateOrder(services: Service[]): Service[] {
     .map(({ service }) => service);
 }
 
-/** The whole message: each service, then the sheet's note, then the link. */
+/** The whole message: each service in date order, then the link on its own. */
 export function formatServicesText(
   services: Service[],
-  { note, url = SONG_LIST_URL }: { note?: string | null; url?: string } = {},
+  { url = SONG_LIST_URL }: { url?: string } = {},
 ): string {
   const blocks = inDateOrder(services).map(formatService);
-  const footer = [note, url].filter(Boolean).join("\n");
-  return [...blocks, footer].filter(Boolean).join("\n\n");
+  return [...blocks, url].filter(Boolean).join("\n\n");
 }
 
 /**
- * Email subject and share-sheet title: "Songs for Sunday, September 27" - also
- * for a Sunday's morning and evening together - or "Songs for 3 services".
+ * Email subject, share-sheet title and picture filename: "Songs for Sunday,
+ * September 27" - also for a Sunday's morning and evening together - or
+ * "Songs for 3 services".
  */
 export function shareTitle(services: Service[]): string {
   const { titleOne, titleMany } = songListContent.share;

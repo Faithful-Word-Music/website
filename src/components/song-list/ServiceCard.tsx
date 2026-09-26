@@ -44,8 +44,11 @@ export function ServiceCard({
   animateIn?: boolean;
   /** The share button for the header's corner. */
   share?: ReactNode;
-  /** Present in select mode: whether this card is ticked, and how to toggle it. */
-  selection?: { selected: boolean; onToggle: () => void };
+  /**
+   * Present in select mode: whether this card is ticked, whether it is
+   * resting because the limit is reached, and how to toggle it.
+   */
+  selection?: { selected: boolean; blocked: boolean; onToggle: () => void };
 }) {
   const headingId = `service-${service.id}`;
   const { columns, undatedServiceLabel } = songListContent;
@@ -53,6 +56,7 @@ export function ServiceCard({
   const highlighted = status === "next" || status === "now";
   const { weekday, day } = splitDateLabel(service.dateLabel);
   const selected = selection?.selected ?? false;
+  const blocked = selection?.blocked ?? false;
 
   // In select mode the whole card is the target. The checkbox handles its own
   // clicks (and the keyboard), so those are not counted twice.
@@ -65,11 +69,12 @@ export function ServiceCard({
     <Card
       barline
       className={cn(
-        "h-full p-5 transition-shadow duration-300 sm:p-6",
+        "h-full p-5 transition-[box-shadow,opacity] duration-300 sm:p-6",
         animateIn && "animate-enter",
         highlighted && !selection && "ring-2 ring-gold ring-offset-2 ring-offset-paper",
         past && "bg-surface/70",
-        selection && "cursor-pointer select-none",
+        selection && "select-none",
+        selection && (blocked ? "cursor-not-allowed opacity-55" : "cursor-pointer"),
         selected && "bg-white ring-2 ring-ink ring-offset-2 ring-offset-paper",
       )}
     >
@@ -106,6 +111,7 @@ export function ServiceCard({
           {selection ? (
             <SelectBox
               checked={selected}
+              blocked={blocked}
               onChange={selection.onToggle}
               label={songListContent.share.selectLabel.replace("{date}", serviceName(service))}
             />
@@ -193,21 +199,30 @@ export function ServiceCard({
 /** A round tick box with a 44px target, like a phone's own select mode. */
 function SelectBox({
   checked,
+  blocked,
   onChange,
   label,
 }: {
   checked: boolean;
+  /** At the limit: shown as unavailable. Still takes a tap, which explains why. */
+  blocked: boolean;
   onChange: () => void;
   label: string;
 }) {
   return (
-    <label className="relative inline-flex h-11 w-11 cursor-pointer items-center justify-center">
+    <label
+      className={cn(
+        "relative inline-flex h-11 w-11 items-center justify-center",
+        blocked ? "cursor-not-allowed" : "cursor-pointer",
+      )}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={onChange}
         aria-label={label}
-        className="peer h-6 w-6 cursor-pointer appearance-none rounded-full border-[1.5px] border-muted bg-surface transition-colors checked:border-ink checked:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-dark"
+        aria-disabled={blocked || undefined}
+        className="peer h-6 w-6 cursor-[inherit] appearance-none aria-disabled:border-line aria-disabled:bg-paper rounded-full border-[1.5px] border-muted bg-surface transition-colors checked:border-ink checked:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-dark"
       />
       <svg
         aria-hidden="true"

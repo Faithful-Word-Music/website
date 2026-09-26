@@ -19,7 +19,7 @@ import { cn } from "@/components/ui/cn";
 import { Reveal } from "@/components/ui/Reveal";
 import { songListContent } from "@/content/song-list";
 import { getTimeline, type Timeline } from "@/lib/service-time";
-import { serviceName } from "@/lib/share-services";
+import { MAX_SHARED_SERVICES, serviceName } from "@/lib/share-services";
 import type { PlayIndex } from "@/lib/song-history";
 import { countSongs, filterServices, listKeys } from "@/lib/song-list";
 import type { Service, SongListMonth } from "@/types/song-list";
@@ -65,6 +65,9 @@ export function SongListView({
   // Select mode: tick services, then share them together from the bar.
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Counts taps on a fourth service; each one shows (and shakes) the limit
+  // message in the share bar.
+  const [limitHits, setLimitHits] = useState(0);
 
   function updateQuery(value: string) {
     setInteracted(true);
@@ -120,7 +123,14 @@ export function SongListView({
     setSelectedIds(new Set());
   }
 
+  const atLimit = selectedIds.size >= MAX_SHARED_SERVICES;
+
   function toggleSelected(id: string) {
+    // A fourth service is not ticked: the bar says why instead.
+    if (!selectedIds.has(id) && atLimit) {
+      setLimitHits((hits) => hits + 1);
+      return;
+    }
     setSelectedIds((ids) => {
       const nextIds = new Set(ids);
       if (!nextIds.delete(id)) nextIds.add(id);
@@ -160,6 +170,8 @@ export function SongListView({
       return {
         selection: {
           selected: selectedIds.has(service.id),
+          // Unticked cards rest while the limit is reached.
+          blocked: atLimit && !selectedIds.has(service.id),
           onToggle: () => toggleSelected(service.id),
         },
       };
@@ -170,7 +182,7 @@ export function SongListView({
         <ShareButton
           variant="icon"
           services={[whole]}
-          note={month.note}
+          monthTitle={month.title}
           label={share.buttonLabel.replace("{date}", serviceName(whole))}
         />
       ),
@@ -333,7 +345,12 @@ export function SongListView({
       </div>
 
       {selecting ? (
-        <ShareBar services={selectedServices} note={month.note} onDone={stopSelecting} />
+        <ShareBar
+          services={selectedServices}
+          monthTitle={month.title}
+          limitHits={limitHits}
+          onDone={stopSelecting}
+        />
       ) : null}
     </div>
   );
@@ -342,7 +359,7 @@ export function SongListView({
 /** What a card gets beyond its service: a share button, or its select-mode tick. */
 type CardExtras = {
   share?: ReactNode;
-  selection?: { selected: boolean; onToggle: () => void };
+  selection?: { selected: boolean; blocked: boolean; onToggle: () => void };
 };
 
 function MonthBody({
