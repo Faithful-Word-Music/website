@@ -2,7 +2,7 @@ import { checkBotId } from "botid/server";
 import { NextResponse } from "next/server";
 
 import { contactContent } from "@/content/contact";
-import { sendContactEmail } from "@/lib/resend";
+import { sendContactConfirmation, sendContactEmail } from "@/lib/resend";
 import {
   contactFormSchema,
   type ContactField,
@@ -85,6 +85,10 @@ export async function POST(request: Request): Promise<NextResponse<ContactRespon
       { status: result.reason === "not-configured" ? 503 : 502 },
     );
   }
+
+  // Best effort: the ministry already has the message, so a failed
+  // confirmation is logged (inside the helper) but still reported as success.
+  await sendContactConfirmation(parsed.data);
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }

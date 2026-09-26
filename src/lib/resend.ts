@@ -3,6 +3,7 @@ import "server-only";
 import { Resend } from "resend";
 
 import { siteConfig } from "@/config/site";
+import { contactContent } from "@/content/contact";
 import type { ContactFormValues } from "@/lib/validation";
 
 /**
@@ -104,6 +105,76 @@ export async function sendContactEmail(
   } catch (caught) {
     console.error(
       "[contact] Could not reach Resend:",
+      caught instanceof Error ? caught.message : "unknown error",
+    );
+    return { ok: false, reason: "send-failed" };
+  }
+}
+
+/**
+ * Emails the visitor a short "we received your message" note.
+ *
+ * Only called after the ministry's copy has gone out, so a visitor is never
+ * told a message arrived when it did not. The message body is deliberately
+ * not echoed back - otherwise the form would let anyone send arbitrary text
+ * to any address. Only the name and subject appear, both short and capped.
+ *
+ * Reply-To is the ministry inbox, so answering the confirmation still works.
+ */
+export async function sendContactConfirmation(
+  values: ContactFormValues,
+): Promise<SendResult> {
+  const resend = getClient();
+  if (!resend) return { ok: false, reason: "not-configured" };
+
+  const { confirmation } = contactContent;
+  const { name, email, subject } = values;
+  const greeting = confirmation.greeting.replace("{name}", name);
+
+  const text = [
+    greeting,
+    "",
+    confirmation.body,
+    "",
+    `${confirmation.subjectLabel} ${subject}`,
+    "",
+    confirmation.signOff,
+    siteConfig.url,
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:ui-sans-serif,system-ui,sans-serif;color:#111;line-height:1.6">
+      <p style="margin:0 0 16px">${escapeHtml(greeting)}</p>
+      <p style="margin:0 0 16px">${escapeHtml(confirmation.body)}</p>
+      <p style="margin:0 0 16px"><strong>${escapeHtml(confirmation.subjectLabel)}</strong> ${escapeHtml(subject)}</p>
+      <hr style="border:none;border-top:1px solid #e5e5e2;margin:0 0 16px" />
+      <p style="margin:0">${escapeHtml(confirmation.signOff)}<br />
+        <a href="${siteConfig.url}" style="color:#111">${siteConfig.url.replace(/^https?:\/\//, "")}</a></p>
+    </div>
+  `.trim();
+
+  try {
+    const { error } = await resend.emails.send({
+      from: siteConfig.mail.from,
+      to: [email],
+      replyTo: siteConfig.mail.to,
+      subject: `${confirmation.subject} - ${siteConfig.name}`,
+      text,
+      html,
+    });
+
+    if (error) {
+      console.error(
+        "[contact] Resend rejected the confirmation:",
+        `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
+      );
+      return { ok: false, reason: "send-failed" };
+    }
+
+    return { ok: true };
+  } catch (caught) {
+    console.error(
+      "[contact] Could not reach Resend for the confirmation:",
       caught instanceof Error ? caught.message : "unknown error",
     );
     return { ok: false, reason: "send-failed" };

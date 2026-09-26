@@ -23,12 +23,37 @@ export const contactContent = {
 
     required: "Required",
     optionalNote: "We only use your email address to reply to you.",
+
+    /** Keyboard shortcut hint, shown on wider screens. {key} is Ctrl or ⌘. */
+    shortcutHint: "{key} + Enter to send",
+
+    /** Shown when an unsent message is brought back from this browser. */
+    draftRestored: "We saved your unsent message.",
+
+    /** Empties the form (and the saved draft). */
+    clear: "Clear",
+
+    /** Character counter under the message, e.g. "3,210 / 4,000". */
+    characterCount: "{count} / {limit} characters",
+  },
+
+  /**
+   * The short acknowledgement emailed to the visitor after they send a message.
+   * It deliberately does not repeat their message back to them: if it did, the
+   * form could be used to send any text to any address.
+   */
+  confirmation: {
+    subject: "We received your message",
+    greeting: "Hello {name},",
+    body: "Thank you for contacting Faithful Word Music. Your message has reached us, and we will reply to this email address.",
+    subjectLabel: "Your subject:",
+    signOff: "Faithful Word Music",
   },
 
   status: {
     successTitle: "Message sent",
     successBody:
-      "Thank you - your message is on its way. We will reply to the email address you gave us.",
+      "Thank you - your message is on its way. We have emailed you a confirmation, and we will reply to the address you gave us.",
     sendAnother: "Send another message",
 
     errorTitle: "Your message could not be sent",
