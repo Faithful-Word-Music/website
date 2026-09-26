@@ -258,6 +258,7 @@ visitor → /contact → POST /api/contact → BotID → honeypot → Zod valida
 ## Design conventions
 
 - **Design tokens** (colours, fonts, shadows, radius) live in the `@theme` block at the top of `src/app/globals.css`. There's no `tailwind.config.ts` (Tailwind v4 reads its settings from the CSS).
+- **Dark mode** redefines those same tokens in the DARK MODE section of `globals.css`, so components never need `dark:` classes. Use the tokens (`bg-surface`, `text-ink`...), never `bg-white` or hex codes, and both themes just work. The site follows the device until a visitor uses the sun/moon button in the header (`components/layout/ThemeToggle.tsx`). Their choice is saved in `localStorage` and applied before the first paint by an inline script in `layout.tsx` (`src/lib/theme.ts`). Choosing the theme the device already uses clears the saved choice. The logo, printing, and everything shared (the PDF, PNG pictures and link previews) always stay light: they use fixed colours, not the tokens.
 - **Fonts:** Source Serif 4 for headings and Inter for text, self-hosted by `next/font`. The PDF, pictures and link previews can't use those web fonts, so they use the copies in `assets/fonts/`.
 - **Buttons:** use `Button`/`ButtonLink`, or `buttonClasses()` from `src/components/ui/Button.tsx`, so every button looks and behaves the same (gold-border hover, slight press-in). Primary buttons are ink, never gold, because gold text doesn't meet contrast (AA) on the paper background.
 - **Motion:** every hover and state change shares one easing, set site-wide in `globals.css` (`--default-transition-duration: 250ms` with the site's ease-out curve). So a plain `transition-colors` already matches everything else; avoid one-off durations.
@@ -281,6 +282,7 @@ Vitest covers the pure logic in `src/lib`:
 - song history and the archive (`song-history.test.ts`, `archive-view.test.ts`)
 - PDF page fitting (`song-list-pdf.test.ts`)
 - the shared text format (`share-services.test.ts`)
+- the light/dark choice and its no-flash script (`theme.test.ts`)
 - the year in song (`year-recap.test.ts`)
 
 The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.

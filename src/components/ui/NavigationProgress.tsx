@@ -152,7 +152,7 @@ export function NavigationProgress() {
       <div
         ref={barRef}
         style={{ transform: "scaleX(0)", opacity: 0 }}
-        className="h-full origin-left bg-gold-dark shadow-[0_0_8px_rgba(176,141,87,0.7)] transition-[transform,opacity] duration-[250ms]"
+        className="h-full origin-left bg-gold-dark shadow-[0_0_8px_color-mix(in_srgb,var(--color-gold)_70%,transparent)] transition-[transform,opacity] duration-[250ms]"
       />
     </div>
   );

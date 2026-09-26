@@ -11,6 +11,10 @@
      gold-dark on paper   4.9:1  - small accent text (AA)
      gold     on paper   3.1:1  - FAILS for small text. Decorative only:
                                   rules, borders, icons, large display type.
+
+   Dark mode redefines the same tokens further down (DARK MODE), so components
+   never need a `dark:` class. Its figures, on dark paper:
+     ink 16.2:1 · muted 7.1:1 · gold-dark 9.2:1 · gold 7.8:1
    =========================================================================== */
 @theme {
   /* Surfaces */
@@ -49,6 +53,65 @@
 
   /* Page rhythm */
   --spacing-section: 6rem;
+}
+
+/* Frosted glass (header, search pills). Plain variables rather than @theme
+   tokens: nothing needs a Tailwind utility for them. */
+:root {
+  color-scheme: light;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-blur: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.8);
+}
+
+/* ===========================================================================
+   DARK MODE
+   ---------------------------------------------------------------------------
+   Follows the device setting, unless the visitor picked a theme with the
+   header toggle (ThemeToggle.tsx), which sets data-theme on <html>. An inline
+   script in layout.tsx applies a saved choice before the first paint.
+
+   The two blocks below must hold the same values: one is the device setting,
+   the other the visitor's explicit choice.
+   =========================================================================== */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #141412;
+  --color-surface: #1c1c1a;
+  --color-ink: #f2f0ea;
+  --color-ink-soft: #d9d6ce;
+  --color-muted: #a3a19a;
+  --color-line: #2e2d2a;
+  --color-staff: #3a3935;
+  --color-gold: #c9a36b;
+  --color-gold-dark: #d4b27d;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
+  --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
+  --glass-bg: rgba(28, 28, 26, 0.8);
+  --glass-bg-blur: rgba(28, 28, 26, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-paper: #141412;
+    --color-surface: #1c1c1a;
+    --color-ink: #f2f0ea;
+    --color-ink-soft: #d9d6ce;
+    --color-muted: #a3a19a;
+    --color-line: #2e2d2a;
+    --color-staff: #3a3935;
+    --color-gold: #c9a36b;
+    --color-gold-dark: #d4b27d;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
+    --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
+    --glass-bg: rgba(28, 28, 26, 0.8);
+    --glass-bg-blur: rgba(28, 28, 26, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.06);
+  }
 }
 
 /* ===========================================================================
@@ -150,14 +213,14 @@
 
   /* Header / hero / search panels: translucent white over paper. */
   .glass {
-    background-color: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.8);
+    background-color: var(--glass-bg);
+    border: 1px solid var(--glass-border);
     box-shadow: var(--shadow-glass);
   }
 
   @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
     .glass {
-      background-color: rgba(255, 255, 255, 0.6);
+      background-color: var(--glass-bg-blur);
       -webkit-backdrop-filter: blur(12px) saturate(1.4);
       backdrop-filter: blur(12px) saturate(1.4);
     }
@@ -372,6 +435,23 @@ html.motion-ready .reveal {
   body {
     background: #fff !important;
     font-size: 11px;
+  }
+
+  /* Paper is white, so a page printed in dark mode prints in the light
+     colours. Listed to match the specificity of the dark-mode selectors. */
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    color-scheme: light;
+    --color-paper: #faf9f6;
+    --color-surface: #ffffff;
+    --color-ink: #111111;
+    --color-ink-soft: #2a2a28;
+    --color-muted: #6b6b68;
+    --color-line: #e5e5e2;
+    --color-staff: #d8d7d1;
+    --color-gold: #b08d57;
+    --color-gold-dark: #84683f;
   }
 
   body > header,

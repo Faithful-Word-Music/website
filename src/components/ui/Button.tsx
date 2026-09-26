@@ -24,7 +24,7 @@ export function buttonClasses(variant: Variant, size: Size = "md", className?: s
     variant === "primary" &&
       "bg-ink text-paper hover:bg-ink-soft active:bg-ink-soft",
     variant === "secondary" &&
-      "border border-line bg-surface text-ink hover:border-gold hover:bg-white",
+      "border border-line bg-surface text-ink hover:border-gold hover:bg-surface",
     variant === "quiet" && "text-ink underline-offset-4 hover:text-gold-dark hover:underline",
     className,
   );

@@ -23,6 +23,12 @@ const FORTE_STEM =
 /** Its crossbar. */
 const FORTE_BAR = "M18.5 36.5 L37 33";
 
+/**
+ * The mark's own colours: the light-mode ink, gold and paper, fixed so the
+ * logo looks the same in dark mode instead of inverting with the tokens.
+ */
+const MARK = { tile: "#111111", stave: "#b08d57", glyph: "#faf9f6" } as const;
+
 export function Logo({
   size = 32,
   className,
@@ -40,9 +46,9 @@ export function Logo({
       focusable="false"
       className={className}
     >
-      <rect width="64" height="64" rx="14" fill="var(--color-ink)" />
+      <rect width="64" height="64" rx="14" fill={MARK.tile} />
 
-      <g stroke="var(--color-gold)" strokeWidth="2.6" strokeLinecap="round">
+      <g stroke={MARK.stave} strokeWidth="2.6" strokeLinecap="round">
         <path d="M6 21 H58" />
         <path d="M6 29 H58" />
         <path d="M6 37 H58" />
@@ -52,7 +58,7 @@ export function Logo({
       {/* Breaks the stave rules around the glyph. */}
       <g
         fill="none"
-        stroke="var(--color-ink)"
+        stroke={MARK.tile}
         strokeWidth="10.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -63,7 +69,7 @@ export function Logo({
 
       <g
         fill="none"
-        stroke="var(--color-paper)"
+        stroke={MARK.glyph}
         strokeWidth="5.6"
         strokeLinecap="round"
         strokeLinejoin="round"

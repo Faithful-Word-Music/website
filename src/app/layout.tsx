@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 
 import { Footer } from "@/components/layout/Footer";
@@ -7,6 +7,7 @@ import { SkipLink } from "@/components/layout/SkipLink";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
+import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -56,6 +57,14 @@ export const metadata: Metadata = {
   },
 };
 
+/** The browser bar matches the page: paper in light mode, dark paper in dark. */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#141412" },
+  ],
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // data-scroll-behavior="smooth": globals.css makes scrolling smooth, which
@@ -67,8 +76,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       data-scroll-behavior="smooth"
+      // The theme script below may add data-theme before React hydrates.
+      suppressHydrationWarning
       className={`${sourceSerif.variable} ${inter.variable} h-full antialiased`}
     >
+      <head>
+        {/* Applies a saved light/dark choice before the first paint, so the
+            page never flashes the other theme. See src/lib/theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="flex min-h-full flex-col bg-paper">
         {/* Scroll-reveal content starts hidden and is revealed by JavaScript.
             Without JavaScript there is nothing to reveal it, so show it up front. */}

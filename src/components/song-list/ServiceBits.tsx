@@ -82,10 +82,10 @@ export function StatusPill({ status }: { status: "next" | "now" }) {
   const { badges } = songListContent;
 
   return status === "now" ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-dark px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-white">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-dark px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-paper">
       <span aria-hidden="true" className="relative flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/70" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-paper/70" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-paper" />
       </span>
       {badges.now}
     </span>

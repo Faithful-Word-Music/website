@@ -75,7 +75,7 @@ export function ServiceCard({
         past && "bg-surface/70",
         selection && "select-none",
         selection && (blocked ? "cursor-not-allowed opacity-55" : "cursor-pointer"),
-        selected && "bg-white ring-2 ring-ink ring-offset-2 ring-offset-paper",
+        selected && "bg-surface ring-2 ring-ink ring-offset-2 ring-offset-paper",
       )}
     >
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-line pb-3">
