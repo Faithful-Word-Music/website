@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
+    <img src=".github/assets/banner-light.png" alt="Faithful Word Music: The Music Ministry of Faithful Word Baptist Church" width="100%">
+  </picture>
+</p>
+
 # Faithful Word Music
 
 The website of **Faithful Word Music**, the music ministry of
