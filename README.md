@@ -213,8 +213,8 @@ Each service card has a **share** button. **Select** (just above the cards) lets
 | `Sunday Morning · Sept 27 · 10:30 AM`, then one line per song (`#114  The Great Physician – Eb`, or `–` for songs without a number), then the link to the song list. | Always one column, phone-shaped. One service is roomy (1080 × ~1190). Two or three use a compact version, so three still fit one phone screen (≤ 1080 × 2340). Sent together with the link to the song list. |
 
 **What each device offers:**
-- **Phone:** *Send as text* or *Send as picture*, each opening the phone's share sheet.
-- **Computer:** *Copy text*, *Copy picture*, *Save picture*, *Email*, and *More options…* (the system share panel).
+- **Phone:** *Send as picture* or *Send as text*, each opening the phone's share sheet.
+- **Computer:** *Copy picture*, *Save picture*, *Copy text*, *Email*, and *More options…* (the system share panel). The picture comes first because it's what people share most.
 
 Phones only allow a share right after a tap, so the picture is fetched as soon as the menu opens and is ready by the time it's chosen.
 

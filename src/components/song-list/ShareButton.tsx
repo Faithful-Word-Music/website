@@ -35,11 +35,12 @@ import type { Service } from "@/types/song-list";
  * Shares services as text (share-services.ts) or as a picture
  * (service-picture.tsx, served by /song-list/image/[month]).
  *
- * Either way it opens a small menu first, since there are two formats:
- *   - Phone: "Send as text" / "Send as picture", each into the share sheet.
+ * Either way it opens a small menu first, since there are two formats. The
+ * picture comes first - it is what people send most:
+ *   - Phone: "Send as picture" / "Send as text", each into the share sheet.
  *     The picture goes with the song list link beside it.
- *   - Computer: copy the text or the picture, save the picture, start an
- *     email, or (where the browser has one) the system share panel.
+ *   - Computer: copy or save the picture, copy the text, start an email, or
+ *     (where the browser has one) the system share panel.
  *
  * A phone only lets a page share straight after a tap, so the picture cannot
  * be fetched after "Send as picture" is tapped. It is fetched the moment the
@@ -104,12 +105,6 @@ export function ShareButton({
 
   if (open) {
     if (prefersShareSheet()) {
-      items.push({
-        key: "text",
-        label: share.sendText,
-        icon: ICONS.text,
-        run: () => void shareNatively(payload),
-      });
       items.push(
         file && !canShareFiles(file)
           ? {
@@ -128,13 +123,13 @@ export function ShareButton({
                 file ? void sharePicture(file, { title: payload.title, url: SONG_LIST_URL }) : null,
             },
       );
-    } else {
       items.push({
-        key: "copy",
-        label: share.copy,
-        icon: ICONS.copy,
-        run: async () => ((await copyText(payload.text)) ? share.copied : share.copyFailed),
+        key: "text",
+        label: share.sendText,
+        icon: ICONS.text,
+        run: () => void shareNatively(payload),
       });
+    } else {
       if (canCopyPicture()) {
         items.push({
           key: "copy-picture",
@@ -153,6 +148,12 @@ export function ShareButton({
         busy: pictureBusy,
         disabled: !file,
         run: () => (file ? savePicture(file) : null),
+      });
+      items.push({
+        key: "copy",
+        label: share.copy,
+        icon: ICONS.copy,
+        run: async () => ((await copyText(payload.text)) ? share.copied : share.copyFailed),
       });
       items.push({
         key: "email",
