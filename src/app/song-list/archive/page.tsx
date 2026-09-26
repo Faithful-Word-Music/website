@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ArchiveView } from "@/components/song-list/ArchiveView";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -53,6 +54,15 @@ export default async function SongArchivePage() {
         >
           <p className="text-base sm:text-lg">{archive.lead}</p>
         </SectionHeading>
+
+        {data.ok && data.records.length > 0 ? (
+          <Link href="/song-list/year" className={buttonClasses("secondary", "md", "group mt-6 px-6")}>
+            {songListContent.yearRecap.linkLabel}
+            <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
+          </Link>
+        ) : null}
 
         <div className="mt-12">
           {!data.ok ? (

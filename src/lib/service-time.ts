@@ -93,6 +93,11 @@ export function churchYear(instant: number): number {
   return new Date(instant + CHURCH_OFFSET_MS).getUTCFullYear();
 }
 
+/** The church-calendar month of an instant, 0 = January. */
+export function churchMonth(instant: number): number {
+  return new Date(instant + CHURCH_OFFSET_MS).getUTCMonth();
+}
+
 export type ServiceStatus = "past" | "now" | "next" | "upcoming" | "unknown";
 
 export interface Timeline {

@@ -17,6 +17,7 @@ The website of **Faithful Word Music**, the music ministry of
 4. [Project structure](#project-structure)
 5. [How it works](#how-it-works)
    - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
+   - [The year in song](#the-year-in-song) · [Calendar subscription](#calendar-subscription)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
@@ -37,6 +38,8 @@ One Next.js app on Vercel. There's no separate backend, CMS or login. The song l
 | `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
 | `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
 | `/song-list/archive/<song>` | One song's history: times sung, keys used, upcoming services |
+| `/song-list/year/<year>` | A year of singing: most sung hymns, songs per month, keys, favourites (`/song-list/year` goes to the latest) |
+| `/song-list/calendar.ics?services=<kinds>` | The song list as a calendar to subscribe to (Apple, Google, Outlook) |
 | `/song-list/pdf/<month>` | A month as a one-page printable PDF |
 | `/song-list/image/<month>?s=<ids>` | One to three services as a PNG picture, for sharing |
 | `/contact` | Contact form, emailed to the ministry through Resend |
@@ -137,6 +140,8 @@ src/
 | `song-history.ts`, `song-archive.ts`, `archive-store.ts`, `archive-view.ts`, `db.ts` | Song history and the archive database |
 | `song-list-pdf.ts` | Fits a month onto one PDF page (row height, column split) |
 | `share-services.ts` | The shared text format, and the three-service limit |
+| `year-recap.ts` | The year in song: totals, most sung, months, keys, favourites |
+| `calendar.ts` | The calendar feed (iCalendar), and which services each subscriber chose |
 | `service-picture.tsx` | Draws the shareable picture |
 | `text-measure.ts` | Predicts where Inter text wraps (used by the PDF and the picture) |
 | `og.tsx` | Link-preview cards, plus the fonts, logo and colours the picture reuses |
@@ -188,6 +193,27 @@ The sheet only keeps a rolling twelve months, so every past service is also save
   - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
 - **Links:** song titles link to their pages in the archive. On the schedule they're plain text.
 - **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
+
+### The year in song
+
+`/song-list/year/<year>` sums up one year from the same history as the archive (`getYearRecapData()` in `lib/song-archive.ts` → `buildYearRecap()` in `lib/year-recap.ts`, which is pure and tested). `/song-list/year` redirects to the latest year with songs.
+
+- **What it shows:** the year in one sentence, the ten most sung songs, songs per month, keys by use, morning and evening favourites, the song that came back after the longest gap (measured across years), the year's first song, the busiest month(s), and the songs sung only once.
+- **Partial years:** the current year reads "So far in 2026". 2025 reads "Since our records began in October 2025". Months before the records or still to come show a dashed stub, not a zero.
+- **Charts** are plain HTML and CSS in the site's gold, with hover tooltips and a screen-reader table for the monthly figures. There's no chart library.
+- Linked from the archive page and the bottom of the song list. The current year is in the sitemap.
+
+### Calendar subscription
+
+`/song-list/calendar.ics` is the song list as an iCalendar feed (`lib/calendar.ts`, pure and tested). **Add to calendar** on the song list opens a dialog (`components/song-list/CalendarSubscribe.tsx`) where visitors tick the services they want: Sunday morning, Sunday evening, Wednesday evening and special meetings (any other day, such as the Missions Conference).
+
+- **The choice is in the address:** `?services=sun-am,sun-pm,wed-pm,special`. With every service ticked, the query is left off. A missing or unreadable value gives every service, so nothing about subscribers is ever stored.
+- **Subscribing:** *iPhone, iPad or Mac* uses a `webcal://` link (the phone offers **Subscribe**). *Google Calendar* opens Google's add-by-URL page. *Copy link* is for Outlook and anything else.
+- **Events:** one per service in the visible months, with the songs in the notes in the same format as the shared text. The id is the date and slot (`2026-09-27-AM@faithfulwordmusic.com`), so an edited service updates the same event rather than adding another.
+- **Freshness:** apps are asked to check hourly (`REFRESH-INTERVAL`). Apple and Outlook follow that; Google refreshes on its own schedule, often every several hours. The CDN caches the feed for 5 minutes.
+- **Failure:** if the sheet can't be read, the feed returns `503`, never an empty calendar, which would wipe subscribers' events.
+- **Stopping:** done in the calendar app. The dialog's *How to stop* section explains how for iPhone, Google and Outlook.
+- Links use the page's own address, so a preview deployment subscribes to its own feed. Google can't reach `localhost`, so test Google on a deployed preview.
 
 ### The printable PDF
 
@@ -269,6 +295,8 @@ Vitest covers the pure logic in `src/lib`:
 - song history and the archive (`song-history.test.ts`, `archive-view.test.ts`)
 - PDF page fitting (`song-list-pdf.test.ts`)
 - the shared text format (`share-services.test.ts`)
+- the year in song (`year-recap.test.ts`)
+- the calendar feed: service kinds, escaping and line folding (`calendar.test.ts`)
 
 The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.
 

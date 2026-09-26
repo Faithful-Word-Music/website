@@ -332,12 +332,18 @@ export function SongListView({
         <p className="mt-8 text-center text-sm italic text-muted">{month.note}</p>
       ) : null}
 
-      <div className="mt-12 flex justify-center">
+      <div className="mt-12 flex flex-wrap justify-center gap-3">
         <Link
           href="/song-list/archive"
           className={buttonClasses("secondary", "md", "group px-6")}
         >
           {songListContent.archiveLinkLabel}
+          <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+            →
+          </span>
+        </Link>
+        <Link href="/song-list/year" className={buttonClasses("secondary", "md", "group px-6")}>
+          {songListContent.yearRecap.linkLabel}
           <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
             →
           </span>

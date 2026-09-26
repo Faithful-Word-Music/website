@@ -86,12 +86,17 @@ function formatSong(number: string | null, title: string, key: string | null): s
   return key ? `${lead}  ${title} – ${key}` : `${lead}  ${title}`;
 }
 
-function formatService(service: Service): string {
+/** One line per song, then one "To be announced" line per slot not filled in yet. */
+export function formatSongLines(service: Service): string[] {
   const songs = service.songs.map((song) => formatSong(song.number, song.title, song.key));
   const pending = Array.from({ length: service.pendingSongs }, () =>
     formatSong(null, songListContent.states.pendingSong, null),
   );
-  return [formatServiceHeading(service), "", ...songs, ...pending].join("\n");
+  return [...songs, ...pending];
+}
+
+function formatService(service: Service): string {
+  return [formatServiceHeading(service), "", ...formatSongLines(service)].join("\n");
 }
 
 /** Services in date order - the order they happen, not the order they were picked. */

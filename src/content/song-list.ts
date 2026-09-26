@@ -21,6 +21,47 @@ export const songListContent = {
   /** Link from the schedule to the archive. */
   archiveLinkLabel: "Browse every song we've sung",
 
+  /**
+   * Subscribing to the song list in a calendar app (/song-list/calendar.ics).
+   * The kinds' names are also the checkbox labels.
+   */
+  calendar: {
+    buttonLabel: "Add to calendar",
+    title: "Add the song list to your calendar",
+    lead: "Each service appears in your calendar with its songs, and updates on its own when the song list changes.",
+    kindsLabel: "Services to include",
+    kinds: {
+      "sun-am": "Sunday morning",
+      "sun-pm": "Sunday evening",
+      "wed-pm": "Wednesday evening",
+      special: "Special meetings",
+    },
+    /** Shown when the last box is unticked, which is not allowed. */
+    atLeastOne: "Choose at least one service.",
+    apple: "iPhone, iPad or Mac",
+    google: "Google Calendar",
+    copy: "Copy link",
+    copyHint: "For Outlook and other calendar apps",
+    copied: "Link copied",
+    copyFailed: "Could not copy",
+    close: "Close",
+    refreshNote:
+      "iPhone refreshes subscribed calendars on its own schedule, and Google can take several hours to show changes.",
+    stopTitle: "How to stop",
+    stopSteps: [
+      "iPhone: open Calendar, tap Calendars, tap ⓘ beside “Faithful Word Music”, then Delete Calendar.",
+      "Google Calendar: on a computer, click ⋮ beside the calendar, then Unsubscribe.",
+      "Outlook: right-click the calendar, then Remove.",
+    ],
+    stopNote:
+      "To change which services you get, remove the calendar and subscribe again. We never learn who subscribes.",
+    /** The calendar's own name in the visitor's calendar app. */
+    calendarName: "Faithful Word Music",
+    calendarDescription: "Congregational songs for services at Faithful Word Baptist Church.",
+    /** Added to the end of every event's notes. */
+    eventFooter: "Songs and keys are subject to change.",
+  },
+
   /** Instruction shown above the month tabs, for screen readers. */
   monthTabsLabel: "Choose a month",
 
@@ -171,6 +212,68 @@ export const songListContent = {
     historyTitle: "Every time we've sung it",
     noHistory: "There is no record of this song being sung yet. Records begin in October 2025.",
     notFoundTitle: "Song not found",
+  },
+
+  /**
+   * A year of singing, /song-list/year/[year]. {year}, {count} and the like
+   * are replaced at render time.
+   */
+  yearRecap: {
+    eyebrow: "A year of singing",
+    title: "{year} in song",
+    metaTitle: "{year} in Song",
+    backLabel: "Back to the archive",
+    /** Links from the archive and the song list. */
+    linkLabel: "See our year in song",
+    /** The opening sentence, by how much of the year is recorded. */
+    leadInProgress: "So far in {year}, we have sung {songs} in {services}.",
+    leadRecordsBegan: "Since our records began in {month}, we sang {songs} in {services}.",
+    leadFull: "In {year}, we sang {songs} in {services}.",
+    leadDetail: "That’s {different}, {hymns} of them from the hymnal.",
+    /** "{count} songs" / "{count} services" / "{count} different songs". */
+    songs: ["{count} song", "{count} songs"],
+    services: ["{count} service", "{count} services"],
+    different: ["{count} different song", "{count} different songs"],
+    range: "{from} to {to}",
+    previousYear: "Previous year, {year}",
+    nextYear: "Next year, {year}",
+    board: {
+      title: "Most sung",
+      caption: "The songs we came back to most often this year.",
+      times: ["once", "{count} times"],
+    },
+    months: {
+      title: "Month by month",
+      caption: "Songs sung in each month.",
+      unrecorded: "Not recorded",
+      tooltip: "{month}: {count}",
+    },
+    keys: {
+      title: "Keys",
+      caption: "How often each key was used.",
+    },
+    facts: {
+      morning: "Morning favourite",
+      evening: "Evening favourite",
+      welcomeBack: "Welcome back",
+      /** {time} is e.g. "5 months", {date} the date it returned. */
+      welcomeBackDetail: "Back on {date} after {time}",
+      firstSong: "First song of the year",
+      busiestMonth: ["Busiest month", "Busiest months"],
+      busiestDetail: "{count} sung",
+      once: "Sung just once",
+      onceDetail: ["{count} song sung only once:", "{count} songs sung only once:"],
+      /** The button that opens the rest of them, and the list it opens. */
+      onceMore: "and {count} more",
+      onceMoreTitle: "Also sung just once",
+      /** {count} is how many are in the list. */
+      onceMoreLead: ["{count} more song sung only once, most recent first.", "{count} more songs sung only once, most recent first."],
+      close: "Close",
+      timesSung: ["Sung once", "Sung {count} times"],
+    },
+    notFoundTitle: "No songs recorded for that year",
+    errorTitle: "The year in song is temporarily unavailable",
+    errorBody: "We could not load the song history just now. Please try again shortly.",
   },
 
   archive: {

@@ -12,6 +12,7 @@ import {
   type PlayIndex,
 } from "@/lib/song-history";
 import { datedServices, songKey, songSlug } from "@/lib/song-list";
+import { availableYears, buildYearRecap, type YearRecap } from "@/lib/year-recap";
 import type {
   DatedService,
   ServiceSlot,
@@ -135,6 +136,37 @@ export async function getArchiveData(): Promise<ArchiveData> {
     serviceCount: past.length,
     since: past[0]?.startsAt ?? null,
     persistent: history.persistent,
+    loadedAt,
+  };
+}
+
+export type YearRecapData =
+  | {
+      ok: true;
+      /** null when nothing is recorded for that year. */
+      recap: YearRecap | null;
+      /** Every year with a recorded service, oldest first. */
+      years: number[];
+      loadedAt: number;
+    }
+  | { ok: false };
+
+/**
+ * A year of singing, for /song-list/year/[year]: the same history as the
+ * archive (services that have already happened), summed up for one year.
+ * Pass no year to learn only which years exist.
+ */
+export async function getYearRecapData(year?: number): Promise<YearRecapData> {
+  const sheet = await getSongList();
+  const loadedAt = Date.now();
+  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
+  if (!sheet.ok && !history.persistent) return { ok: false };
+
+  const past = pastServices(history.services, loadedAt);
+  return {
+    ok: true,
+    recap: year === undefined ? null : buildYearRecap(past, year, loadedAt),
+    years: availableYears(past),
     loadedAt,
   };
 }
