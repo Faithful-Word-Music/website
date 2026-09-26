@@ -21,47 +21,6 @@ export const songListContent = {
   /** Link from the schedule to the archive. */
   archiveLinkLabel: "Browse every song we've sung",
 
-  /**
-   * Subscribing to the song list in a calendar app (/song-list/calendar.ics).
-   * The kinds' names are also the checkbox labels.
-   */
-  calendar: {
-    buttonLabel: "Add to calendar",
-    title: "Add the song list to your calendar",
-    lead: "Each service appears in your calendar with its songs, and updates on its own when the song list changes.",
-    kindsLabel: "Services to include",
-    kinds: {
-      "sun-am": "Sunday morning",
-      "sun-pm": "Sunday evening",
-      "wed-pm": "Wednesday evening",
-      special: "Special meetings",
-    },
-    /** Shown when the last box is unticked, which is not allowed. */
-    atLeastOne: "Choose at least one service.",
-    apple: "iPhone, iPad or Mac",
-    google: "Google Calendar",
-    copy: "Copy link",
-    copyHint: "For Outlook and other calendar apps",
-    copied: "Link copied",
-    copyFailed: "Could not copy",
-    close: "Close",
-    refreshNote:
-      "iPhone refreshes subscribed calendars on its own schedule, and Google can take several hours to show changes.",
-    stopTitle: "How to stop",
-    stopSteps: [
-      "iPhone: open Calendar, tap Calendars, tap ⓘ beside “Faithful Word Music”, then Delete Calendar.",
-      "Google Calendar: on a computer, click ⋮ beside the calendar, then Unsubscribe.",
-      "Outlook: right-click the calendar, then Remove.",
-    ],
-    stopNote:
-      "To change which services you get, remove the calendar and subscribe again. We never learn who subscribes.",
-    /** The calendar's own name in the visitor's calendar app. */
-    calendarName: "Faithful Word Music",
-    calendarDescription: "Congregational songs for services at Faithful Word Baptist Church.",
-    /** Added to the end of every event's notes. */
-    eventFooter: "Songs and keys are subject to change.",
-  },
-
   /** Instruction shown above the month tabs, for screen readers. */
   monthTabsLabel: "Choose a month",
 

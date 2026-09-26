@@ -14,8 +14,8 @@ const count = (template: string, value: number) => template.replace("{count}", v
 
 /**
  * "and 110 more": opens the songs sung once that the year page does not
- * name, in a scrolling list. A native modal <dialog>, like "Add to
- * calendar": focus stays inside, Escape closes it, focus returns to the button.
+ * name, in a scrolling list. A native modal <dialog>: focus stays inside,
+ * Escape closes it, and focus returns to the button.
  */
 export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: string }> }) {
   const dialogRef = useRef<HTMLDialogElement>(null);

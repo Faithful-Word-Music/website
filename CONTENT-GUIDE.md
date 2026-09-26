@@ -43,8 +43,6 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 
 No code edit. No commit. No build. No redeploy.
 
-People who subscribe to the song list in their calendar (the **Add to calendar** button) get the changes too, with nothing more to do. iPhones and Outlook usually catch up within an hour or so. Google Calendar can take several hours.
-
 ### Which months appear on the website
 
 The website shows **the visible worksheet tabs, in tab order, up to two of them**:

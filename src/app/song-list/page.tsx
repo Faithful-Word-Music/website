@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import { ActiveMonthProvider } from "@/components/song-list/active-month";
-import { CalendarSubscribe } from "@/components/song-list/CalendarSubscribe";
 import { PdfLink } from "@/components/song-list/PdfLink";
 import { SheetLink } from "@/components/song-list/SheetLink";
 import { SongListError } from "@/components/song-list/SongListStates";
@@ -58,7 +57,6 @@ export default async function SongListPage() {
                   month.fallbackRows || month.services.length === 0 ? null : month.title,
                 )}
               />
-              {result.ok ? <CalendarSubscribe /> : null}
               <SheetLink />
             </div>
           </div>
