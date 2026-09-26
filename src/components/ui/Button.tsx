@@ -13,11 +13,13 @@ type Size = "md" | "lg";
  * never a text or fill colour here. Filled buttons use ink; gold appears only
  * as a hover border. See the contrast notes in globals.css.
  */
-function buttonClasses(variant: Variant, size: Size, className?: string) {
+export function buttonClasses(variant: Variant, size: Size = "md", className?: string) {
   return cn(
     // min-h keeps touch targets comfortable on mobile
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-full font-medium",
-    "transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-60",
+    // The site's default easing (globals.css), plus a small give when pressed.
+    "transition-[color,background-color,border-color,box-shadow,transform] active:scale-[0.97]",
+    "disabled:cursor-not-allowed disabled:opacity-60",
     size === "lg" ? "px-7 text-base" : "px-5 text-sm",
     variant === "primary" &&
       "bg-ink text-paper hover:bg-ink-soft active:bg-ink-soft",

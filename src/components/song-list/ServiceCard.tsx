@@ -1,9 +1,12 @@
 "use client";
 
+import type { MouseEvent, ReactNode } from "react";
+
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
+import { serviceName } from "@/lib/share-services";
 import { songHint, type PlayIndex } from "@/lib/song-history";
 import { songKey } from "@/lib/song-list";
 import { splitDateLabel } from "@/lib/service-time";
@@ -20,6 +23,9 @@ import type { Service } from "@/types/song-list";
  *
  * Upcoming services carry a hint under each song ("Last sung 3 weeks ago");
  * services that have happened are quieter and carry none.
+ *
+ * The header's corner holds a share button - or, in select mode, a checkbox,
+ * and then a tap anywhere on the card ticks it.
  */
 export function ServiceCard({
   service,
@@ -27,6 +33,8 @@ export function ServiceCard({
   plays,
   now,
   animateIn = false,
+  share,
+  selection,
 }: {
   service: Service;
   status: ServiceStatus;
@@ -34,21 +42,35 @@ export function ServiceCard({
   now: number;
   /** Fade up on appearing - used when the card arrives because of a search or month switch. */
   animateIn?: boolean;
+  /** The share button for the header's corner. */
+  share?: ReactNode;
+  /** Present in select mode: whether this card is ticked, and how to toggle it. */
+  selection?: { selected: boolean; onToggle: () => void };
 }) {
   const headingId = `service-${service.id}`;
   const { columns, undatedServiceLabel } = songListContent;
   const past = status === "past";
   const highlighted = status === "next" || status === "now";
   const { weekday, day } = splitDateLabel(service.dateLabel);
+  const selected = selection?.selected ?? false;
 
-  return (
+  // In select mode the whole card is the target. The checkbox handles its own
+  // clicks (and the keyboard), so those are not counted twice.
+  function onCardClick(event: MouseEvent<HTMLDivElement>) {
+    if (!selection || (event.target as HTMLElement).closest("input, label, button, a")) return;
+    selection.onToggle();
+  }
+
+  const card = (
     <Card
       barline
       className={cn(
         "h-full p-5 transition-shadow duration-300 sm:p-6",
         animateIn && "animate-enter",
-        highlighted && "ring-2 ring-gold ring-offset-2 ring-offset-paper",
+        highlighted && !selection && "ring-2 ring-gold ring-offset-2 ring-offset-paper",
         past && "bg-surface/70",
+        selection && "cursor-pointer select-none",
+        selected && "bg-white ring-2 ring-ink ring-offset-2 ring-offset-paper",
       )}
     >
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-line pb-3">
@@ -61,12 +83,18 @@ export function ServiceCard({
               ) : null}
             </p>
           ) : null}
-          <h3
-            id={headingId}
-            className={cn("font-display text-xl sm:text-2xl", past ? "text-muted" : "text-ink")}
-          >
-            {day || service.dateLabel || undatedServiceLabel}
-          </h3>
+          {/* Next/Now sits beside the date it describes, inside the heading's
+              line height - so it shifts nothing, and the corner stays free
+              for the card's action. */}
+          <div className="flex flex-wrap items-center gap-x-3">
+            <h3
+              id={headingId}
+              className={cn("font-display text-xl sm:text-2xl", past ? "text-muted" : "text-ink")}
+            >
+              {day || service.dateLabel || undatedServiceLabel}
+            </h3>
+            {status === "next" || status === "now" ? <StatusPill status={status} /> : null}
+          </div>
           {!weekday && service.serviceLabel ? (
             <p className="text-sm text-gold-dark">{service.serviceLabel}</p>
           ) : null}
@@ -74,11 +102,17 @@ export function ServiceCard({
             <ServiceTime startsAt={service.startsAt} className="mt-0.5 block text-sm text-ink-soft" />
           ) : null}
         </div>
-        {status === "next" || status === "now" ? (
-          <div className="shrink-0 pt-0.5">
-            <StatusPill status={status} />
-          </div>
-        ) : null}
+        <div className="-mr-2 -mt-2 shrink-0">
+          {selection ? (
+            <SelectBox
+              checked={selected}
+              onChange={selection.onToggle}
+              label={songListContent.share.selectLabel.replace("{date}", serviceName(service))}
+            />
+          ) : (
+            share
+          )}
+        </div>
       </div>
 
       <table aria-labelledby={headingId} className="w-full table-fixed border-collapse">
@@ -145,5 +179,45 @@ export function ServiceCard({
         </tbody>
       </table>
     </Card>
+  );
+
+  return selection ? (
+    <div className="h-full" onClick={onCardClick}>
+      {card}
+    </div>
+  ) : (
+    card
+  );
+}
+
+/** A round tick box with a 44px target, like a phone's own select mode. */
+function SelectBox({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <label className="relative inline-flex h-11 w-11 cursor-pointer items-center justify-center">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        aria-label={label}
+        className="peer h-6 w-6 cursor-pointer appearance-none rounded-full border-[1.5px] border-muted bg-surface transition-colors checked:border-ink checked:bg-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-dark"
+      />
+      <svg
+        aria-hidden="true"
+        width="12"
+        height="12"
+        viewBox="0 0 12 12"
+        className="pointer-events-none absolute text-paper opacity-0 transition-opacity peer-checked:opacity-100"
+      >
+        <path d="M2.5 6.2l2.3 2.3 4.7-4.9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </label>
   );
 }

@@ -1,3 +1,4 @@
+import { buttonClasses } from "@/components/ui/Button";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
@@ -17,7 +18,7 @@ export function SheetLink({ variant = "solid" }: { variant?: "solid" | "quiet" }
       showIcon
       className={
         variant === "solid"
-          ? `${base} border border-line bg-surface text-ink hover:border-gold hover:bg-white`
+          ? buttonClasses("secondary")
           : `${base} text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark`
       }
     >

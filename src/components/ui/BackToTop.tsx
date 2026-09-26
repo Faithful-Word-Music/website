@@ -47,12 +47,24 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
       tabIndex={visible ? 0 : -1}
       aria-hidden={!visible}
       className={cn(
-        "glass fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full text-ink sm:bottom-8 sm:right-8 print:hidden",
-        "transition-[opacity,transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:ring-2 hover:ring-gold/40",
+        // Solid, with a border and a lifted shadow: frosted glass all but
+        // vanished against the paper background.
+        "group fixed bottom-5 right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:bottom-8 sm:right-8 print:hidden",
+        "transition-[opacity,transform,box-shadow,border-color] duration-300",
+        "hover:-translate-y-0.5 hover:border-gold active:translate-y-0 active:scale-95",
         visible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0",
+        // Steps aside for the song list's share bar, which takes the bottom of the screen.
+        "[:root[data-share-bar]_&]:invisible",
       )}
     >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <svg
+        aria-hidden="true"
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="none"
+        className="transition-transform duration-300 group-hover:-translate-y-0.5"
+      >
         <path
           d="M8 13V3M3.5 7.5L8 3l4.5 4.5"
           stroke="currentColor"

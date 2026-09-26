@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveMonth } from "@/components/song-list/active-month";
+import { buttonClasses } from "@/components/ui/Button";
 import { songListContent } from "@/content/song-list";
 import { monthPdfPath } from "@/lib/song-list-pdf";
 
@@ -22,7 +23,7 @@ export function PdfLink({ months }: { months: Array<string | null> }) {
       href={monthPdfPath(title)}
       target="_blank"
       rel="noopener"
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-line bg-surface px-5 text-sm font-medium text-ink transition-colors hover:border-gold hover:bg-white"
+      className={buttonClasses("secondary")}
     >
       <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none">
         <path

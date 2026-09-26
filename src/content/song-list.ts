@@ -48,6 +48,32 @@ export const songListContent = {
     hide: "Hide earlier services",
   },
 
+  /**
+   * Sharing services as text: one card's share button, or several cards
+   * picked in select mode. {date} and {count} are replaced at render time.
+   */
+  share: {
+    /** Screen-reader name of a card's share button. */
+    buttonLabel: "Share songs for {date}",
+    select: "Select",
+    cancel: "Cancel",
+    selectLabel: "Select {date}",
+    selectedCount: "{count} selected",
+    selectPrompt: "Tap services to share",
+    share: "Share",
+    done: "Done",
+    copy: "Copy text",
+    email: "Email",
+    systemShare: "More options…",
+    copied: "Copied",
+    copyFailed: "Could not copy",
+    /** Email subject and share-sheet title. */
+    titleOne: "Songs for {date}",
+    titleMany: "Songs for {count} services",
+    /** Short names for AM and PM in the shared text: "Sunday, September 27 · Morning, 10:30 AM". */
+    slotNames: { AM: "Morning", PM: "Evening" },
+  },
+
   search: {
     label: "Search songs",
     placeholder: "Search by title or hymnal number",

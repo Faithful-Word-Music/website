@@ -34,9 +34,18 @@
 
   /* Depth: restrained, paper-like rather than glossy */
   --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04), 0 8px 24px -12px rgba(17, 17, 17, 0.1);
+  /* Floating controls (Back to top): enough lift to stand off the paper. */
+  --shadow-lift: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px -10px rgba(17, 17, 17, 0.3);
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 32px -16px rgba(17, 17, 17, 0.18);
 
   --radius-card: 0.75rem;
+
+  /* Motion: every hover and state change on the site eases the same way,
+     unhurried enough to be seen, quick enough never to lag. Tailwind's own
+     default (150ms, flat ease) read as an instant snap. The curve is the
+     one the page transitions and reveals already use. */
+  --default-transition-duration: 250ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Page rhythm */
   --spacing-section: 6rem;
@@ -269,6 +278,22 @@ html.motion-ready .reveal {
    in. Only newly added elements animate; ones already showing stay still. */
 .animate-enter {
   animation: enter-fade-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* A small icon swapping for another (Select -> Cancel): a quick settle into place. */
+.animate-pop {
+  animation: pop-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-45deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @keyframes enter-fade-up {

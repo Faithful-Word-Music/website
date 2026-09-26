@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 
 import { useActiveMonth } from "@/components/song-list/active-month";
 import { FallbackTable } from "@/components/song-list/FallbackTable";
@@ -9,20 +9,25 @@ import { KeySearch } from "@/components/song-list/KeySearch";
 import { MonthTabs } from "@/components/song-list/MonthTabs";
 import { NextServiceSpotlight } from "@/components/song-list/NextServiceSpotlight";
 import { ServiceCard } from "@/components/song-list/ServiceCard";
+import { ShareBar } from "@/components/song-list/ShareBar";
+import { ShareButton } from "@/components/song-list/ShareButton";
 import { SongListEmpty } from "@/components/song-list/SongListStates";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { useNow } from "@/components/song-list/use-now";
+import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { Reveal } from "@/components/ui/Reveal";
 import { songListContent } from "@/content/song-list";
 import { getTimeline, type Timeline } from "@/lib/service-time";
+import { serviceName } from "@/lib/share-services";
 import type { PlayIndex } from "@/lib/song-history";
 import { countSongs, filterServices, listKeys } from "@/lib/song-list";
 import type { Service, SongListMonth } from "@/types/song-list";
 
 /**
  * The interactive song list: the next-service spotlight, month switching,
- * search and key filter.
+ * search and key filter, and sharing services as text - one card at a time,
+ * or several at once in select mode.
  *
  * The data arrives already fetched and parsed from the server component, so no
  * Google request ever happens in the browser and no API key is involved here.
@@ -57,6 +62,9 @@ export function SongListView({
   // Cards animate in only once the visitor starts searching or switching:
   // on first load they arrive with the page, as everywhere else on the site.
   const [interacted, setInteracted] = useState(false);
+  // Select mode: tick services, then share them together from the bar.
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   function updateQuery(value: string) {
     setInteracted(true);
@@ -104,6 +112,69 @@ export function SongListView({
     setQuery("");
     setKey("");
     setShowEarlier(false);
+    stopSelecting();
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((ids) => {
+      const nextIds = new Set(ids);
+      if (!nextIds.delete(id)) nextIds.add(id);
+      return nextIds;
+    });
+  }
+
+  // Escape leaves select mode (an open share menu handles its own Escape first).
+  useEffect(() => {
+    if (!selecting) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelecting(false);
+        setSelectedIds(new Set());
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [selecting]);
+
+  // Always share a service whole, even while a search shows only some of its songs.
+  const wholeById = new Map(month.services.map((service) => [service.id, service]));
+  const selectedServices = month.services.filter((service) => selectedIds.has(service.id));
+  const { share } = songListContent;
+  const canShare = month.services.length > 0 && !month.fallbackRows;
+
+  // While searching, every match shows in date order, so nothing is tucked away.
+  const earlierCount =
+    filtering || month.fallbackRows
+      ? 0
+      : visibleServices.filter((s) => timeline.statusOf(s.id) === "past").length;
+  const earlierId = `${idPrefix}-earlier`;
+  const { earlier: earlierCopy } = songListContent;
+
+  function cardExtras(service: Service): CardExtras {
+    if (selecting) {
+      return {
+        selection: {
+          selected: selectedIds.has(service.id),
+          onToggle: () => toggleSelected(service.id),
+        },
+      };
+    }
+    const whole = wholeById.get(service.id) ?? service;
+    return {
+      share: (
+        <ShareButton
+          variant="icon"
+          services={[whole]}
+          note={month.note}
+          label={share.buttonLabel.replace("{date}", serviceName(whole))}
+        />
+      ),
+    };
   }
 
   function clearFilters() {
@@ -112,7 +183,8 @@ export function SongListView({
   }
 
   return (
-    <div>
+    // Room at the bottom in select mode, so the bar never covers the last card.
+    <div className={cn(selecting && "pb-24")}>
       <NextServiceSpotlight current={current} next={next} plays={plays} now={now} />
 
       <div className="mt-12 flex flex-col gap-4 sm:mt-14 lg:flex-row lg:items-center lg:justify-between">
@@ -151,34 +223,84 @@ export function SongListView({
         ) : null}
       </div>
 
-      {/* Announced to screen readers as the result count changes. Its line
-          is always reserved, so results appearing never push the page down. */}
-      <p
-        id={statusId}
-        role="status"
-        aria-live="polite"
-        className="mt-4 flex min-h-6 items-center text-sm text-muted"
-      >
-        {filtering ? (
-          <span className="animate-enter flex items-center gap-3">
-            <span>{resultsMessage}</span>
+      {/* One line straight above the cards, for what acts on them: earlier
+          services (or, while searching, the result count) on the left,
+          Select on the right. */}
+      <div className="mt-4 flex min-h-11 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center">
+          {/* Announced to screen readers as the result count changes. */}
+          <p
+            id={statusId}
+            role="status"
+            aria-live="polite"
+            className="flex items-center text-sm text-muted"
+          >
+            {filtering ? (
+              <span className="animate-enter flex items-center gap-3">
+                <span>{resultsMessage}</span>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
+                >
+                  {search.clearFilters}
+                </button>
+              </span>
+            ) : null}
+          </p>
+          {earlierCount > 0 ? (
             <button
               type="button"
-              onClick={clearFilters}
-              className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
+              onClick={() => setShowEarlier((value) => !value)}
+              aria-expanded={showEarlier}
+              aria-controls={earlierId}
+              className="-ml-1 inline-flex min-h-11 items-center gap-2 rounded-full px-1 text-sm font-medium text-muted transition-colors hover:text-ink"
             >
-              {search.clearFilters}
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                className={cn("transition-transform duration-200", showEarlier && "rotate-90")}
+              >
+                <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+              </svg>
+              {showEarlier
+                ? earlierCopy.hide
+                : earlierCopy.show.replace("{count}", String(earlierCount))}
             </button>
-          </span>
+          ) : null}
+        </div>
+        {canShare ? (
+          <button
+            type="button"
+            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            // The same pill as the page's other buttons; it fills in while
+            // select mode is on, so it is plain the page is in it.
+            className={buttonClasses(selecting ? "primary" : "secondary", "md", "shrink-0 px-4")}
+          >
+            {/* Keyed, so the icon pops in afresh as it swaps. */}
+            <svg key={selecting ? "x" : "tick"} aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" className="animate-pop">
+              {selecting ? (
+                <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              ) : (
+                <>
+                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M5.3 8.2l1.8 1.8 3.6-3.7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </>
+              )}
+            </svg>
+            {selecting ? share.cancel : share.select}
+          </button>
         ) : null}
-      </p>
+      </div>
 
       <div
         id={months.length > 1 ? `${idPrefix}-panel-${activeIndex}` : undefined}
         role={months.length > 1 ? "tabpanel" : undefined}
         aria-labelledby={months.length > 1 ? `${idPrefix}-tab-${activeIndex}` : undefined}
         tabIndex={months.length > 1 ? 0 : undefined}
-        className="mt-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark"
+        className="mt-3 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-gold-dark"
       >
         <MonthBody
           month={month}
@@ -188,9 +310,9 @@ export function SongListView({
           plays={plays}
           now={now}
           showEarlier={showEarlier}
-          onToggleEarlier={() => setShowEarlier((value) => !value)}
+          earlierId={earlierId}
           animateIn={interacted}
-          idPrefix={idPrefix}
+          cardExtras={cardExtras}
         />
       </div>
 
@@ -201,7 +323,7 @@ export function SongListView({
       <div className="mt-12 flex justify-center">
         <Link
           href="/song-list/archive"
-          className="group inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-6 text-sm font-medium text-ink transition-colors hover:border-gold"
+          className={buttonClasses("secondary", "md", "group px-6")}
         >
           {songListContent.archiveLinkLabel}
           <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
@@ -209,9 +331,19 @@ export function SongListView({
           </span>
         </Link>
       </div>
+
+      {selecting ? (
+        <ShareBar services={selectedServices} note={month.note} onDone={stopSelecting} />
+      ) : null}
     </div>
   );
 }
+
+/** What a card gets beyond its service: a share button, or its select-mode tick. */
+type CardExtras = {
+  share?: ReactNode;
+  selection?: { selected: boolean; onToggle: () => void };
+};
 
 function MonthBody({
   month,
@@ -221,9 +353,9 @@ function MonthBody({
   plays,
   now,
   showEarlier,
-  onToggleEarlier,
-  idPrefix,
+  earlierId,
   animateIn,
+  cardExtras,
 }: {
   month: SongListMonth;
   services: Service[];
@@ -231,11 +363,12 @@ function MonthBody({
   timeline: Timeline;
   plays: PlayIndex | null;
   now: number;
+  /** Whether the earlier services are open - toggled from the line above the cards. */
   showEarlier: boolean;
-  onToggleEarlier: () => void;
-  idPrefix: string;
+  earlierId: string;
   /** Fade cards in as they appear (once the visitor has searched or switched). */
   animateIn: boolean;
+  cardExtras: (service: Service) => CardExtras;
 }) {
   if (month.fallbackRows) {
     return <FallbackTable rows={month.fallbackRows} />;
@@ -257,34 +390,16 @@ function MonthBody({
   // do we sing this?", and a past date answers it as well as a future one.
   const earlier = filtering ? [] : services.filter((s) => timeline.statusOf(s.id) === "past");
   const later = filtering ? services : services.filter((s) => timeline.statusOf(s.id) !== "past");
-  const earlierId = `${idPrefix}-earlier`;
-  const { earlier: earlierCopy } = songListContent;
 
   return (
     <div>
       {earlier.length > 0 ? (
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={onToggleEarlier}
-            aria-expanded={showEarlier}
-            aria-controls={earlierId}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full px-1 text-sm font-medium text-muted transition-colors hover:text-ink"
-          >
-            <svg
-              aria-hidden="true"
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              className={cn("transition-transform duration-200", showEarlier && "rotate-90")}
-            >
-              <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-            </svg>
-            {showEarlier
-              ? earlierCopy.hide
-              : earlierCopy.show.replace("{count}", String(earlier.length))}
-          </button>
-
+        <div
+          className={cn(
+            "transition-[margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            showEarlier && "mb-4 sm:mb-5",
+          )}
+        >
           {/* Opens and closes smoothly by animating the grid row between 0 and
               its natural height; `inert` keeps collapsed cards out of the tab order. */}
           <div
@@ -300,7 +415,7 @@ function MonthBody({
                 clipping box is itself positioned. Without it they escape the
                 collapsed section and stretch the page below the footer. */}
             <div className="relative min-h-0 overflow-hidden">
-              <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-2">
+              <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
                 {earlier.map((service) => (
                   <ServiceCard
                     key={`${month.title}:${service.id}`}
@@ -308,6 +423,7 @@ function MonthBody({
                     status="past"
                     plays={plays}
                     now={now}
+                    {...cardExtras(service)}
                   />
                 ))}
               </div>
@@ -329,6 +445,7 @@ function MonthBody({
               status={timeline.statusOf(service.id)}
               plays={plays}
               now={now}
+              {...cardExtras(service)}
             />
           </Reveal>
         ))}

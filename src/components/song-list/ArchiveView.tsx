@@ -6,6 +6,7 @@ import { KeySearch } from "@/components/song-list/KeySearch";
 import { PillSelect } from "@/components/song-list/PillSelect";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { useNow } from "@/components/song-list/use-now";
+import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
 import { cn } from "@/components/ui/cn";
@@ -223,7 +224,7 @@ export function ArchiveView({
               setInteracted(true);
               setLimit((current) => current + PAGE_SIZE);
             }}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface px-6 text-sm font-medium text-ink shadow-card transition-colors duration-200 hover:border-gold"
+            className={buttonClasses("secondary", "md", "px-6 shadow-card")}
           >
             {archive.showMore.replace("{count}", String(nextPage))}
             <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12">

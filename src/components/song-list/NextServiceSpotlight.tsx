@@ -15,6 +15,10 @@ import type { Service } from "@/types/song-list";
  * While a service is under way it is shown as "Happening now", with the one
  * after it named underneath - so someone arriving mid-service sees what is
  * being sung, and anyone planning ahead sees what is next.
+ *
+ * On a phone it is sized to fit one screen under the site header: tighter
+ * padding, the countdown on the same line as the time, and song rows a size
+ * down. From `sm` up it has room to breathe.
  */
 export function NextServiceSpotlight({
   current,
@@ -45,11 +49,11 @@ export function NextServiceSpotlight({
 
   return (
     <section aria-labelledby={headingId}>
-      <Card className="relative overflow-hidden p-6 sm:p-8 lg:p-10">
+      <Card className="relative overflow-hidden p-5 sm:p-8 lg:p-10">
         {/* Gold rule across the top: the one strong accent on the page. */}
         <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gold" />
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+        <div className="grid gap-5 sm:gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
           <div>
             <p className="flex flex-wrap items-center gap-3">
               <StatusPill status={isNow ? "now" : "next"} />
@@ -63,22 +67,26 @@ export function NextServiceSpotlight({
 
             <h2
               id={headingId}
-              className="mt-4 font-display text-4xl leading-tight text-ink sm:text-5xl"
+              className="mt-3 font-display text-3xl leading-tight text-ink sm:mt-4 sm:text-5xl"
             >
               {day ?? featured.dateLabel}
             </h2>
-            <p className="mt-2 text-base text-ink-soft sm:text-lg">
-              <ServiceTime startsAt={featured.startsAt} />
-            </p>
-
-            {!isNow ? (
-              <p className="mt-5 inline-flex items-center rounded-full border border-line bg-paper px-4 py-1.5 text-sm font-medium text-ink">
-                {capitalize(formatCountdown(featured.startsAt, now))}
+            {/* On a phone the countdown follows the time on the same line;
+                from sm up it takes its own line beneath. */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 sm:block">
+              <p className="text-base text-ink-soft sm:text-lg">
+                <ServiceTime startsAt={featured.startsAt} />
               </p>
-            ) : null}
+
+              {!isNow ? (
+                <p className="inline-flex items-center rounded-full border border-line bg-paper px-3 py-1 text-xs font-medium text-ink sm:mt-5 sm:px-4 sm:py-1.5 sm:text-sm">
+                  {capitalize(formatCountdown(featured.startsAt, now))}
+                </p>
+              ) : null}
+            </div>
 
             {isNow && next?.startsAt ? (
-              <div className="mt-6 border-t border-line pt-4">
+              <div className="mt-4 border-t border-line pt-3 sm:mt-6 sm:pt-4">
                 <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted">
                   {spotlight.thenLabel}
                 </p>
@@ -97,13 +105,13 @@ export function NextServiceSpotlight({
                 plays && !isNow ? songHint(plays[songKey(song.title)], featured.startsAt!, now) : null;
 
               return (
-                <li key={index} className="flex items-baseline gap-4 py-3 sm:py-3.5">
-                  <span className="tnum w-12 shrink-0 text-right font-display text-xl text-gold-dark sm:text-2xl">
+                <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                  <span className="tnum w-9 shrink-0 text-right font-display text-lg text-gold-dark sm:w-12 sm:text-2xl">
                     {song.number ?? <span aria-hidden="true">·</span>}
                     {song.number ? null : <span className="sr-only">No number</span>}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-lg leading-snug text-ink sm:text-xl">{song.title}</span>
+                    <span className="block text-base leading-snug text-ink sm:text-xl">{song.title}</span>
                     {hint ? <SongHintText hint={hint} now={now} /> : null}
                   </span>
                   {song.key ? (
@@ -116,9 +124,9 @@ export function NextServiceSpotlight({
               );
             })}
             {Array.from({ length: featured.pendingSongs }, (_, index) => (
-              <li key={`pending-${index}`} className="flex items-baseline gap-4 py-3 sm:py-3.5">
-                <span aria-hidden="true" className="w-12 shrink-0" />
-                <span className="text-lg italic text-muted sm:text-xl">
+              <li key={`pending-${index}`} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                <span className="text-base italic text-muted sm:text-xl">
                   {songListContent.states.pendingSong}
                 </span>
               </li>
