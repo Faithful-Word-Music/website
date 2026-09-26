@@ -83,6 +83,94 @@ export function buildSongRecords(services: DatedService[]): SongRecord[] {
   return [...records.values()];
 }
 
+/** A song that is habitually sung in the same service as another. */
+export interface Companion {
+  id: string;
+  /** Title as most recently written. */
+  title: string;
+  number: string | null;
+  /** Services where both songs were sung. */
+  together: number;
+  /** together ÷ services where either was sung, 0-1. */
+  share: number;
+  /** Start of the most recent service they shared. */
+  lastTogether: string;
+}
+
+export interface CompanionRules {
+  minTogether: number;
+  minShare: number;
+  limit: number;
+}
+
+/**
+ * The songs habitually sung alongside song `id`.
+ *
+ * Most songs are paired differently every time, and for those this returns
+ * nothing. A pair only counts when it is a real habit: sung together at least
+ * `minTogether` times, AND together in at least `minShare` of the services
+ * where either song was sung. The second rule keeps out songs that are simply
+ * sung often - a hymn in every other service shares a few services with
+ * everything, but that says nothing about this song.
+ */
+export function buildCompanions(
+  services: DatedService[],
+  id: string,
+  rules: CompanionRules,
+): Companion[] {
+  const ordered = [...services].sort(
+    (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
+  );
+
+  const plays = new Map<string, number>();
+  const details = new Map<string, { title: string; number: string | null }>();
+  const shared = new Map<string, { together: number; lastTogether: string }>();
+
+  for (const service of ordered) {
+    const ids = new Set<string>();
+    for (const song of service.songs) {
+      const songId = songKey(song.title);
+      if (songId === "") continue;
+      ids.add(songId);
+      // Walking oldest to newest, so the latest spelling and number win.
+      const detail = details.get(songId) ?? { title: song.title, number: null };
+      detail.title = song.title;
+      if (song.number) detail.number = song.number;
+      details.set(songId, detail);
+    }
+
+    for (const songId of ids) plays.set(songId, (plays.get(songId) ?? 0) + 1);
+
+    if (!ids.has(id)) continue;
+    for (const other of ids) {
+      if (other === id) continue;
+      const entry = shared.get(other) ?? { together: 0, lastTogether: service.startsAt };
+      entry.together += 1;
+      entry.lastTogether = service.startsAt;
+      shared.set(other, entry);
+    }
+  }
+
+  const ownPlays = plays.get(id) ?? 0;
+  const companions: Companion[] = [];
+
+  for (const [other, { together, lastTogether }] of shared) {
+    const share = together / (ownPlays + (plays.get(other) ?? 0) - together);
+    if (together < rules.minTogether || share < rules.minShare) continue;
+    const detail = details.get(other)!;
+    companions.push({ id: other, ...detail, together, share, lastTogether });
+  }
+
+  return companions
+    .sort(
+      (a, b) =>
+        b.share - a.share ||
+        b.together - a.together ||
+        Date.parse(b.lastTogether) - Date.parse(a.lastTogether),
+    )
+    .slice(0, rules.limit);
+}
+
 /**
  * The dates each song was sung, keyed by songKey(). This is what the schedule
  * page hands to the browser for the hints - small, and enough to compute every

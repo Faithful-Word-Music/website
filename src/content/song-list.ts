@@ -167,6 +167,9 @@ export const songListContent = {
     keysTitle: "Keys",
     /** {count} is replaced at render time. */
     keyCount: "{count}×",
+    companionsTitle: "Often sung with",
+    /** {count} is replaced at render time. */
+    togetherCount: "Sung together {count} times",
     upcomingTitle: "Coming up",
     historyTitle: "Every time we've sung it",
     noHistory: "There is no record of this song being sung yet. Records begin in October 2025.",

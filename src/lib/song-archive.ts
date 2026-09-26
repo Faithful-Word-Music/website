@@ -2,11 +2,14 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
+import { siteConfig } from "@/config/site";
 import { loadStoredServices, saveServices, type SaveSummary } from "@/lib/archive-store";
 import { getSongList } from "@/lib/google-sheets";
 import {
+  buildCompanions,
   buildPlayIndex,
   buildSongRecords,
+  type Companion,
   mergeServices,
   pastServices,
   type PlayIndex,
@@ -121,20 +124,37 @@ export type ArchiveData =
  * from the permanent archive and the sheet combined.
  */
 export async function getArchiveData(): Promise<ArchiveData> {
-  const sheet = await getSongList();
-  const loadedAt = Date.now();
-  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
-
-  // With neither source available there is nothing honest to show.
-  if (!sheet.ok && !history.persistent) return { ok: false };
-
-  const past = pastServices(history.services, loadedAt);
+  const history = await loadPast();
+  if (!history) return { ok: false };
+  const { past, persistent, loadedAt } = history;
 
   return {
     ok: true,
     records: buildSongRecords(past),
     serviceCount: past.length,
     since: past[0]?.startsAt ?? null,
+    persistent,
+    loadedAt,
+  };
+}
+
+/**
+ * Every service that has already happened, from the archive and the sheet
+ * combined. null when neither source is available, as there is nothing
+ * honest to show then.
+ */
+async function loadPast(): Promise<{
+  past: DatedService[];
+  persistent: boolean;
+  loadedAt: number;
+} | null> {
+  const sheet = await getSongList();
+  const loadedAt = Date.now();
+  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
+  if (!sheet.ok && !history.persistent) return null;
+
+  return {
+    past: pastServices(history.services, loadedAt),
     persistent: history.persistent,
     loadedAt,
   };
@@ -185,6 +205,8 @@ export interface SongPageData {
   plays: SongPlay[];
   /** Services it is scheduled for that have not happened yet, soonest first. */
   upcoming: SongPlay[];
+  /** Songs habitually sung in the same service; usually none. */
+  companions: Companion[];
   loadedAt: number;
 }
 
@@ -197,11 +219,11 @@ export interface SongPageData {
  * address that matches no song at all.
  */
 export async function getSongPage(slug: string): Promise<SongPageData | null> {
-  const [archive, sheet] = await Promise.all([getArchiveData(), getSongList()]);
-  const loadedAt = archive.ok ? archive.loadedAt : Date.now();
+  const [history, sheet] = await Promise.all([loadPast(), getSongList()]);
+  const loadedAt = history?.loadedAt ?? Date.now();
 
-  const record = archive.ok
-    ? archive.records.find((candidate) => songSlug(candidate.title) === slug)
+  const record = history
+    ? buildSongRecords(history.past).find((candidate) => songSlug(candidate.title) === slug)
     : undefined;
 
   const upcoming: Array<SongPlay & { title: string; number: string | null }> = [];
@@ -229,6 +251,10 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
     number: record?.number ?? upcoming.find((play) => play.number)?.number ?? null,
     plays: [...(record?.plays ?? [])].reverse(),
     upcoming: upcoming.map(({ startsAt, slot, key }) => ({ startsAt, slot, key })),
+    companions:
+      history && record
+        ? buildCompanions(history.past, record.id, siteConfig.songList.pairings)
+        : [],
     loadedAt,
   };
 }

@@ -189,6 +189,7 @@ The sheet only keeps a rolling twelve months, so every past service is also save
 - **Always up to date:** pages combine the database with the sheet, so the history is current even before the nightly run. Without a database, the site falls back to the sheet's twelve months.
 - **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/song-list/archive/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
   - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
+- **"Often sung with":** a song's page lists up to three songs it is habitually paired with (`buildCompanions()` in `lib/song-history.ts`). A pair only counts when it was sung together at least 3 times, and in at least a third of the services where either song was sung, so a hymn that's simply sung a lot doesn't look paired with everything. Most songs have no such partner and show no section at all. Tune the rule with `siteConfig.songList.pairings`.
 - **Links:** song titles link to their pages in the archive. On the schedule they're plain text.
 - **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
 

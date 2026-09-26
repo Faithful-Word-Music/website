@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -11,6 +12,7 @@ import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
 import { normalizeKey } from "@/lib/song-list";
 import { getSongPage, type SongPlay } from "@/lib/song-archive";
+import type { Companion } from "@/lib/song-history";
 import {
   churchYear,
   formatAgo,
@@ -51,7 +53,7 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
   const data = await getSongPage(song);
   if (!data) notFound();
 
-  const { title, number, plays, upcoming, loadedAt } = data;
+  const { title, number, plays, upcoming, companions, loadedAt } = data;
   const last = plays[0];
   const first = plays[plays.length - 1];
 
@@ -89,6 +91,8 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
         </dl>
 
         <KeysUsed plays={plays} />
+
+        <Companions companions={companions} />
 
         {upcoming.length > 0 ? (
           <section aria-labelledby="coming-up" className="mt-12">
@@ -162,6 +166,44 @@ function KeysUsed({ plays }: { plays: SongPlay[] }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/**
+ * Songs habitually sung in the same service as this one. Most songs have
+ * none, and then the section is left out entirely rather than shown empty.
+ */
+function Companions({ companions }: { companions: Companion[] }) {
+  if (companions.length === 0) return null;
+
+  return (
+    <section aria-labelledby="companions" className="mt-12">
+      <h2 id="companions" className="font-display text-2xl text-ink">
+        {songPage.companionsTitle}
+      </h2>
+      <Card className="mt-4">
+        <ul className="divide-y divide-line">
+          {companions.map((companion) => (
+            <li
+              key={companion.id}
+              className="flex items-baseline justify-between gap-4 px-5 py-3 sm:px-6"
+            >
+              <span className="min-w-0">
+                <SongLink title={companion.title} className="block text-ink" />
+                {companion.number ? (
+                  <span className="tnum block text-xs text-muted">
+                    {songPage.numberEyebrow.replace("{number}", companion.number)}
+                  </span>
+                ) : null}
+              </span>
+              <span className="tnum shrink-0 text-sm font-medium text-gold-dark">
+                {songPage.togetherCount.replace("{count}", String(companion.together))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }

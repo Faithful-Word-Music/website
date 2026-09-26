@@ -86,6 +86,16 @@ export const siteConfig = {
      */
     showFirstTimeHints: false,
 
+    /**
+     * "Often sung with" on each song's page. Most songs are paired differently
+     * every time and show nothing; a pair is listed only when both songs were
+     * sung together at least `minTogether` times, AND in at least `minShare`
+     * of the services where either was sung (so a hymn that is simply sung
+     * often does not look "paired" with everything). Raise either to show
+     * fewer, stronger pairs.
+     */
+    pairings: { minTogether: 3, minShare: 0.33, limit: 3 },
+
     /** How long a service is treated as "happening now" after it starts. */
     serviceDurationMinutes: 90,
 
