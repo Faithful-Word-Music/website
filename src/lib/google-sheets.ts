@@ -1,7 +1,7 @@
 import "server-only";
 
 import { siteConfig } from "@/config/site";
-import { parseMonthGrid } from "@/lib/song-list";
+import { parseMonthGrid, planMonth } from "@/lib/song-list";
 import type { SongListMonth, SongListResult } from "@/types/song-list";
 
 /**
@@ -158,9 +158,14 @@ export async function getSongList(): Promise<SongListResult> {
     const allMonths: SongListMonth[] = tabs.map((tab, index) =>
       parseMonthGrid(tab.title, grids[index] ?? []),
     );
+    // The schedule drops last year's leftover rows from a month still being
+    // planned, and lists its remaining services as "not posted yet". History
+    // (allMonths) keeps the raw tabs: those leftover songs really were sung.
+    const now = Date.now();
     const months = allMonths
       .filter((_, index) => !tabs[index].hidden)
-      .slice(0, siteConfig.songList.maxMonths);
+      .slice(0, siteConfig.songList.maxMonths)
+      .map((month) => planMonth(month, now));
 
     return { ok: true, months, allMonths };
   } catch (error) {

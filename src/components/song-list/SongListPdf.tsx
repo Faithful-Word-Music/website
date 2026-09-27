@@ -7,6 +7,7 @@ import { Document, Font, Page, StyleSheet, Text, View } from "@react-pdf/rendere
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
 import { formatChurchTime, splitDateLabel } from "@/lib/service-time";
+import { serviceSlots } from "@/lib/song-list";
 import {
   COLUMN_WIDTH_PT,
   firstYear,
@@ -251,28 +252,25 @@ function ServiceBlock({
       </View>
 
       <View style={styles.songs}>
-        {service.songs.map((song, index) => (
+        {/* In sheet order, unfilled slots in their own places. */}
+        {serviceSlots(service).map((song, index) => (
           <View
             key={index}
             style={[styles.row, { lineHeight }, index < rows - 1 ? styles.rowRule : {}]}
           >
-            <Text style={styles.number}>{song.number ?? ""}</Text>
-            <Text style={styles.title}>{song.title}</Text>
-            <Text style={styles.key}>{song.key ?? ""}</Text>
-          </View>
-        ))}
-        {Array.from({ length: service.pendingSongs }, (_, index) => (
-          <View
-            key={`pending-${index}`}
-            style={[
-              styles.row,
-              { lineHeight },
-              service.songs.length + index < rows - 1 ? styles.rowRule : {},
-            ]}
-          >
-            <Text style={styles.number} />
-            <Text style={styles.pending}>{songListContent.states.pendingSong}</Text>
-            <Text style={styles.key} />
+            {song ? (
+              <>
+                <Text style={styles.number}>{song.number ?? ""}</Text>
+                <Text style={styles.title}>{song.title}</Text>
+                <Text style={styles.key}>{song.key ?? ""}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.number} />
+                <Text style={styles.pending}>{songListContent.states.pendingSong}</Text>
+                <Text style={styles.key} />
+              </>
+            )}
           </View>
         ))}
       </View>

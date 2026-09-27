@@ -79,6 +79,18 @@ export const siteConfig = {
     },
 
     /**
+     * The services held every week (day: 0 = Sunday, 3 = Wednesday). While a
+     * month is still being planned, the dates after the last one posted are
+     * shown as these services with "Songs not posted yet", so the month never
+     * looks shorter than it is. See planMonth() in src/lib/song-list.ts.
+     */
+    regularServices: [
+      { day: 0, slot: "AM" },
+      { day: 0, slot: "PM" },
+      { day: 3, slot: "PM" },
+    ] as ReadonlyArray<{ day: number; slot: "AM" | "PM" }>,
+
+    /**
      * Show the "First time ever" / "First time this year" hints under upcoming
      * songs. Off while the song history is still being filled in: records only
      * go back to October 2025, so "first time ever" is not yet trustworthy.

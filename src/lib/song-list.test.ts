@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import missions from "@/lib/__fixtures__/missions-conference-2025.json";
+import october from "@/lib/__fixtures__/october-2026-partial.json";
 import september from "@/lib/__fixtures__/september-2026.json";
+import { getTimeline } from "@/lib/service-time";
 import {
   datedServices,
   filterServices,
   keyMatches,
   listKeys,
+  openingMonthIndex,
   parseMonthGrid,
+  planMonth,
+  serviceSlots,
   songKey,
   songSlug,
 } from "@/lib/song-list";
@@ -143,6 +148,97 @@ describe("parseMonthGrid fallbacks", () => {
     const month = parseMonthGrid("Odd", [["Heading"], ["just", "", ""]]);
     expect(month.services).toHaveLength(0);
     expect(month.fallbackRows).not.toBeNull();
+  });
+});
+
+// The real October tab mid-planning (26 Sep 2026): the first three services
+// are this year's, with most songs still #N/A; the rest are last year's rows.
+describe("two visible months, the second still being planned", () => {
+  const now = Date.parse("2026-09-26T22:41:00-07:00");
+  const sep = parseMonthGrid("September", september as string[][]);
+  const oct = parseMonthGrid("October", october as string[][]);
+
+  it("gives the two tabs different service ids, though their layouts match", () => {
+    const sepIds = new Set(sep.services.map((service) => service.id));
+    expect(oct.services.some((service) => sepIds.has(service.id))).toBe(false);
+  });
+
+  it("puts Sep 27 morning next, not a leftover October row at the same position", () => {
+    const timeline = getTimeline([...sep.services, ...oct.services], now);
+    const next = [...sep.services, ...oct.services].find((s) => s.id === timeline.nextId);
+    expect(next?.startsAt).toBe("2026-09-27T10:30:00-07:00");
+    expect(openingMonthIndex([sep, oct], now)).toBe(0);
+    // Only the September services that have happened are "earlier".
+    const past = sep.services.filter((s) => timeline.statusOf(s.id) === "past");
+    expect(past.every((s) => (s.date ?? "") < "2026-09-27")).toBe(true);
+  });
+
+  it("reads 'Psalm 120 | #N/A' as a song with no key, not as a service", () => {
+    const [first] = oct.services;
+    expect(first.dateLabel).toBe("Sunday, October 4, 2026");
+    expect(first.songs).toEqual([{ number: null, title: "Psalm 120", key: null }]);
+    expect(first.pendingSongs).toBe(4);
+    expect(oct.services.some((s) => s.dateLabel.startsWith("Psalm"))).toBe(false);
+  });
+
+  it("keeps each song in its own row, around the slots not filled in yet", () => {
+    // Psalm 120 is the third row of five in the sheet, so it shows third.
+    expect(serviceSlots(oct.services[0]).map((song) => song?.title ?? null)).toEqual([
+      null,
+      null,
+      "Psalm 120",
+      null,
+      null,
+    ]);
+    // A service with no positions recorded lists its songs first.
+    expect(
+      serviceSlots({ ...oct.services[0], pendingPositions: undefined }).map((s) => s?.title ?? null),
+    ).toEqual(["Psalm 120", null, null, null, null]);
+    // A search drops the unfilled slots and keeps the songs.
+    const [found] = filterServices([oct.services[0]], { query: "psalm", key: "" });
+    expect(serviceSlots(found).map((song) => song?.title)).toEqual(["Psalm 120"]);
+  });
+
+  it("drops last year's rows and lists the rest of the month as not posted yet", () => {
+    const planned = planMonth(oct, now);
+    expect(planned.services.every((s) => s.date?.startsWith("2026-10-"))).toBe(true);
+    expect(planned.services.map((s) => `${s.date?.slice(8)} ${s.slot}${s.placeholder ? "?" : ""}`)).toEqual([
+      "04 AM",
+      "04 PM",
+      "07 PM",
+      "11 AM?",
+      "11 PM?",
+      "14 PM?",
+      "18 AM?",
+      "18 PM?",
+      "21 PM?",
+      "25 AM?",
+      "25 PM?",
+      "28 PM?",
+    ]);
+    const wednesday = planned.services.find((s) => s.date === "2026-10-14");
+    expect(wednesday).toMatchObject({
+      dateLabel: "Wednesday, October 14, 2026",
+      serviceLabel: "Evening Service",
+      startsAt: "2026-10-14T19:00:00-07:00",
+      songs: [],
+    });
+  });
+
+  it("leaves a fully posted month alone", () => {
+    expect(planMonth(sep, now)).toBe(sep);
+  });
+
+  it("does not add services that have already happened", () => {
+    const later = Date.parse("2026-10-15T12:00:00-07:00");
+    const dates = planMonth(oct, later).services.filter((s) => s.placeholder).map((s) => s.date);
+    expect(dates[0]).toBe("2026-10-18");
+  });
+
+  it("keeps a dated heading with nothing written under it yet", () => {
+    const month = parseMonthGrid("November", [["November Song List"], ["AM", "Sunday, November 1, 2026"]]);
+    expect(month.services).toHaveLength(1);
+    expect(month.services[0].songs).toEqual([]);
   });
 });
 

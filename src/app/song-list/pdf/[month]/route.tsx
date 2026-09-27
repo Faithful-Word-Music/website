@@ -21,7 +21,12 @@ export async function GET(_request: Request, ctx: RouteContext<"/song-list/pdf/[
     return new Response("The song list is unavailable right now.", { status: 503 });
   }
 
-  const month = result.months.find((item) => monthSlug(item.title) === slug);
+  const found = result.months.find((item) => monthSlug(item.title) === slug);
+  // Print only what the sheet has posted, not the services still to come.
+  const month = found && {
+    ...found,
+    services: found.services.filter((service) => !service.placeholder),
+  };
   // A month whose layout could not be read has no schedule to lay out.
   if (!month || month.fallbackRows || month.services.length === 0) {
     return new Response("No song list for that month.", { status: 404 });

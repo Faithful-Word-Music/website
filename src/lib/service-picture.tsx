@@ -15,6 +15,7 @@ import {
 } from "@/lib/og";
 import { inDateOrder } from "@/lib/share-services";
 import { formatChurchTime, splitDateLabel } from "@/lib/service-time";
+import { serviceSlots } from "@/lib/song-list";
 import { interLines, interWidth } from "@/lib/text-measure";
 import type { Service } from "@/types/song-list";
 
@@ -130,15 +131,12 @@ function titleWidth(key: string | null, s: Size): number {
 type Row = { number: string | null; title: string; key: string | null; pending: boolean };
 
 function rowsOf(service: Service): Row[] {
-  return [
-    ...service.songs.map((song) => ({ ...song, pending: false })),
-    ...Array.from({ length: service.pendingSongs }, () => ({
-      number: null,
-      title: songListContent.states.pendingSong,
-      key: null,
-      pending: true,
-    })),
-  ];
+  // In sheet order, unfilled slots in their own places.
+  return serviceSlots(service).map((song) =>
+    song
+      ? { ...song, pending: false }
+      : { number: null, title: songListContent.states.pendingSong, key: null, pending: true },
+  );
 }
 
 function rowHeight(row: Row, s: Size): number {

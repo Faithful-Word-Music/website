@@ -1,3 +1,4 @@
+import { monthSlug } from "@/lib/song-list";
 import { interLines } from "@/lib/text-measure";
 import type { Service, SongListMonth } from "@/types/song-list";
 
@@ -143,15 +144,8 @@ export function firstYear(month: SongListMonth): string | null {
   return dated?.date?.slice(0, 4) ?? null;
 }
 
-/** "September" -> "september", "Missions Conference 2025" -> "missions-conference-2025". */
-export function monthSlug(title: string): string {
-  return title
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+// Lives in song-list.ts, where service ids are built from it.
+export { monthSlug };
 
 /** The PDF's address for a month tab. */
 export function monthPdfPath(title: string): string {

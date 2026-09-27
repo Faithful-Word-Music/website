@@ -65,6 +65,22 @@ export function parseDateLabel(label: string): string | null {
   return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** The month a tab title names: "October" -> 9, "Missions Conference 2025" -> null. */
+export function monthInTitle(title: string): number | null {
+  const words: string[] = title.toLowerCase().match(/[a-z]+/g) ?? [];
+  const index = MONTHS.findIndex((name) => words.includes(name));
+  return index >= 0 ? index : null;
+}
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** "2026-10-14" -> "Wednesday, October 14, 2026", as the sheet writes dates. */
+export function dateLabelFor(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const name = MONTHS[month - 1];
+  return `${WEEKDAYS[dayOfWeek(date)]}, ${name.charAt(0).toUpperCase()}${name.slice(1)} ${day}, ${year}`;
+}
+
 /** "AM", "pm", "A.M." -> "AM" / "PM"; anything else -> null. */
 export function parseSlot(value: string): ServiceSlot | null {
   const normalized = value.replace(/[.\s]/g, "").toUpperCase();

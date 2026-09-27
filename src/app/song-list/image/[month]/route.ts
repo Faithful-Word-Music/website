@@ -5,7 +5,7 @@ import { MAX_SHARED_SERVICES } from "@/lib/share-services";
 import { monthSlug } from "@/lib/song-list-pdf";
 
 /**
- * Chosen services as a PNG, for sharing: /song-list/image/september?s=0-1,1-1
+ * Chosen services as a PNG, for sharing: /song-list/image/september?s=september-0-1,september-1-1
  * (service ids, as the page knows them). Drawn by renderServicePicture().
  *
  * Built on request from the sheet, like the PDF, so it is as current as the
@@ -24,7 +24,9 @@ export async function GET(request: Request, ctx: RouteContext<"/song-list/image/
   }
 
   const month = result.months.find((item) => monthSlug(item.title) === slug);
-  const services = month ? month.services.filter((service) => ids.includes(service.id)) : [];
+  const services = month
+    ? month.services.filter((service) => !service.placeholder && ids.includes(service.id))
+    : [];
   if (services.length === 0) {
     return new Response("No such services.", { status: 404 });
   }

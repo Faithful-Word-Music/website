@@ -147,6 +147,8 @@ export const songListContent = {
       "This site is not currently configured to read the song schedule. You can open the spreadsheet directly.",
 
     pendingSong: "To be announced",
+    /** A service with nothing written under it yet, or one the sheet has not reached. */
+    notPosted: "Songs not posted yet",
 
     fallbackNotice:
       "This month's schedule is laid out differently than usual, so it is shown below exactly as it appears in the spreadsheet.",

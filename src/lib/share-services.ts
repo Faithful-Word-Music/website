@@ -1,6 +1,7 @@
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
 import { formatChurchTime, splitDateLabel } from "@/lib/service-time";
+import { serviceSlots } from "@/lib/song-list";
 import type { Service } from "@/types/song-list";
 
 /**
@@ -87,11 +88,13 @@ function formatSong(number: string | null, title: string, key: string | null): s
 }
 
 function formatService(service: Service): string {
-  const songs = service.songs.map((song) => formatSong(song.number, song.title, song.key));
-  const pending = Array.from({ length: service.pendingSongs }, () =>
-    formatSong(null, songListContent.states.pendingSong, null),
+  // In sheet order, unfilled slots in their own places.
+  const rows = serviceSlots(service).map((song) =>
+    song
+      ? formatSong(song.number, song.title, song.key)
+      : formatSong(null, songListContent.states.pendingSong, null),
   );
-  return [formatServiceHeading(service), "", ...songs, ...pending].join("\n");
+  return [formatServiceHeading(service), "", ...rows].join("\n");
 }
 
 /** Services in date order - the order they happen, not the order they were picked. */

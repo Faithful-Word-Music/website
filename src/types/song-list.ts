@@ -38,6 +38,18 @@ export interface Service {
    * counted as songs.
    */
   pendingSongs: number;
+  /**
+   * Where those unfilled slots sit among the service's rows (0-based, songs
+   * and slots counted together), so a song already chosen for the third slot
+   * shows third. Missing means "after the songs". Read through serviceSlots().
+   */
+  pendingPositions?: number[];
+  /**
+   * Not in the sheet yet: a regular service on a date after the last one
+   * posted, shown so a month being planned still lists every service. Has no
+   * songs; never shared, printed or counted as history. See planMonth().
+   */
+  placeholder?: boolean;
 }
 
 /** One worksheet tab, normalized. */

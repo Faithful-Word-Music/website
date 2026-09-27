@@ -54,7 +54,9 @@ export default async function SongListPage() {
               {/* Each tab's title, or null for a tab with no schedule to put in a PDF. */}
               <PdfLink
                 months={months.map((month) =>
-                  month.fallbackRows || month.services.length === 0 ? null : month.title,
+                  month.fallbackRows || !month.services.some((service) => !service.placeholder)
+                    ? null
+                    : month.title,
                 )}
               />
               <SheetLink />

@@ -1,5 +1,16 @@
+import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
-import { getTimeline, parseDateLabel, parseSlot, startsAtFor } from "@/lib/service-time";
+import {
+  churchMonth,
+  churchYear,
+  dateLabelFor,
+  dayOfWeek,
+  getTimeline,
+  monthInTitle,
+  parseDateLabel,
+  parseSlot,
+  startsAtFor,
+} from "@/lib/service-time";
 import type {
   DatedService,
   Service,
@@ -35,13 +46,23 @@ import type {
  * TELLING ROWS APART
  * ---------------------------------------------------------------------------
  * A date row has "AM" or "PM" in the number column, the date in the title
- * column, and NO key. Every song has a key. So:
+ * column, and NO key. So:
  *
- *   date header -> title present AND key empty AND (number is AM/PM OR empty)
- *   song row    -> title present AND (number is a hymn number OR key present)
+ *   date header -> title reads as a date, OR number is AM/PM and the key cell is empty
+ *   song row    -> any other row with a title
  *
- * The empty-number case keeps an unmarked date row working. Anything else
- * (blank rows, stray notes) is ignored.
+ * The title test keeps an unmarked date row working. It has to be the title,
+ * not merely an empty key: while a month is being planned, a song's key is
+ * often still "#N/A" ("Psalm 120 | #N/A"), and that is a song, not a date.
+ * Blank rows and stray notes are ignored.
+ *
+ * ---------------------------------------------------------------------------
+ * IDS
+ * ---------------------------------------------------------------------------
+ * A service's id is its month plus its place in the sheet ("october-1-22").
+ * Every month has the same layout, so without the month two tabs would share
+ * ids - and the page, which places every visible month's services on one
+ * timeline, would mix them up.
  */
 
 /** Column triples: [number, title, key] for the left and right blocks. */
@@ -103,6 +124,7 @@ export function cleanSong(song: Song): Song | null {
  */
 export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
   const heading = cell(grid[0], 0).replace(/\s+/g, " ") || null;
+  const idPrefix = monthSlug(title);
   const services: Service[] = [];
 
   for (const [blockIndex, block] of COLUMN_BLOCKS.entries()) {
@@ -124,20 +146,28 @@ export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
         const hadPlaceholder = [numberCol, titleCol, keyCol].some((index) =>
           isPlaceholder(cell(row, index)),
         );
-        if (hadPlaceholder && current) current.pendingSongs += 1;
+        if (hadPlaceholder && current) {
+          // Remember which row it is, so the songs around it keep their places.
+          current.pendingPositions = [
+            ...(current.pendingPositions ?? []),
+            current.songs.length + current.pendingSongs,
+          ];
+          current.pendingSongs += 1;
+        }
         continue;
       }
 
       const marker = parseSlot(number);
-      const isDateHeader = key === "" && (number === "" || marker !== null);
+      const date = parseDateLabel(songTitle);
+      const isDateHeader = date !== null || (marker !== null && cell(row, keyCol) === "");
 
       if (isDateHeader) {
         current = {
-          id: `${blockIndex}-${rowIndex}`,
+          id: `${idPrefix}-${blockIndex}-${rowIndex}`,
           dateLabel: songTitle,
           serviceLabel: marker ? songListContent.serviceMarkerLabels[marker] : null,
           slot: marker,
-          date: parseDateLabel(songTitle),
+          date,
           startsAt: null,
           songs: [],
           pendingSongs: 0,
@@ -155,7 +185,7 @@ export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
       if (current === null) {
         // Songs before any date header: keep the data rather than drop it.
         current = {
-          id: `${blockIndex}-${rowIndex}`,
+          id: `${idPrefix}-${blockIndex}-${rowIndex}`,
           dateLabel: "",
           serviceLabel: null,
           slot: null,
@@ -171,10 +201,11 @@ export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
     }
   }
 
-  // A service with no songs and no unfilled slots is an artefact, not a service.
-  // One whose slots are all still "TBD" is real - just not planned yet.
+  // A dated service is real even before any songs are written under it, and so
+  // is one whose slots are all still "TBD" - just not planned yet. An undated
+  // heading with nothing under it is an artefact, not a service.
   const populated = services.filter(
-    (service) => service.songs.length > 0 || service.pendingSongs > 0,
+    (service) => service.songs.length > 0 || service.pendingSongs > 0 || service.date !== null,
   );
 
   return {
@@ -271,6 +302,104 @@ function buildFallbackRows(grid: string[][]): string[][] | null {
     .filter((row) => row.some((value) => value !== ""));
 
   return rows.length > 0 ? rows : null;
+}
+
+/**
+ * A service's rows in sheet order: each song, or null for a slot not filled in
+ * yet. "Psalm 120" written in the third row of five, the rest #N/A, reads
+ * [null, null, Psalm 120, null, null] - not Psalm 120 first.
+ */
+export function serviceSlots(service: Service): Array<Song | null> {
+  const total = service.songs.length + service.pendingSongs;
+  const pending = new Set(
+    service.pendingPositions ??
+      Array.from({ length: service.pendingSongs }, (_, index) => service.songs.length + index),
+  );
+  let next = 0;
+  return Array.from({ length: total }, (_, index) =>
+    pending.has(index) ? null : (service.songs[next++] ?? null),
+  );
+}
+
+/** "September" -> "september", "Missions Conference 2025" -> "missions-conference-2025". */
+export function monthSlug(title: string): string {
+  return title
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * A visible month as the schedule should show it while it is being planned.
+ *
+ * A new month's tab starts as a copy of last year's, and its rows are
+ * rewritten a service at a time - so for a while October holds this year's
+ * first services and last year's rest ("Sunday, October 26, 2025"). Those
+ * leftovers are not this month's schedule, so they are dropped here. (The
+ * song history reads the raw tabs, so last year's songs still count there.)
+ *
+ * In their place, every regular service (siteConfig.songList.regularServices)
+ * after the last one posted, and not already over, is added as a placeholder
+ * - "Songs not posted yet" - so the month never looks shorter than it is.
+ * Nothing is invented between services the sheet already lists: a gap there
+ * is the church's choice (a holiday, a special meeting), not an unfinished row.
+ *
+ * Tabs without a month in their title (special events) are left alone.
+ */
+export function planMonth(month: SongListMonth, now: number): SongListMonth {
+  const monthIndex = monthInTitle(month.title);
+  if (monthIndex === null || month.fallbackRows) return month;
+
+  // The year this tab is for: the month's nearest occurrence, allowing for a
+  // tab kept up a little after its month ends and one posted well ahead.
+  const offset = monthIndex - churchMonth(now);
+  const year = churchYear(now) + (offset < -2 ? 1 : offset > 9 ? -1 : 0);
+  const prefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}-`;
+
+  const kept = month.services.filter((service) => !service.date || service.date.startsWith(prefix));
+  const lastPosted = kept.reduce<string | null>(
+    (last, service) => (service.date && (!last || service.date > last) ? service.date : last),
+    null,
+  );
+
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const idPrefix = monthSlug(month.title);
+  const expected: Service[] = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${prefix}${String(day).padStart(2, "0")}`;
+    if (lastPosted && date <= lastPosted) continue;
+
+    for (const regular of siteConfig.songList.regularServices) {
+      if (regular.day !== dayOfWeek(date)) continue;
+      const startsAt = startsAtFor(date, regular.slot);
+      if (Date.parse(startsAt) <= now) continue;
+
+      expected.push({
+        id: `${idPrefix}-expected-${date}-${regular.slot}`,
+        dateLabel: dateLabelFor(date),
+        serviceLabel: songListContent.serviceMarkerLabels[regular.slot],
+        slot: regular.slot,
+        date,
+        startsAt,
+        songs: [],
+        pendingSongs: 0,
+        placeholder: true,
+      });
+    }
+  }
+
+  if (expected.length === 0 && kept.length === month.services.length) return month;
+
+  // In time order, the undated (if any) last. Array.sort is stable, so
+  // services at the same time keep their sheet order.
+  const at = (service: Service) =>
+    service.startsAt ? Date.parse(service.startsAt) : Number.POSITIVE_INFINITY;
+  const services = [...kept, ...expected].sort((a, b) => (at(a) === at(b) ? 0 : at(a) - at(b)));
+
+  return { ...month, services };
 }
 
 /** The services of these months that can be placed in time. */
@@ -412,6 +541,7 @@ export function filterServices(services: Service[], filter: SongFilter): Service
       ),
       // Unfilled slots never match a search.
       pendingSongs: 0,
+      pendingPositions: [],
     }))
     .filter((service) => service.songs.length > 0);
 }

@@ -8,7 +8,7 @@ import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import { serviceName } from "@/lib/share-services";
 import { songHint, type PlayIndex } from "@/lib/song-history";
-import { songKey } from "@/lib/song-list";
+import { serviceSlots, songKey } from "@/lib/song-list";
 import { splitDateLabel } from "@/lib/service-time";
 import type { ServiceStatus } from "@/lib/service-time";
 import type { Service } from "@/types/song-list";
@@ -138,7 +138,20 @@ export function ServiceCard({
           </tr>
         </thead>
         <tbody className={past ? "text-muted" : "text-ink"}>
-          {service.songs.map((song, index) => {
+          {/* In sheet order: a slot still marked "TBD" or "#N/A" keeps its
+              row, so a song already chosen for the third slot shows third. */}
+          {serviceSlots(service).map((song, index) => {
+            if (!song) {
+              return (
+                <tr key={`${service.id}-${index}`} className="align-baseline border-line [&:not(:last-child)]:border-b">
+                  <td className="py-2.5 pr-3" />
+                  <td className="py-2.5 pr-3 text-[0.95rem] italic text-muted sm:text-base">
+                    {songListContent.states.pendingSong}
+                  </td>
+                  <td className="py-2.5" />
+                </tr>
+              );
+            }
             const hint =
               !past && plays && service.startsAt
                 ? songHint(plays[songKey(song.title)], service.startsAt, now)
@@ -171,17 +184,16 @@ export function ServiceCard({
               </tr>
             );
           })}
-          {/* Slots still marked "TBD" in the sheet: the service is planned,
-              its songs are not chosen yet. */}
-          {Array.from({ length: service.pendingSongs }, (_, index) => (
-            <tr key={`pending-${index}`} className="align-baseline border-line [&:not(:last-child)]:border-b">
+          {/* Nothing under it yet: a date written with no rows, or a regular
+              service the sheet has not reached (see planMonth). */}
+          {service.songs.length === 0 && service.pendingSongs === 0 ? (
+            <tr>
               <td className="py-2.5 pr-3" />
-              <td className="py-2.5 pr-3 text-[0.95rem] italic text-muted sm:text-base">
-                {songListContent.states.pendingSong}
+              <td colSpan={2} className="py-2.5 text-[0.95rem] italic text-muted sm:text-base">
+                {songListContent.states.notPosted}
               </td>
-              <td className="py-2.5" />
             </tr>
-          ))}
+          ) : null}
         </tbody>
       </table>
     </Card>

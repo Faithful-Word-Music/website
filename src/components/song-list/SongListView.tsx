@@ -155,7 +155,8 @@ export function SongListView({
   const wholeById = new Map(month.services.map((service) => [service.id, service]));
   const selectedServices = month.services.filter((service) => selectedIds.has(service.id));
   const { share } = songListContent;
-  const canShare = month.services.length > 0 && !month.fallbackRows;
+  // Services not posted yet have nothing to share.
+  const canShare = month.services.some((service) => !service.placeholder) && !month.fallbackRows;
 
   // While searching, every match shows in date order, so nothing is tucked away.
   const earlierCount =
@@ -166,6 +167,7 @@ export function SongListView({
   const { earlier: earlierCopy } = songListContent;
 
   function cardExtras(service: Service): CardExtras {
+    if (service.placeholder) return {};
     if (selecting) {
       return {
         selection: {

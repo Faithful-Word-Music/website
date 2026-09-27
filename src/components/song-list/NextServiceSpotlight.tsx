@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { songListContent } from "@/content/song-list";
 import { formatCountdown, formatShortDate, splitDateLabel } from "@/lib/service-time";
 import { songHint, type PlayIndex } from "@/lib/song-history";
-import { songKey } from "@/lib/song-list";
+import { serviceSlots, songKey } from "@/lib/song-list";
 import type { Service } from "@/types/song-list";
 
 /**
@@ -100,7 +100,18 @@ export function NextServiceSpotlight({
           </div>
 
           <ol className="divide-y divide-line border-y border-line lg:border-t-0">
-            {featured.songs.map((song, index) => {
+            {serviceSlots(featured).map((song, index) => {
+              // A slot not filled in yet keeps its place among the songs.
+              if (!song) {
+                return (
+                  <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                    <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                    <span className="text-base italic text-muted sm:text-xl">
+                      {songListContent.states.pendingSong}
+                    </span>
+                  </li>
+                );
+              }
               const hint =
                 plays && !isNow ? songHint(plays[songKey(song.title)], featured.startsAt!, now) : null;
 
@@ -123,14 +134,14 @@ export function NextServiceSpotlight({
                 </li>
               );
             })}
-            {Array.from({ length: featured.pendingSongs }, (_, index) => (
-              <li key={`pending-${index}`} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+            {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
+              <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
                 <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
                 <span className="text-base italic text-muted sm:text-xl">
-                  {songListContent.states.pendingSong}
+                  {songListContent.states.notPosted}
                 </span>
               </li>
-            ))}
+            ) : null}
           </ol>
         </div>
       </Card>
