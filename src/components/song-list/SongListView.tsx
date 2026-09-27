@@ -6,6 +6,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useActiveMonth } from "@/components/song-list/active-month";
 import { FallbackTable } from "@/components/song-list/FallbackTable";
 import { KeySearch } from "@/components/song-list/KeySearch";
+import { CardGrid } from "@/components/song-list/CardGrid";
 import { MonthTabs } from "@/components/song-list/MonthTabs";
 import { NextServiceSpotlight } from "@/components/song-list/NextServiceSpotlight";
 import { ServiceCard } from "@/components/song-list/ServiceCard";
@@ -440,30 +441,31 @@ function MonthBody({
                 clipping box is itself positioned. Without it they escape the
                 collapsed section and stretch the page below the footer. */}
             <div className="relative min-h-0 overflow-hidden">
-              <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-                {earlier.map((service) => (
+              <CardGrid
+                services={earlier}
+                renderCard={(service) => (
                   <ServiceCard
-                    key={`${month.title}:${service.id}`}
                     service={service}
                     status="past"
                     plays={plays}
                     now={now}
                     {...cardExtras(service)}
                   />
-                ))}
-              </div>
+                )}
+              />
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        {later.map((service, index) => (
-          // The offset is by column, not by position in the list: cards reveal as
-          // you scroll past them, so a running index-based delay would leave the
-          // last ones waiting.
-          // Keyed by month too, so switching months brings in fresh cards.
-          <Reveal key={`${month.title}:${service.id}`} delay={(index % 2) * 70}>
+      {/* Ids carry the month, so switching months brings in fresh cards. */}
+      <CardGrid
+        services={later}
+        renderCard={(service, column) => (
+          // The offset is by column, not by position in the list: cards reveal
+          // as you scroll past them, so a running index-based delay would leave
+          // the last ones waiting.
+          <Reveal className="h-full" delay={(column - 1) * 70}>
             <ServiceCard
               animateIn={animateIn}
               service={service}
@@ -473,8 +475,8 @@ function MonthBody({
               {...cardExtras(service)}
             />
           </Reveal>
-        ))}
-      </div>
+        )}
+      />
     </div>
   );
 }

@@ -58,6 +58,51 @@ export function ServiceCard({
   const selected = selection?.selected ?? false;
   const blocked = selection?.blocked ?? false;
 
+  // A service the sheet has not reached yet (see planMonth): an outline with
+  // just its date and time, so the month reads whole while the real cards,
+  // with their songs, still stand out.
+  if (service.placeholder) {
+    // Stretched to fill beside a full card (see placeCards), so its content is
+    // centred in whatever height it gets.
+    return (
+      <div
+        className={cn(
+          "flex h-full items-center justify-between gap-4 rounded-card border border-dashed bg-staff/25 px-5 py-4 sm:px-6",
+          // `staff`, not `line`: a dashed hairline in the lightest rule colour
+          // all but vanishes on light paper.
+          highlighted ? "border-gold" : "border-staff",
+          animateIn && "animate-enter",
+        )}
+      >
+        <div className="min-w-0">
+          {weekday ? (
+            <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted">
+              {weekday}
+              {service.serviceLabel ? <span> · {service.serviceLabel}</span> : null}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-x-3">
+            <h3 id={headingId} className="font-display text-xl text-ink-soft sm:text-2xl">
+              {day || service.dateLabel}
+            </h3>
+            {highlighted ? <StatusPill status={status} /> : null}
+          </div>
+          {service.startsAt ? (
+            <ServiceTime startsAt={service.startsAt} className="mt-0.5 block text-sm text-muted" />
+          ) : null}
+        </div>
+        {/* A solid chip on the dashed card, so it reads crisply in both themes. */}
+        <p className="flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs italic text-muted shadow-card">
+          {/* An open circle, in the gold accent: a slot not yet filled. */}
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" className="shrink-0 text-gold">
+            <circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 1.6" />
+          </svg>
+          {songListContent.states.notPosted}
+        </p>
+      </div>
+    );
+  }
+
   // In select mode the whole card is the target. The checkbox handles its own
   // clicks (and the keyboard), so those are not counted twice.
   function onCardClick(event: MouseEvent<HTMLDivElement>) {
