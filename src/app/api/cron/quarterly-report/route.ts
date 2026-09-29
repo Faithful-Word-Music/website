@@ -19,7 +19,9 @@ import { getReportInputs } from "@/lib/song-archive";
  *
  *   ?preview=1   returns the email as a web page instead of sending it
  *                (add &at=YYYY-MM-DD to see it as it would be sent that day)
- *   ?force=1     sends it now, from any environment, even if already sent
+ *   ?force=1     sends a test copy now, from any environment, subject marked
+ *                "[Test]". It never counts as the quarter's report, so the
+ *                scheduled send still goes out. Add &at=YYYY-MM-DD as above.
  *
  * Without either, it sends only in production and at most once per quarter
  * (recorded in the archive database), so a cron job that fires twice sends
@@ -50,13 +52,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false }, { status: 503 });
   }
 
-  // A preview can be taken as if sent on another day (?at=2026-10-01): services
-  // posted for before then count as sung. Real sends always use the real time.
-  const at = preview ? Date.parse(`${params.get("at")}T07:00:00-07:00`) : NaN;
+  // A preview or test send can be made as if on another day (?at=2026-10-01):
+  // services posted for before then count as sung. The scheduled send always
+  // uses the real time.
+  const at = preview || force ? Date.parse(`${params.get("at")}T07:00:00-07:00`) : NaN;
   const report = Number.isNaN(at)
     ? buildQuarterlyReport(inputs.past, inputs.upcoming, inputs.loadedAt)
     : buildQuarterlyReport([...inputs.past, ...inputs.upcoming], inputs.upcoming, at);
-  const email = renderQuarterlyReport(report, inputs.persistent);
+  const rendered = renderQuarterlyReport(report, inputs.persistent);
+  // A test send says so, so it is never mistaken for the real report.
+  const email = force ? { ...rendered, subject: `[Test] ${rendered.subject}` } : rendered;
 
   if (preview) {
     return new NextResponse(email.html, {
