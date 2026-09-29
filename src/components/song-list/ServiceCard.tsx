@@ -113,12 +113,17 @@ export function ServiceCard({
 
   const card = (
     <Card
-      barline
+      // A service that has happened drops its gold (grey barline, faded
+      // panel, muted header), so upcoming ones are the only cards in colour.
+      barline={!past}
       className={cn(
         "h-full p-5 transition-[box-shadow,opacity] duration-300 sm:p-6",
         animateIn && "animate-enter",
-        highlighted && !selection && "ring-2 ring-gold ring-offset-2 ring-offset-paper",
-        past && "bg-surface/70",
+        // One gold edge and a soft glow - not a ring, whose offset gap left
+        // the card's own hairline showing inside it as a second border.
+        highlighted && !selection && "card-next",
+        past && "border-l-2 border-l-staff",
+        past && !selected && "bg-surface/40",
         selection && "select-none",
         selection && (blocked ? "cursor-not-allowed opacity-55" : "cursor-pointer"),
         selected && "bg-surface ring-2 ring-ink ring-offset-2 ring-offset-paper",
@@ -127,7 +132,12 @@ export function ServiceCard({
       <div className="mb-3 flex items-start justify-between gap-3 border-b border-line pb-3">
         <div className="min-w-0">
           {weekday ? (
-            <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-gold-dark">
+            <p
+              className={cn(
+                "font-sans text-[0.7rem] font-semibold uppercase tracking-[0.16em]",
+                past ? "text-muted" : "text-gold-dark",
+              )}
+            >
               {weekday}
               {service.serviceLabel ? (
                 <span className="text-muted"> · {service.serviceLabel}</span>
@@ -147,10 +157,13 @@ export function ServiceCard({
             {status === "next" || status === "now" ? <StatusPill status={status} /> : null}
           </div>
           {!weekday && service.serviceLabel ? (
-            <p className="text-sm text-gold-dark">{service.serviceLabel}</p>
+            <p className={cn("text-sm", past ? "text-muted" : "text-gold-dark")}>{service.serviceLabel}</p>
           ) : null}
           {service.startsAt ? (
-            <ServiceTime startsAt={service.startsAt} className="mt-0.5 block text-sm text-ink-soft" />
+            <ServiceTime
+              startsAt={service.startsAt}
+              className={cn("mt-0.5 block text-sm", past ? "text-muted" : "text-ink-soft")}
+            />
           ) : null}
         </div>
         <div className="-mr-2 -mt-2 shrink-0">

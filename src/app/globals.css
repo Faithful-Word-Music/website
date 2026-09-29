@@ -36,10 +36,7 @@
   --font-display: var(--font-source-serif), Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
-  /* Depth: restrained, paper-like rather than glossy */
-  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04), 0 8px 24px -12px rgba(17, 17, 17, 0.1);
-  /* Floating controls (Back to top): enough lift to stand off the paper. */
-  --shadow-lift: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px -10px rgba(17, 17, 17, 0.3);
+  /* Depth: card and lift live in :root below, with their own utilities. */
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 32px -16px rgba(17, 17, 17, 0.18);
 
   --radius-card: 0.75rem;
@@ -55,13 +52,37 @@
   --spacing-section: 6rem;
 }
 
-/* Frosted glass (header, search pills). Plain variables rather than @theme
-   tokens: nothing needs a Tailwind utility for them. */
+/* Frosted glass (header, search pills) and shadows. Plain variables rather
+   than @theme tokens. */
 :root {
   color-scheme: light;
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-bg-blur: rgba(255, 255, 255, 0.6);
   --glass-border: rgba(255, 255, 255, 0.8);
+  /* Shadows are plain variables, not @theme tokens: Tailwind bakes a shadow
+     token's value into its utility at build time, so the dark-mode values
+     below would never reach it. The shadow-card and shadow-lift utilities
+     (see @utility) read these at runtime instead. */
+  /* Depth: restrained, paper-like rather than glossy */
+  --shadow-card: 0 1px 2px rgba(17, 17, 17, 0.04), 0 8px 24px -12px rgba(17, 17, 17, 0.1);
+  /* Floating controls (Back to top): enough lift to stand off the paper. */
+  --shadow-lift: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px -10px rgba(17, 17, 17, 0.3);
+  /* The next service's glow (.card-next). */
+  --shadow-card-next: 0 1px 2px rgba(17, 17, 17, 0.04), 0 0 28px -6px rgba(176, 141, 87, 0.35);
+}
+
+/* Composed like Tailwind's own shadow utilities, so a ring on the same
+   element still shows. The fallbacks cover pages with no ring utilities. */
+@utility shadow-card {
+  --tw-shadow: var(--shadow-card);
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+@utility shadow-lift {
+  --tw-shadow: var(--shadow-lift);
+  box-shadow: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000),
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
 /* ===========================================================================
@@ -86,6 +107,7 @@
   --color-gold: #c9a36b;
   --color-gold-dark: #d4b27d;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
   --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
   --glass-bg: rgba(28, 28, 26, 0.8);
@@ -106,6 +128,7 @@
     --color-gold: #c9a36b;
     --color-gold-dark: #d4b27d;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
     --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
     --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
     --glass-bg: rgba(28, 28, 26, 0.8);
@@ -333,6 +356,20 @@ html.motion-ready .reveal {
     opacity: 1;
     transform: none;
   }
+}
+
+/* The next (or current) service card: one gold edge, a faint gold wash at
+   the top and a soft glow, so it is lifted rather than boxed in. Unlayered,
+   so it wins over Card's own border and background utilities. */
+.card-next {
+  border-color: color-mix(in srgb, var(--color-gold) 70%, transparent);
+  border-left-color: var(--color-gold);
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-gold) 7%, var(--color-surface)),
+    var(--color-surface) 45%
+  );
+  box-shadow: var(--shadow-card-next);
 }
 
 /* --- 3. Content that appears on request ---------------------------------
