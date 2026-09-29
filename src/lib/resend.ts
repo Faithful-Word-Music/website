@@ -4,6 +4,7 @@ import { Resend } from "resend";
 
 import { siteConfig } from "@/config/site";
 import { contactContent } from "@/content/contact";
+import { escapeHtml } from "@/lib/html";
 import type { ContactFormValues } from "@/lib/validation";
 
 /**
@@ -34,14 +35,6 @@ export function isEmailConfigured(): boolean {
 export type SendResult =
   | { ok: true }
   | { ok: false; reason: "not-configured" | "send-failed" };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /**
  * Sends one contact-form submission to the ministry inbox.
@@ -211,6 +204,46 @@ export async function sendAlertEmail(subject: string, text: string): Promise<Sen
   } catch (caught) {
     console.error(
       "[alert] Could not reach Resend:",
+      caught instanceof Error ? caught.message : "unknown error",
+    );
+    return { ok: false, reason: "send-failed" };
+  }
+}
+
+/**
+ * Sends the music director's quarterly report (see src/lib/quarterly-report.ts).
+ * It always goes to the ministry inbox, siteConfig.mail.to, and takes no
+ * recipient: the report is for the music director alone. Never throws.
+ */
+export async function sendReportEmail(message: {
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<SendResult> {
+  const resend = getClient();
+  if (!resend) return { ok: false, reason: "not-configured" };
+
+  try {
+    const { error } = await resend.emails.send({
+      from: siteConfig.mail.from,
+      to: [siteConfig.mail.to],
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
+
+    if (error) {
+      console.error(
+        "[report] Resend rejected the report:",
+        `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
+      );
+      return { ok: false, reason: "send-failed" };
+    }
+
+    return { ok: true };
+  } catch (caught) {
+    console.error(
+      "[report] Could not reach Resend:",
       caught instanceof Error ? caught.message : "unknown error",
     );
     return { ok: false, reason: "send-failed" };

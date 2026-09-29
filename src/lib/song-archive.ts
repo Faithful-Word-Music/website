@@ -281,3 +281,33 @@ export async function syncArchive(now: number): Promise<SaveSummary & { sheetSer
   const summary = await saveServices(services, now);
   return { ...summary, sheetServices: services.length };
 }
+
+export interface ReportInputs {
+  /** Every service that has already happened. */
+  past: DatedService[];
+  /** Services posted in the sheet that have not happened yet. */
+  upcoming: DatedService[];
+  persistent: boolean;
+  loadedAt: number;
+}
+
+/**
+ * The raw material for the quarterly report (see src/lib/quarterly-report.ts):
+ * the whole history, and what is already scheduled. null when neither the
+ * sheet nor the archive can be read.
+ */
+export async function getReportInputs(): Promise<ReportInputs | null> {
+  const sheet = await getSongList();
+  const loadedAt = Date.now();
+  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
+  if (!sheet.ok && !history.persistent) return null;
+
+  return {
+    past: pastServices(history.services, loadedAt),
+    upcoming: sheet.ok
+      ? datedServices(sheet.months).filter((service) => Date.parse(service.startsAt) > loadedAt)
+      : [],
+    persistent: history.persistent,
+    loadedAt,
+  };
+}

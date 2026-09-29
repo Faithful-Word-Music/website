@@ -36,7 +36,7 @@ export type Role = "opener" | "middle" | "closer";
 export type WeeklyService = "sundayMorning" | "sundayEvening" | "wednesday" | "other";
 export const REGULAR_SERVICES = ["sundayMorning", "sundayEvening", "wednesday"] as const;
 
-function weeklyService(service: DatedService): WeeklyService {
+export function weeklyService(service: Pick<DatedService, "date" | "slot">): WeeklyService {
   const day = dayOfWeek(service.date);
   if (day === 0) return service.slot === "AM" ? "sundayMorning" : "sundayEvening";
   return day === 3 && service.slot === "PM" ? "wednesday" : "other";

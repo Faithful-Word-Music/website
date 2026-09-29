@@ -1,8 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
-
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
+import { isCronAuthorized } from "@/lib/cron-auth";
 import { sendAlertEmail } from "@/lib/resend";
 import { ARCHIVE_TAG, syncArchive } from "@/lib/song-archive";
 
@@ -23,15 +22,6 @@ import { ARCHIVE_TAG, syncArchive } from "@/lib/song-archive";
  */
 export const dynamic = "force-dynamic";
 
-function isAuthorized(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-
-  const given = Buffer.from(request.headers.get("authorization") ?? "");
-  const expected = Buffer.from(`Bearer ${secret}`);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-}
-
 async function alert(subject: string, lines: string[]) {
   if (process.env.VERCEL_ENV !== "production") return;
   const text = [
@@ -46,7 +36,7 @@ async function alert(subject: string, lines: string[]) {
 }
 
 export async function GET(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isCronAuthorized(request)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 

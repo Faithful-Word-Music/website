@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/sync-archive",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/quarterly-report",
+      "schedule": "0 14 1 1,4,7,10 *"
     }
   ]
 }

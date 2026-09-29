@@ -51,6 +51,7 @@ One Next.js app on Vercel. There's no separate backend, CMS or login. The song l
 | `/contact` | Contact form, emailed to the ministry through Resend |
 | `POST /api/contact` | The contact form's endpoint |
 | `GET /api/cron/sync-archive` | Nightly job that saves past services to the archive database |
+| `GET /api/cron/quarterly-report` | Emails the music director a report on the quarter just ended |
 
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Google Sheets API ·
 Neon Postgres (song archive) · Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) ·
@@ -197,6 +198,10 @@ The sheet only keeps a rolling twelve months, so every past service is also save
 - **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/song-list/archive/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
   - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
 - **"Often sung with":** a song's page lists up to three songs it is habitually paired with (`buildCompanions()` in `lib/song-history.ts`). A pair only counts when it was sung together at least 3 times, and in at least a third of the services where either song was sung, so a hymn that's simply sung a lot doesn't look paired with everything. Most songs have no such partner and show no section at all. Tune the rule with `siteConfig.songList.pairings`.
+- **Quarterly report:** on January 1, April 1, July 1 and October 1 at 7 AM Arizona time, a Vercel Cron job (`/api/cron/quarterly-report`) emails a report on the quarter just ended to `siteConfig.mail.to` only. It is kept short. First come four totals compared with the quarter before. Next is **Before you plan**: close repeats already scheduled, songs due to come back, forgotten favourites, and songs sung this time last year but not since. Last is a brief **Looking back**: a chart of variety by quarter, most sung, new songs, habitual pairs, and a bar chart of keys. Charts are HTML tables, since mail apps strip scripts and SVG, and every bar carries its value. Lists are capped at five songs (eight for the season ahead), sections with nothing to say are left out, and it uses the site's fonts and colours, including its dark theme where the mail app allows. The figures are in `lib/quarterly-report.ts`, the email layout in `lib/quarterly-report-email.ts`, and its thresholds are constants at the top of the first.
+  - Christmas songs follow the church rule: sung only from the first service after Thanksgiving to Christmas Day (`lib/church-calendar.ts`). A Christmas song is detected from the records as one only ever sung in that season. Christmas songs are never called due, forgotten or overused, get their own list when the coming quarter holds Christmas, and are flagged if scheduled before the season.
+  - It is sent at most once per quarter (recorded in a `report_log` table), and only from production.
+  - To see it without sending, run `curl -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/cron/quarterly-report?preview=1&at=2026-10-01" > report.html`. `at` shows it as it would be sent that day. `?force=1` sends it now.
 - **Links:** every song title, on the schedule, in the archive and on the year pages, links to its song page, with a faint dotted gold underline so it reads as a link (`SongLink` / `songLinkClasses`). The song page is where the sheet music files will go.
 - **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
 

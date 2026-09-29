@@ -10,7 +10,7 @@ import type { DatedService, SongRecord } from "@/types/song-list";
  * ---------------------------------------------------------------------------
  * The spreadsheet keeps a rolling twelve months - each month's tab is reused
  * the following year. So the permanent record is the archive database, topped
- * up from the sheet (see src/lib/archive-sync.ts). The two are combined here
+ * up from the sheet (see syncArchive in src/lib/song-archive.ts). The two are combined here
  * with one rule, used identically when saving and when reading:
  *
  *   A service is FRESH for 30 days after it takes place. While fresh, the

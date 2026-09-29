@@ -184,3 +184,43 @@ export async function saveServices(services: DatedService[], now: number): Promi
 
   return summary;
 }
+
+/**
+ * Records that the quarterly report for `quarter` ("2026-Q3") is being sent.
+ * True the first time for a quarter, false if it was already claimed - so a
+ * cron job that fires twice never sends the report twice. null when the
+ * database is not configured, and there is nothing to guard with.
+ */
+export async function claimReport(quarter: string): Promise<boolean | null> {
+  const sql = getSql();
+  if (!sql) return null;
+
+  await ensureReportLog();
+  const rows = (await sql.query(
+    `INSERT INTO report_log (quarter) VALUES ($1) ON CONFLICT (quarter) DO NOTHING RETURNING quarter`,
+    [quarter],
+  )) as Array<{ quarter: string }>;
+  return rows.length > 0;
+}
+
+/** Undoes claimReport after a failed send, so the report can be sent again. */
+export async function releaseReport(quarter: string): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureReportLog();
+  await sql.query(`DELETE FROM report_log WHERE quarter = $1`, [quarter]);
+}
+
+let reportLogReady = false;
+
+async function ensureReportLog(): Promise<void> {
+  const sql = getSql();
+  if (!sql || reportLogReady) return;
+  await sql.query(
+    `CREATE TABLE IF NOT EXISTS report_log (
+       quarter text        PRIMARY KEY,
+       sent_at timestamptz NOT NULL DEFAULT now()
+     )`,
+  );
+  reportLogReady = true;
+}
