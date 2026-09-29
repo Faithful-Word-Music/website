@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { MoreSongs } from "@/components/song-list/MoreSongs";
+import { songLinkClasses, songLinkGroupClasses } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
@@ -83,7 +84,7 @@ export function MostSung({ songs }: { songs: YearRecap["topSongs"] }) {
               <span className="tnum text-sm font-medium text-muted sm:text-base">
                 {song.number ?? <span aria-hidden="true">·</span>}
               </span>
-              <span className="min-w-0 text-[0.95rem] leading-snug text-ink decoration-gold underline-offset-4 group-hover:underline sm:text-base">
+              <span className={cn("min-w-0 text-[0.95rem] leading-snug text-ink sm:text-base", songLinkGroupClasses)}>
                 {song.title}
               </span>
               <span className="tnum hidden whitespace-nowrap text-right text-sm font-medium text-gold-dark sm:block sm:text-base">
@@ -239,7 +240,7 @@ export function RecapFacts({ recap }: { recap: YearRecap }) {
           </h3>
           <p className="mt-2 font-display text-xl leading-snug text-ink">
             {item.song ? (
-              <Link href={songHref(item.song)} className="decoration-gold underline-offset-4 hover:underline">
+              <Link href={songHref(item.song)} className={songLinkClasses}>
                 {item.song.number ? <span className="tnum text-gold-dark">{item.song.number} </span> : null}
                 {item.song.title}
               </Link>

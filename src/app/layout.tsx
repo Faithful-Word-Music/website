@@ -4,6 +4,7 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
+import { SongOriginTracker } from "@/components/song-list/SongOriginTracker";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
@@ -94,6 +95,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
         {/* A thin bar across the top while the next page loads. */}
         <NavigationProgress />
+        <SongOriginTracker />
         <SkipLink />
         <Header />
         <main id="main" className="flex-1">

@@ -156,7 +156,12 @@ export const songListContent = {
 
   /** One song's page in the archive, /song-list/archive/[song]. */
   songPage: {
-    backLabel: "Back to the archive",
+    /** The back link names the page the visitor came from. {year} is replaced at render time. */
+    backLabels: {
+      archive: "Back to the archive",
+      songList: "Back to the song list",
+      year: "Back to {year} in song",
+    },
     /** {number} is replaced at render time. */
     numberEyebrow: "Hymn No. {number}",
     fallbackEyebrow: "Song archive",

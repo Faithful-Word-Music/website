@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useRef, useState } from "react";
 
+import { songLinkGroupClasses } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import { formatLongDate } from "@/lib/service-time";
 import { songSlug } from "@/lib/song-list";
@@ -79,7 +80,7 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
                     <span className="tnum text-sm font-medium text-muted">
                       {song.number ?? <span aria-hidden="true">·</span>}
                     </span>
-                    <span className="min-w-0 text-[0.95rem] leading-snug text-ink decoration-gold underline-offset-4 group-hover:underline">
+                    <span className={`min-w-0 text-[0.95rem] leading-snug text-ink ${songLinkGroupClasses}`}>
                       {song.title}
                     </span>
                     <span className="tnum whitespace-nowrap text-right text-xs text-muted">

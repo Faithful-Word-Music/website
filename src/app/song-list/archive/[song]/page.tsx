@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { SongBackLink } from "@/components/song-list/SongBackLink";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
@@ -60,13 +60,7 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <Link
-          href="/song-list/archive"
-          className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-muted transition-colors hover:text-ink"
-        >
-          <span aria-hidden="true">←</span>
-          {songPage.backLabel}
-        </Link>
+        <SongBackLink />
 
         <SectionHeading
           as="h1"

@@ -3,6 +3,7 @@
 import type { MouseEvent, ReactNode } from "react";
 
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
@@ -211,7 +212,7 @@ export function ServiceCard({
                   {song.number ?? <span aria-hidden="true">·</span>}
                 </td>
                 <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base">
-                  {song.title}
+                  <SongLink title={song.title} />
                   {hint ? (
                     <span>
                       <SongHintText hint={hint} now={now} />
