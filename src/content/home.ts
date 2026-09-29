@@ -27,6 +27,12 @@ export const homeContent = {
     title: "Know what we are singing before you arrive",
     body: "Browse the songs scheduled for congregational singing at Faithful Word Baptist Church, with hymnal numbers and keys for every service. The list comes straight from our song schedule, so it stays current.",
     cta: { label: "View Song List", href: "/song-list" },
+    /** The live card showing the next service (or the one happening now). */
+    next: {
+      nextEyebrow: "Next service",
+      nowEyebrow: "Happening now",
+      fullList: "See the full song list",
+    },
   },
 
   contact: {

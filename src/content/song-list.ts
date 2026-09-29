@@ -337,7 +337,7 @@ export const songListContent = {
       onceMore: "and {count} more",
       onceMoreTitle: "Also sung just once",
       /** {count} is how many are in the list. */
-      onceMoreLead: ["{count} more song sung only once, most recent first.", "{count} more songs sung only once, most recent first."],
+      onceMoreLead: ["{count} more song sung only once, oldest first.", "{count} more songs sung only once, oldest first."],
       close: "Close",
       timesSung: ["Sung once", "Sung {count} times"],
     },

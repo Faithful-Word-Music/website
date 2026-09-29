@@ -71,7 +71,7 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
             </div>
 
             <ol className="overflow-y-auto overscroll-contain px-6 py-2">
-              {songs.map((song) => (
+              {[...songs].reverse().map((song) => (
                 <li key={song.id} className="border-b border-line last:border-b-0">
                   <Link
                     href={`/song-list/archive/${songSlug(song.title)}`}
