@@ -164,14 +164,115 @@ export const songListContent = {
     },
     /** {number} is replaced at render time. */
     numberEyebrow: "Hymn No. {number}",
-    fallbackEyebrow: "Song archive",
+    /** Songs without a hymnal number are inserts, printed in the front of every hymnal. */
+    fallbackEyebrow: "Insert",
     stats: {
       count: "Times sung",
       first: "First sung",
       last: "Last sung",
       none: "Not yet",
+      /** Under the count. {count} and {total} are replaced at render time. */
+      services: "In {count} of {total} services",
+      rank: "#{position} most sung",
+      jointRank: "Joint #{position} most sung",
+      once: "Sung once so far",
+      scheduledOnly: "First time coming up",
+    },
+    timeline: {
+      title: "Through the months",
+      caption: "Each dot is a time it was sung; rings are services it is scheduled for.",
+      clippedCaption: "The last two years. Each dot is a time it was sung; rings are services it is scheduled for.",
+      /** Tooltip. {month} and {detail} are replaced at render time. */
+      tooltip: "{month}: {detail}",
+      sung: ["sung once", "sung {count} times"],
+      upcoming: ["scheduled once", "scheduled {count} times"],
+      none: "not sung",
+    },
+    rhythm: {
+      title: "How often",
+      /** {gap} is replaced at render time, e.g. "6 weeks". */
+      usually: "Usually every {gap}",
+      since: "Last sung {ago}",
+      longest: "Longest wait between: {gap}",
+      status: {
+        scheduled: "Scheduled",
+        due: "Due",
+        recent: "Sung recently",
+      },
+    },
+    placement: {
+      title: "Place in the service",
+      habit: {
+        opener: "Usually the opening song",
+        middle: "Usually mid-service",
+        closer: "Usually the closing song",
+      },
+      /** When every time sung was in the same place. {count} is replaced at render time. */
+      always: {
+        opener: "Opened all {count} times",
+        middle: "Mid-service all {count} times",
+        closer: "Closed all {count} times",
+      },
+      alwaysTwo: {
+        opener: "Opened both times",
+        middle: "Mid-service both times",
+        closer: "Closed both times",
+      },
+      /** For a song sung once. */
+      single: {
+        opener: "Sung as the opening song",
+        middle: "Sung mid-service",
+        closer: "Sung as the closing song",
+      },
+      share: "{count} of {total} times",
+      none: "No set place in the service",
+      labels: { opener: "Opening", middle: "Middle", closer: "Closing" },
     },
     keysTitle: "Keys",
+    /** {key} is replaced at render time. */
+    keysAlways: "Always in {key}",
+    keysMostly: "Mostly in {key}",
+    keysMany: "Sung in {count} keys",
+    signature: {
+      none: "No sharps or flats",
+      sharps: ["1 sharp", "{count} sharps"],
+      flats: ["1 flat", "{count} flats"],
+      relativeMajor: "relative major {key}",
+      relativeMinor: "relative minor {key}",
+      /** For modes such as C Dorian. */
+      sameNotes: "same notes as {key} major",
+    },
+    weekly: {
+      title: "Which services",
+      all: "Sung all week",
+      /** Under "Sung all week". {count} and {total} are replaced at render time. */
+      allDetail: "Sunday morning, Sunday evening and Wednesday, {count} of {total} times it came round",
+      allEvery: ["Sunday morning, Sunday evening and Wednesday", "Sunday morning, Sunday evening and Wednesday, all {count} times it came round"],
+      mostly: {
+        sundayMorning: "Mostly Sunday mornings",
+        sundayEvening: "Mostly Sunday evenings",
+        wednesday: "Mostly Wednesdays",
+        other: "Mostly special services",
+      },
+      always: {
+        sundayMorning: "Always Sunday mornings",
+        sundayEvening: "Always Sunday evenings",
+        wednesday: "Always Wednesdays",
+        other: "Only at special services",
+      },
+      single: {
+        sundayMorning: "Sung on a Sunday morning",
+        sundayEvening: "Sung on a Sunday evening",
+        wednesday: "Sung on a Wednesday",
+        other: "Sung at a special service",
+      },
+      none: "No usual service",
+      /** Under the headline. {count}, {total} and {weeks} are replaced at render time. */
+      share: "{count} of {total} times",
+      oncePerWeek: "Never twice in the same week",
+      acrossWeeks: "{count} times across {weeks} weeks",
+      labels: { sundayMorning: "Sun AM", sundayEvening: "Sun PM", wednesday: "Wed", other: "Other" },
+    },
     /** {count} is replaced at render time. */
     keyCount: "{count}×",
     companionsTitle: "Often sung with",

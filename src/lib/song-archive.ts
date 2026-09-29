@@ -15,6 +15,7 @@ import {
   type PlayIndex,
 } from "@/lib/song-history";
 import { datedServices, songKey, songSlug } from "@/lib/song-list";
+import { buildSongStats, type SongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap, type YearRecap } from "@/lib/year-recap";
 import type {
   DatedService,
@@ -207,6 +208,7 @@ export interface SongPageData {
   upcoming: SongPlay[];
   /** Songs habitually sung in the same service; usually none. */
   companions: Companion[];
+  stats: SongStats;
   loadedAt: number;
 }
 
@@ -255,6 +257,12 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
       history && record
         ? buildCompanions(history.past, record.id, siteConfig.songList.pairings)
         : [],
+    stats: buildSongStats(
+      history?.past ?? [],
+      record?.id ?? songKey(upcoming[0].title),
+      upcoming.map((play) => play.startsAt),
+      loadedAt,
+    ),
     loadedAt,
   };
 }

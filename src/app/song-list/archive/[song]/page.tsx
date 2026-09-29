@@ -3,23 +3,16 @@ import { notFound } from "next/navigation";
 
 import { SongBackLink } from "@/components/song-list/SongBackLink";
 import { SongLink } from "@/components/song-list/SongLink";
+import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { StatTile } from "@/components/ui/StatTile";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
-import { normalizeKey } from "@/lib/song-list";
 import { getSongPage, type SongPlay } from "@/lib/song-archive";
 import type { Companion } from "@/lib/song-history";
-import {
-  churchYear,
-  formatAgo,
-  formatChurchTime,
-  formatDayDate,
-  formatLongDate,
-} from "@/lib/service-time";
+import { churchYear, formatChurchTime, formatDayDate } from "@/lib/service-time";
 
 const { songPage, serviceMarkerLabels } = songListContent;
 
@@ -53,9 +46,7 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
   const data = await getSongPage(song);
   if (!data) notFound();
 
-  const { title, number, plays, upcoming, companions, loadedAt } = data;
-  const last = plays[0];
-  const first = plays[plays.length - 1];
+  const { title, number, plays, upcoming, companions, stats, loadedAt } = data;
 
   return (
     <PageTransition>
@@ -71,20 +62,11 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
           className="mt-6 max-w-2xl"
         />
 
-        <dl className="mt-10 grid grid-cols-3 gap-3 sm:gap-5">
-          <StatTile label={songPage.stats.count} value={plays.length} />
-          <StatTile
-            label={songPage.stats.first}
-            value={first ? formatLongDate(first.startsAt) : songPage.stats.none}
-          />
-          <StatTile
-            label={songPage.stats.last}
-            value={last ? formatLongDate(last.startsAt) : songPage.stats.none}
-            detail={last ? capitalize(formatAgo(Date.parse(last.startsAt), loadedAt)) : null}
-          />
-        </dl>
-
-        <KeysUsed plays={plays} />
+        <StatBand stats={stats} loadedAt={loadedAt} upcoming={upcoming.length} />
+        <div className="mt-5">
+          <SongTimeline stats={stats} loadedAt={loadedAt} />
+        </div>
+        <SongDetails stats={stats} loadedAt={loadedAt} />
 
         <Companions companions={companions} />
 
@@ -120,47 +102,6 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
         </section>
       </Container>
     </PageTransition>
-  );
-}
-
-/**
- * The keys it has been sung in, most used first, with how many times each.
- * Here the counts are the point: "F 3×, Ab 3×" is what a musician wants.
- */
-function KeysUsed({ plays }: { plays: SongPlay[] }) {
-  const counts = new Map<string, { key: string; count: number }>();
-  for (const play of plays) {
-    if (!play.key) continue;
-    const id = normalizeKey(play.key);
-    const entry = counts.get(id) ?? { key: play.key.trim(), count: 0 };
-    entry.count += 1;
-    counts.set(id, entry);
-  }
-  const keys = [...counts.values()].sort((a, b) => b.count - a.count);
-  if (keys.length === 0) return null;
-
-  return (
-    <section aria-labelledby="keys" className="mt-8">
-      <h2
-        id="keys"
-        className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-muted"
-      >
-        {songPage.keysTitle}
-      </h2>
-      <ul className="mt-2 flex flex-wrap gap-2">
-        {keys.map((entry) => (
-          <li
-            key={entry.key}
-            className="tnum rounded-md border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink"
-          >
-            {entry.key}
-            <span className="ml-1.5 text-muted">
-              {songPage.keyCount.replace("{count}", String(entry.count))}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -236,8 +177,4 @@ function groupByYear(plays: SongPlay[]): Array<[number, SongPlay[]]> {
     groups.set(year, [...(groups.get(year) ?? []), play]);
   }
   return [...groups.entries()];
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

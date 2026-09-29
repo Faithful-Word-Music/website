@@ -24,7 +24,7 @@ const nameOfMonth = (month: number) => monthName.format(Date.UTC(2000, month, 1)
 const listFormat = new Intl.ListFormat("en-US", { type: "conjunction" });
 
 /** A gap in days as people say it: "3 weeks", "5 months", "2 years". */
-function formatGap(days: number): string {
+export function formatGap(days: number): string {
   if (days < 14) return `${days} days`;
   if (days < 63) return `${Math.round(days / 7)} weeks`;
   if (days < 730) return `${Math.round(days / 30.44)} months`;
@@ -189,7 +189,7 @@ export function KeyChart({ keys }: { keys: YearRecap["keys"] }) {
   );
 }
 
-function ChartCard({ title, caption, children }: { title: string; caption: string; children: ReactNode }) {
+export function ChartCard({ title, caption, children }: { title: string; caption: string; children: ReactNode }) {
   return (
     <Card className="p-5 sm:p-7">
       <h2 className="font-display text-xl text-ink sm:text-2xl">{title}</h2>
