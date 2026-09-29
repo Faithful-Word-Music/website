@@ -21,6 +21,8 @@ export const PDF_METRICS = {
   headerPt: 53.5, // measured 52.6 in the rendered PDF
   /** The footnote, its rule and the space above it. */
   notePt: 25, // measured 24.2
+  /** The site and contact line at the foot of every page, and the space above it. */
+  footerPt: 14,
   /** A service's date line, its rule, and the air above its first song. */
   serviceHeaderPt: 20.5,
   /** Hairline between song rows. */
@@ -97,12 +99,13 @@ export function splitColumns(
   return best;
 }
 
-/** Height the two columns have once the heading (and any footnote) are placed. */
+/** Height the two columns have once the heading, footer (and any footnote) are placed. */
 export function columnSpace(month: SongListMonth): number {
   return (
     PDF_PAGE.height -
     PDF_PAGE.paddingY * 2 -
     PDF_METRICS.headerPt -
+    PDF_METRICS.footerPt -
     (month.note ? PDF_METRICS.notePt : 0)
   );
 }

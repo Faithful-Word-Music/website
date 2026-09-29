@@ -2,7 +2,7 @@ import "server-only";
 
 import { join } from "node:path";
 
-import { Document, Font, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { Document, Font, Link, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
@@ -65,7 +65,9 @@ Font.registerHyphenationCallback((word) => [word]);
 const styles = StyleSheet.create({
   page: {
     paddingHorizontal: PDF_PAGE.paddingX,
-    paddingVertical: PDF_PAGE.paddingY,
+    paddingTop: PDF_PAGE.paddingY,
+    // Room for the footer, on every page a long month runs to.
+    paddingBottom: PDF_PAGE.paddingY + PDF_METRICS.footerPt,
     fontFamily: "Inter",
     color: INK,
     backgroundColor: "#ffffff",
@@ -176,7 +178,24 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     color: MUTED,
   },
+  footer: {
+    position: "absolute",
+    bottom: PDF_PAGE.paddingY,
+    left: PDF_PAGE.paddingX,
+    right: PDF_PAGE.paddingX,
+    textAlign: "center",
+    fontSize: 7,
+    letterSpacing: 0.3,
+    color: MUTED,
+  },
+  footerLink: {
+    color: MUTED,
+    textDecoration: "none",
+  },
 });
+
+// "faithfulwordmusic.com", as printed in the footer.
+const SITE_LABEL = siteConfig.url.replace(/^https?:\/\//, "");
 
 export function SongListPdf({ month }: { month: SongListMonth }) {
   const { rowPt, gapPt, left, right } = layoutMonth(month);
@@ -206,6 +225,17 @@ export function SongListPdf({ month }: { month: SongListMonth }) {
         </View>
 
         {month.note ? <Text style={styles.note}>{month.note}</Text> : null}
+
+        {/* Where the printout came from, and who to ask - on every page. */}
+        <Text fixed style={styles.footer}>
+          <Link src={siteConfig.url} style={styles.footerLink}>
+            {SITE_LABEL}
+          </Link>
+          {"  ·  "}
+          <Link src={`mailto:${siteConfig.contactEmail}`} style={styles.footerLink}>
+            {siteConfig.contactEmail}
+          </Link>
+        </Text>
       </Page>
     </Document>
   );
