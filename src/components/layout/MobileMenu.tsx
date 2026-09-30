@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect } from "react";
 
+import { MobileSearchBar } from "@/components/search/CommandPalette";
 import { cn } from "@/components/ui/cn";
+import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { siteConfig } from "@/config/site";
 
 /**
@@ -18,45 +20,17 @@ export function MobileMenu({
   onClose,
   panelId,
   isActive,
+  onSearch,
 }: {
   open: boolean;
   onClose: () => void;
   panelId: string;
   isActive: (href: string) => boolean;
+  /** Opens the search palette (the menu closes as it opens). */
+  onSearch: () => void;
 }) {
-  /**
-   * Lock the page while the menu is open.
-   *
-   * `overflow: hidden` on <body> is the usual suggestion and it does not hold
-   * on iOS Safari. Pinning the body with `position: fixed` and an offsetting
-   * `top` does, and keeps the visual position identical.
-   *
-   * Restoring uses `behavior: "instant"` on purpose: globals.css sets
-   * `html { scroll-behavior: smooth }`, so a plain scrollTo would visibly
-   * animate the page back to where it already was.
-   */
-  useEffect(() => {
-    if (!open) return;
-
-    const scrollY = window.scrollY;
-    const body = document.body;
-    const previous = {
-      position: body.style.position,
-      top: body.style.top,
-      width: body.style.width,
-    };
-
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-
-    return () => {
-      body.style.position = previous.position;
-      body.style.top = previous.top;
-      body.style.width = previous.width;
-      window.scrollTo({ top: scrollY, behavior: "instant" });
-    };
-  }, [open]);
+  // Lock the page while the menu is open.
+  useScrollLock(open);
 
   /**
    * Close if the viewport grows past the breakpoint. Without this, `md:hidden`
@@ -90,42 +64,52 @@ export function MobileMenu({
       )}
     >
       <div className="flex min-h-full flex-col justify-between">
-        <nav aria-label="Primary" className="px-5 pt-6">
-          <ul className="flex flex-col">
-            {siteConfig.nav.map((item, index) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={isActive(item.href) ? "page" : undefined}
-                  // A short stagger on the way in; immediate on the way out, so
-                  // closing feels responsive rather than draggy.
-                  style={{
-                    transitionDelay: open ? `${90 + index * 60}ms` : "0ms",
-                  }}
-                  className={cn(
-                    "flex items-center gap-4 py-5 font-display text-3xl",
-                    "transition-[opacity,transform] duration-300 ease-out",
-                    open
-                      ? "translate-y-0 opacity-100"
-                      : "translate-y-2 opacity-0",
-                    isActive(item.href) ? "text-ink" : "text-muted",
-                  )}
-                >
-                  {/* Barline marking the current page. */}
-                  <span
-                    aria-hidden="true"
+        <div className="px-5 pt-6">
+          {/* Arrives with the links, a step ahead of the first. */}
+          <MobileSearchBar
+            onOpen={onSearch}
+            className={cn(
+              "transition-[opacity,transform] duration-300 ease-out",
+              open ? "translate-y-0 opacity-100 delay-[60ms]" : "translate-y-2 opacity-0",
+            )}
+          />
+          <nav aria-label="Primary" className="mt-2">
+            <ul className="flex flex-col">
+              {siteConfig.nav.map((item, index) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    onClick={onClose}
+                    aria-current={isActive(item.href) ? "page" : undefined}
+                    // A short stagger on the way in; immediate on the way out, so
+                    // closing feels responsive rather than draggy.
+                    style={{
+                      transitionDelay: open ? `${90 + index * 60}ms` : "0ms",
+                    }}
                     className={cn(
-                      "h-8 w-0.5 rounded-full",
-                      isActive(item.href) ? "bg-gold" : "bg-transparent",
+                      "flex items-center gap-4 py-5 font-display text-3xl",
+                      "transition-[opacity,transform] duration-300 ease-out",
+                      open
+                        ? "translate-y-0 opacity-100"
+                        : "translate-y-2 opacity-0",
+                      isActive(item.href) ? "text-ink" : "text-muted",
                     )}
-                  />
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+                  >
+                    {/* Barline marking the current page. */}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "h-8 w-0.5 rounded-full",
+                        isActive(item.href) ? "bg-gold" : "bg-transparent",
+                      )}
+                    />
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
 
         <div className="px-5 pb-10 pt-8">
           <div className="border-t border-line pt-6">

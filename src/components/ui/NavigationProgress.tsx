@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
+
+import { usePagePath } from "@/components/ui/use-page-path";
 
 /**
  * A thin gold bar across the very top of the window while a new page loads -
@@ -32,7 +33,7 @@ const CEILING = 0.9;
 const GIVE_UP_MS = 15_000;
 
 export function NavigationProgress() {
-  const pathname = usePathname();
+  const pathname = usePagePath();
   const barRef = useRef<HTMLDivElement>(null);
   const run = useRef({
     active: false,

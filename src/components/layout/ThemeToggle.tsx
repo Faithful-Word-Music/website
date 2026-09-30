@@ -59,29 +59,38 @@ function getSnapshot(): Theme {
   return resolveTheme(attribute, systemPrefersDark());
 }
 
+/**
+ * The theme showing now. null on the server and during hydration: the theme
+ * is only known in the browser.
+ */
+export function useTheme(): Theme | null {
+  return useSyncExternalStore(subscribe, getSnapshot, () => null);
+}
+
+/** Switches to the other theme. Shared by this button and the search palette's action. */
+export function toggleTheme() {
+  const next: Theme = getSnapshot() === "dark" ? "light" : "dark";
+  const stored = next === resolveTheme(null, systemPrefersDark()) ? null : next;
+  try {
+    if (stored) localStorage.setItem(THEME_STORAGE_KEY, stored);
+    else localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    // Storage blocked: the switch still works for this page view.
+  }
+  apply(stored);
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
 export function ThemeToggle({ className }: { className?: string }) {
-  // null on the server and during hydration: the theme is only known in the
-  // browser, so the icon appears once it is.
-  const theme = useSyncExternalStore(subscribe, getSnapshot, () => null);
+  // The icon appears once the theme is known.
+  const theme = useTheme();
   const next: Theme = theme === "dark" ? "light" : "dark";
   const label = `Switch to ${next} mode`;
-
-  function toggle() {
-    const stored = next === resolveTheme(null, systemPrefersDark()) ? null : next;
-    try {
-      if (stored) localStorage.setItem(THEME_STORAGE_KEY, stored);
-      else localStorage.removeItem(THEME_STORAGE_KEY);
-    } catch {
-      // Storage blocked: the switch still works for this page view.
-    }
-    apply(stored);
-    window.dispatchEvent(new Event(CHANGE_EVENT));
-  }
 
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={toggleTheme}
       aria-label={theme ? label : "Switch theme"}
       title={theme ? label : undefined}
       className={cn(

@@ -1,13 +1,13 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
+import { usePagePath } from "@/components/ui/use-page-path";
 import { isSongPage, SONG_ORIGIN_KEY } from "@/lib/song-origin";
 
 /** Remembers the last page visited that isn't a song page, for the song page's back link. */
 export function SongOriginTracker() {
-  const pathname = usePathname();
+  const pathname = usePagePath();
 
   useEffect(() => {
     if (isSongPage(pathname)) return;

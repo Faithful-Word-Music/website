@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useState, type ReactNode } from "react";
 
 import { useActiveMonth } from "@/components/song-list/active-month";
 import { FallbackTable } from "@/components/song-list/FallbackTable";
@@ -21,6 +21,7 @@ import { Reveal } from "@/components/ui/Reveal";
 import { songListContent } from "@/content/song-list";
 import { getTimeline, type Timeline } from "@/lib/service-time";
 import { MAX_SHARED_SERVICES, serviceName } from "@/lib/share-services";
+import { SHOW_SERVICE_EVENT, serviceAnchor } from "@/lib/site-search";
 import type { PlayIndex } from "@/lib/song-history";
 import { countSongs, filterServices, listKeys } from "@/lib/song-list";
 import type { Service, SongListMonth } from "@/types/song-list";
@@ -151,6 +152,52 @@ export function SongListView({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [selecting]);
+
+  // A link to one service - /song-list#2026-09-30-pm, from the site search or
+  // shared - opens its month, clears whatever would hide it, and brings it
+  // into view. Each request is a new object, so asking twice scrolls twice.
+  const [scrollRequest, setScrollRequest] = useState<{ id: string } | null>(null);
+
+  const showService = useEffectEvent((anchor: string) => {
+    const monthIndex = months.findIndex((m) =>
+      m.services.some((s) => s.date !== null && serviceAnchor(s.date, s.slot) === anchor),
+    );
+    if (monthIndex < 0) return;
+    const service = months[monthIndex].services.find(
+      (s) => s.date !== null && serviceAnchor(s.date, s.slot) === anchor,
+    );
+    if (!service) return;
+
+    if (monthIndex !== activeIndex) changeMonth(monthIndex);
+    else {
+      clearFilters();
+      stopSelecting();
+    }
+    if (timeline.statusOf(service.id) === "past") setShowEarlier(true);
+    setScrollRequest({ id: service.id });
+  });
+
+  useEffect(() => {
+    function fromHash() {
+      const anchor = decodeURIComponent(window.location.hash.slice(1));
+      if (anchor) showService(anchor);
+    }
+    function fromSearch(event: Event) {
+      showService((event as CustomEvent<string>).detail);
+    }
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    window.addEventListener(SHOW_SERVICE_EVENT, fromSearch);
+    return () => {
+      window.removeEventListener("hashchange", fromHash);
+      window.removeEventListener(SHOW_SERVICE_EVENT, fromSearch);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!scrollRequest) return;
+    document.getElementById(`service-${scrollRequest.id}`)?.scrollIntoView({ block: "center" });
+  }, [scrollRequest]);
 
   // Always share a service whole, even while a search shows only some of its songs.
   const wholeById = new Map(month.services.map((service) => [service.id, service]));

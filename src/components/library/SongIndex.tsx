@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { useFlip } from "@/components/ui/use-flip";
 import { libraryContent } from "@/content/library";
 import { libraryLetter, type LibrarySong } from "@/lib/library";
 import { matchesSong, songPath } from "@/lib/song-list";
@@ -21,12 +22,15 @@ const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 export function SongIndex({ songs }: { songs: LibrarySong[] }) {
   const idPrefix = useId();
   const [query, setQuery] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const shown = useMemo(
     () => songs.filter((song) => matchesSong({ ...song, keys: [] }, { query, key: "" })),
     [songs, query],
   );
   const groups = useMemo(() => groupByLetter(shown), [shown]);
+  // Each change of search glides the index into its new shape (see useFlip).
+  useFlip(rootRef, shown);
   const present = new Set(groups.map(([letter]) => letter));
   const letters = songs.some((song) => libraryLetter(song.title) === "#") ? ["#", ...ALPHABET] : ALPHABET;
 
@@ -37,7 +41,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
     : plural(libraryContent.songCount, songs.length);
 
   return (
-    <div>
+    <div ref={rootRef}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <SongSearch
           value={query}
@@ -90,7 +94,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
       </nav>
 
       {groups.length === 0 ? (
-        <div className="py-20 text-center">
+        <div className="animate-enter py-20 text-center">
           <p className="font-display text-2xl text-ink">
             {libraryContent.noMatchTitle.replace("{query}", query.trim())}
           </p>
@@ -108,6 +112,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
           {groups.map(([letter, letterSongs]) => (
             <section
               key={letter}
+              data-flip={`letter-${letter}`}
               aria-labelledby={anchor(letter)}
               className="grid gap-x-8 border-b border-line py-8 last:border-b-0 md:grid-cols-[6rem_minmax(0,1fr)] md:py-10"
             >
@@ -119,7 +124,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
               </h3>
               <ul className="mt-4 md:mt-0 lg:columns-2 lg:gap-12">
                 {letterSongs.map((song) => (
-                  <li key={song.slug} className="break-inside-avoid">
+                  <li key={song.slug} data-flip={song.slug} className="break-inside-avoid">
                     <IndexEntry song={song} />
                   </li>
                 ))}
@@ -166,7 +171,7 @@ function IndexEntry({ song }: { song: LibrarySong }) {
 }
 
 /** A small quaver: this song has sheet music anyone can open. */
-function NoteMark({ className }: { className?: string }) {
+export function NoteMark({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"

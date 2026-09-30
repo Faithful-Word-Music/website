@@ -1,19 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { CommandPalette } from "@/components/search/CommandPalette";
 import { Container } from "@/components/ui/Container";
 import { cn } from "@/components/ui/cn";
+import { usePagePath } from "@/components/ui/use-page-path";
 import { siteConfig } from "@/config/site";
 
 export function Header() {
-  const pathname = usePathname();
+  const pathname = usePagePath();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
   const panelId = useId();
 
@@ -37,6 +39,11 @@ export function Header() {
   }, [open]);
 
   const close = useCallback(() => setOpen(false), []);
+  // The mobile menu's search bar: the menu gives way to the palette.
+  const openSearch = useCallback(() => {
+    setOpen(false);
+    setSearchOpen(true);
+  }, []);
 
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -87,7 +94,10 @@ export function Header() {
                 </ul>
               </nav>
 
-              {/* Beside the menu button on phones, so it never needs the menu opened. */}
+              {/* Search: a button here on wider screens, a search bar atop the
+                  mobile menu on phones. The theme sits beside the menu button
+                  on phones, so it never needs the menu opened. */}
+              <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
               <ThemeToggle />
 
               {/* Mobile toggle */}
@@ -135,6 +145,7 @@ export function Header() {
         onClose={close}
         panelId={panelId}
         isActive={isActive}
+        onSearch={openSearch}
       />
     </>
   );

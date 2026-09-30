@@ -58,7 +58,8 @@ export const siteConfig = {
      * so 10s is at most 12 requests a minute against a 300/minute quota.
      * Keep in step with `revalidate` in src/app/page.tsx, src/app/song-list/page.tsx and
      * src/app/song-list/archive/page.tsx, src/app/library/page.tsx and
-     * src/app/library/songs/[song]/page.tsx, which Next.js needs as literal numbers.
+     * src/app/library/songs/[song]/page.tsx and src/app/api/search/route.ts, which
+     * Next.js needs as literal numbers.
      */
     revalidateSeconds: 10,
 
