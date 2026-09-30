@@ -7,8 +7,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // The contact endpoint is not a page; keep it out of crawl budgets.
-      disallow: "/api/",
+      // Endpoints are not pages, and the members' area is private: keep them
+      // out of crawl budgets. (The pages also say noindex themselves.)
+      disallow: ["/api/", "/admin", "/account", "/accept-invite", "/login"],
     },
     sitemap: `${siteConfig.url}/sitemap.xml`,
   };

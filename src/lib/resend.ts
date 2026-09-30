@@ -3,6 +3,7 @@ import "server-only";
 import { Resend } from "resend";
 
 import { siteConfig } from "@/config/site";
+import { accountContent } from "@/content/account";
 import { contactContent } from "@/content/contact";
 import { escapeHtml } from "@/lib/html";
 import type { ContactFormValues } from "@/lib/validation";
@@ -244,6 +245,83 @@ export async function sendReportEmail(message: {
   } catch (caught) {
     console.error(
       "[report] Could not reach Resend:",
+      caught instanceof Error ? caught.message : "unknown error",
+    );
+    return { ok: false, reason: "send-failed" };
+  }
+}
+
+/**
+ * Tells the ministry that someone asked for an account (see
+ * src/app/api/account-requests/route.ts).
+ *
+ * The only link is to the review page, which needs an administrator to log
+ * in. Nothing in this email approves, declines or changes anything, so a
+ * forwarded or intercepted copy cannot be used to grant access. Never throws.
+ */
+export async function sendAccountRequestEmail(request: {
+  name: string;
+  email: string;
+  message: string;
+  reviewUrl: string;
+  /** True outside Production, so a test request is never mistaken for a real one. */
+  isTest: boolean;
+}): Promise<SendResult> {
+  const resend = getClient();
+  if (!resend) return { ok: false, reason: "not-configured" };
+
+  const copy = accountContent.notification;
+  const prefix = request.isTest ? "[Test] " : "";
+  const message = request.message || "(no message)";
+
+  const text = [
+    copy.intro,
+    "",
+    `Name:    ${request.name}`,
+    `Email:   ${request.email}`,
+    "",
+    message,
+    "",
+    `${copy.review}: ${request.reviewUrl}`,
+    "",
+    copy.footer,
+  ].join("\n");
+
+  const html = `
+    <div style="font-family:ui-sans-serif,system-ui,sans-serif;color:#111;line-height:1.6">
+      <p style="margin:0 0 16px">${escapeHtml(copy.intro)}</p>
+      <p style="margin:0 0 4px"><strong>Name:</strong> ${escapeHtml(request.name)}</p>
+      <p style="margin:0 0 16px"><strong>Email:</strong> ${escapeHtml(request.email)}</p>
+      <hr style="border:none;border-top:1px solid #e5e5e2;margin:0 0 16px" />
+      <p style="margin:0 0 24px;white-space:pre-wrap">${escapeHtml(message)}</p>
+      <p style="margin:0 0 24px"><a href="${escapeHtml(request.reviewUrl)}" style="display:inline-block;background:#111;color:#faf9f6;padding:10px 20px;border-radius:999px;text-decoration:none">${escapeHtml(copy.review)}</a></p>
+      <p style="margin:0;font-size:13px;color:#6b6b68">${escapeHtml(copy.footer)}</p>
+    </div>
+  `.trim();
+
+  try {
+    const { error } = await resend.emails.send({
+      from: siteConfig.mail.from,
+      to: [siteConfig.accounts.notifyEmail],
+      // Replying goes to the person who asked.
+      replyTo: request.email,
+      subject: `${prefix}[${siteConfig.name}] ${copy.subject.replace("{name}", request.name)}`,
+      text,
+      html,
+    });
+
+    if (error) {
+      console.error(
+        "[account-request] Resend rejected the notification:",
+        `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
+      );
+      return { ok: false, reason: "send-failed" };
+    }
+
+    return { ok: true };
+  } catch (caught) {
+    console.error(
+      "[account-request] Could not reach Resend:",
       caught instanceof Error ? caught.message : "unknown error",
     );
     return { ok: false, reason: "send-failed" };

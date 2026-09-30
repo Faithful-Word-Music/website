@@ -172,6 +172,17 @@ export const siteConfig = {
     to: "contact@faithfulwordmusic.com",
   },
 
+  /**
+   * Member accounts (invite-only, through Clerk). See README -> Accounts.
+   * The keys themselves are environment variables, never here.
+   */
+  accounts: {
+    /** Where "someone asked for an account" emails go. */
+    notifyEmail: "contact@faithfulwordmusic.com",
+    /** How long a Clerk invitation link stays valid. */
+    invitationDays: 30,
+  },
+
   /** External resources, surfaced in the footer. */
   resources: {
     church: "https://www.faithfulwordbaptist.org/",

@@ -6,10 +6,13 @@ import { initBotId } from "botid/client/core";
  * Every route listed here has BotID's headers attached to its requests; the
  * server then verifies them with checkBotId(). A route checked on the server
  * but missing from this list always fails the check, so the two must stay in
- * step: see src/app/api/contact/route.ts.
+ * step: see src/app/api/contact/route.ts and src/app/api/account-requests/route.ts.
  *
  * Nothing is shown to the visitor - no puzzle, no checkbox, no extra click.
  */
 initBotId({
-  protect: [{ path: "/api/contact", method: "POST" }],
+  protect: [
+    { path: "/api/contact", method: "POST" },
+    { path: "/api/account-requests", method: "POST" },
+  ],
 });

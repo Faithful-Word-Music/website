@@ -1,5 +1,7 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
+import type { ReactNode } from "react";
 
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
@@ -8,6 +10,8 @@ import { SongOriginTracker } from "@/components/song-list/SongOriginTracker";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
+import { clerkAppearance } from "@/lib/auth/appearance";
+import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
 import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
@@ -66,7 +70,34 @@ export const viewport: Viewport = {
   ],
 };
 
+/**
+ * Member accounts (Clerk). Only switched on when the keys are present AND
+ * match this environment (src/lib/auth/clerk-env.ts). Otherwise the site
+ * renders exactly as it did before accounts existed.
+ */
+function AccountsProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  if (!enabled) return children;
+  return (
+    // Not `dynamic`: the public pages stay static and cached. The session is
+    // read in the browser, and on the server only by the account pages.
+    <ClerkProvider
+      appearance={clerkAppearance}
+      signInUrl="/login"
+      signUpUrl="/accept-invite"
+      signInFallbackRedirectUrl="/account"
+      signUpFallbackRedirectUrl="/account"
+      afterSignOutUrl="/"
+    >
+      {children}
+    </ClerkProvider>
+  );
+}
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  const clerkConfig = currentClerkConfig();
+  warnIfMisconfigured(clerkConfig);
+  const authEnabled = clerkConfig.status === "ready";
+
   return (
     // data-scroll-behavior="smooth": globals.css makes scrolling smooth, which
     // is right for "Back to top" and in-page links but wrong between pages.
@@ -97,11 +128,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <NavigationProgress />
         <SongOriginTracker />
         <SkipLink />
-        <Header />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <Footer />
+        <AccountsProvider enabled={authEnabled}>
+          <Header authEnabled={authEnabled} />
+          <main id="main" className="flex-1">
+            {children}
+          </main>
+          <Footer authEnabled={authEnabled} />
+        </AccountsProvider>
         {/* Site-wide: appears on any page once it has been scrolled more
             than a screen, so short pages never show it. */}
         <BackToTop />

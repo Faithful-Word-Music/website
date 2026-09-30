@@ -1,0 +1,77 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  ADMIN_ROLE,
+  ALL_PERMISSIONS,
+  DEFAULT_ROLES,
+  canAccessAdmin,
+  resolvePermissions,
+  roleKeyFromLabel,
+} from "@/lib/auth/permissions";
+
+const rolePermissions = new Map(DEFAULT_ROLES.map((role) => [role.key, role.permissions as string[]]));
+
+describe("resolvePermissions", () => {
+  it("gives every signed-in person the Member role's permissions", () => {
+    expect([...resolvePermissions([], rolePermissions)]).toEqual(["view_member_resources"]);
+  });
+
+  it("adds up permissions across several roles", () => {
+    const permissions = resolvePermissions(["musician", "song_leader"], rolePermissions);
+    expect(permissions.has("view_sheet_music")).toBe(true);
+    expect(permissions.has("view_service_plans")).toBe(true);
+    expect(permissions.has("manage_users")).toBe(false);
+  });
+
+  it("gives an administrator everything, whatever the database says", () => {
+    const permissions = resolvePermissions([ADMIN_ROLE], new Map());
+    expect(permissions.size).toBe(ALL_PERMISSIONS.length);
+  });
+
+  it("applies individual grants and denies on top of roles", () => {
+    const permissions = resolvePermissions(["musician"], rolePermissions, [
+      { permission: "view_analytics", effect: "grant" },
+      { permission: "view_sheet_music", effect: "deny" },
+    ]);
+    expect(permissions.has("view_analytics")).toBe(true);
+    expect(permissions.has("view_sheet_music")).toBe(false);
+    expect(permissions.has("view_service_plans")).toBe(true);
+  });
+
+  it("never lets an exception lock an administrator out of managing users and roles", () => {
+    const permissions = resolvePermissions([ADMIN_ROLE], rolePermissions, [
+      { permission: "manage_users", effect: "deny" },
+      { permission: "manage_roles", effect: "deny" },
+      { permission: "view_analytics", effect: "deny" },
+    ]);
+    expect(permissions.has("manage_users")).toBe(true);
+    expect(permissions.has("manage_roles")).toBe(true);
+    expect(permissions.has("view_analytics")).toBe(false);
+  });
+
+  it("ignores permissions and roles it does not know", () => {
+    const permissions = resolvePermissions(["no_such_role"], new Map([["no_such_role", ["launch_rockets"]]]), [
+      { permission: "launch_rockets", effect: "grant" },
+    ]);
+    expect([...permissions]).toEqual([]);
+  });
+});
+
+describe("canAccessAdmin", () => {
+  it("is true only with an admin-area permission", () => {
+    expect(canAccessAdmin(resolvePermissions(["musician"], rolePermissions))).toBe(false);
+    expect(canAccessAdmin(resolvePermissions(["music_director"], rolePermissions))).toBe(false);
+    expect(canAccessAdmin(resolvePermissions([ADMIN_ROLE], rolePermissions))).toBe(true);
+    expect(
+      canAccessAdmin(resolvePermissions(["musician"], rolePermissions, [{ permission: "view_profiles", effect: "grant" }])),
+    ).toBe(true);
+  });
+});
+
+describe("roleKeyFromLabel", () => {
+  it("makes a stable lowercase key", () => {
+    expect(roleKeyFromLabel("Assistant Director")).toBe("assistant_director");
+    expect(roleKeyFromLabel("  Choir -- Alto! ")).toBe("choir_alto");
+    expect(roleKeyFromLabel("!!!")).toBe("");
+  });
+});

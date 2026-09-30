@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -12,7 +13,7 @@ import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { siteConfig } from "@/config/site";
 
-export function Header() {
+export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   const pathname = usePagePath();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -99,6 +100,9 @@ export function Header() {
                   on phones, so it never needs the menu opened. */}
               <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
               <ThemeToggle />
+              {/* The signed-in person's menu. Nothing shows for visitors, and
+                  nothing at all while accounts are switched off. */}
+              {authEnabled ? <UserMenu /> : null}
 
               {/* Mobile toggle */}
               <button

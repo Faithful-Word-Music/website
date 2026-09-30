@@ -24,6 +24,14 @@ export const footerContent = {
   contactHeading: "Contact",
   contactBlurb: "For questions about the music ministry:",
 
+  /** Bottom-right of the footer. Only `login` / `account` are links. */
+  account: {
+    prompt: "Have an account?",
+    login: "Log in!",
+    signedIn: "Signed in ·",
+    account: "Your account",
+  },
+
   /** {year} is replaced with the current year at render time. */
   copyright: `{year} ${siteConfig.name}`,
 } as const;

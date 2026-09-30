@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "auth:bootstrap-admin": "node --env-file-if-exists=.env.local scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.9.8",
     "@neondatabase/serverless": "^1.1.0",
     "@react-pdf/renderer": "^4.9.0",
     "botid": "^1.5.11",

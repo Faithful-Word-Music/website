@@ -26,11 +26,11 @@ The website of **Faithful Word Music**, the music ministry of
    - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
-   - [Sheet music](#sheet-music)
+   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
-9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Sheet music (service account)](#sheet-music-service-account) · [Resend](#resend)
+9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Sheet music (service account)](#sheet-music-service-account) · [Resend](#resend) · [Accounts (Clerk)](#accounts-clerk)
 10. [Gotchas](#gotchas)
 11. [Accessibility and SEO](#accessibility-and-seo)
 
@@ -38,7 +38,7 @@ The website of **Faithful Word Music**, the music ministry of
 
 ## At a glance
 
-One Next.js app on Vercel. There's no separate backend, CMS or login. The song list is read live from a public Google Sheet, and nothing about it is baked into the build.
+One Next.js app on Vercel. There's no separate backend or CMS. The song list is read live from a public Google Sheet, and nothing about it is baked into the build. The public site needs no login; invite-only [member accounts](#member-accounts) sit alongside it.
 
 | Address | What it is |
 |---|---|
@@ -55,10 +55,16 @@ One Next.js app on Vercel. There's no separate backend, CMS or login. The song l
 | `POST /api/contact` | The contact form's endpoint |
 | `GET /api/cron/sync-archive` | Nightly job that saves past services to the archive database |
 | `GET /api/cron/quarterly-report` | Emails the music director a report on the quarter just ended |
+| `/login` | Member log in (Clerk). Linked only from the footer, never the main navigation |
+| `/request-access` | Ask for an account. Creates a request for an administrator to review, never an account |
+| `/accept-invite` | Where Clerk invitation emails land; the only place an account can be created |
+| `/account`, `/account/edit`, `/account/security` | A member's own profile, profile editor, and Clerk's password/security screen |
+| `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
+| `POST /api/account-requests` | The request form's endpoint |
 
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Google Sheets API ·
 Neon Postgres (song archive) · Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) ·
-`next/og` (pictures and link previews) · Zod · Vitest.
+`next/og` (pictures and link previews) · Clerk (member sign-in) · Zod · Vitest.
 
 > **Heads-up for contributors:** this is Next.js 16, which has breaking changes from older versions.
 > Before writing Next-specific code, read the relevant guide in `node_modules/next/dist/docs/`
@@ -92,7 +98,7 @@ The site runs without any keys. The song list shows a "not connected" message an
 
 ## Environment variables
 
-All of these are **server-only secrets**. None starts with `NEXT_PUBLIC_`, because that prefix puts a value into the browser's JavaScript, where anyone can read it.
+All of these are **server-only secrets** except `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`. Secrets never start with `NEXT_PUBLIC_`, because that prefix puts a value into the browser's JavaScript, where anyone can read it.
 
 | Variable | Powers | Where it's read | Needed in |
 |---|---|---|---|
@@ -102,6 +108,10 @@ All of these are **server-only secrets**. None starts with `NEXT_PUBLIC_`, becau
 | `RESEND_API_KEY` | The contact form and archive alerts | `src/lib/resend.ts` | Development, Preview, Production |
 | `DATABASE_URL` | The permanent song archive (optional) | `src/lib/db.ts` | All, and added automatically by the Neon integration |
 | `CRON_SECRET` | Protects the nightly archive sync | `src/app/api/cron/sync-archive/route.ts` | Production, and locally if you run the sync by hand |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Member accounts (optional). **Public**, and a **different value per environment** | Clerk SDK, `src/lib/auth/clerk-env.ts` | Local + Preview: `pk_test_…` · Production: `pk_live_…` |
+| `CLERK_SECRET_KEY` | Member accounts (optional). **Different value per environment** | Clerk SDK, `src/lib/auth/clerk.ts` | Local + Preview: `sk_test_…` · Production: `sk_live_…` |
+
+The two Clerk keys are the exception to "tick every environment": see [Accounts (Clerk)](#accounts-clerk).
 
 - **`.env.local`** holds the real values for your machine. It's git-ignored.
 - **`.env.example`** holds placeholders and documents what exists. It's committed.
@@ -118,7 +128,9 @@ Anything **public** (the contact address, links, the spreadsheet ID, service tim
 
 ```
 assets/fonts/                 TTF/WOFF fonts for the PDF, pictures and link previews
+scripts/bootstrap-admin.mjs   Makes the first administrator, once per Clerk instance
 src/
+├── proxy.ts                          Sends signed-out visitors on /account and /admin to /login
 ├── app/
 │   ├── page.tsx                      Home
 │   ├── song-list/
@@ -129,16 +141,22 @@ src/
 │   ├── contact/page.tsx
 │   ├── api/contact/route.ts          Contact form endpoint
 │   ├── api/cron/sync-archive/        Nightly archive sync
+│   ├── login/  request-access/  accept-invite/   Member log in, account requests, invitations (Clerk)
+│   ├── account/                      A member's own profile, profile editor, security
+│   ├── admin/                        Requests, invitations, people, roles, titles & instruments
+│   ├── api/account-requests/         Account request endpoint
 │   ├── layout.tsx                    Fonts, header, footer, base metadata
 │   ├── globals.css                   Design tokens (@theme), motion, print
 │   └── opengraph-image.tsx, sitemap.ts, robots.ts, icon.svg, not-found.tsx
 ├── components/
 │   ├── song-list/                    Everything on /song-list (see below)
+│   ├── account/  admin/              Account pages' forms and the admin editors
 │   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
 │   └── layout/  home/  contact/
 ├── config/site.ts                    Every public setting, in one place
 ├── content/                          All page wording (edit without touching components)
 ├── lib/                              Logic, kept free of UI (see below)
+│   └── auth/                         Accounts: Clerk wrapper, session and permission checks, the account tables
 └── types/song-list.ts                The song list's data shapes
 ```
 
@@ -161,6 +179,10 @@ src/
 | `sheet-music-index.ts` | Reads the Sheet Music Index and streams files from Drive (server-only) |
 | `sheet-music.ts` | Reads Drive folders and file names, joins them to the Songs tab, matches song-list songs, builds the browser-safe view (pure, no I/O) |
 | `sheet-music-access.ts` | `canAccessFile()`: the one rule for who may open which file |
+| `auth/session.ts` | Who is asking and what they may do: the one gate for account pages and actions (server-only) |
+| `auth/permissions.ts` | The permission list, the starting roles, and how roles and exceptions combine (pure) |
+| `auth/store.ts`, `auth/schema.mjs` | The account tables in Neon, each row tagged with its Clerk instance (server-only) |
+| `auth/clerk.ts`, `auth/clerk-env.ts` | Every Clerk Backend API call, and which Clerk instance may be used where |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
 `NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
@@ -322,6 +344,70 @@ Google Drive (private) ──────┘   (read-only)             └─> /
 - **Without credentials:** the song pages work as before with no sheet-music section, and the file route returns `503 {"reason":"not-configured"}`.
 - **Adding accounts later:** extend the `Viewer` type in `lib/sheet-music-access.ts` (for example a signed-in member), build it from the session in the song page (`getSongPage`) and the file route, and widen the rule in `canAccessFile()`. Restricted files served to signed-in users must be sent with `Cache-Control: private, no-store` instead of the public CDN caching used today.
 
+### Member accounts
+
+Invite-only accounts for the musicians and song leaders. The public site doesn't change: nothing public needs a login, and **Log In** isn't in the main navigation. It lives in the footer ("Have an account? **Log in!**").
+
+**Who owns what:**
+- **Clerk** owns *who someone is*: sign-in, sessions, passwords, email verification, invitations, bans, names, email addresses and profile photos.
+- **This site** owns *what they may do*, plus their music profile. That's roles, permissions, account requests, titles, instruments and profile answers, all in the existing Neon database. Rows are keyed by Clerk user ID. Clerk data is read from Clerk, never copied.
+
+```
+request:  /request-access → POST /api/account-requests → BotID → honeypot → Zod → row (pending) → Resend email to the ministry
+approve:  /admin/requests/<id> → claim row (pending→invited) → Clerk invitation email → /accept-invite?__clerk_ticket=… → account
+          (if Clerk refuses, the claim is released: the request is pending again and nothing was sent)
+invite:   /admin/invitations → Clerk invitation directly (no request needed)
+```
+
+**Request lifecycle:**
+- **pending:** waiting for review. It can stay pending indefinitely.
+- **invited:** approved, and the invitation has been sent.
+- **active:** the invitation was accepted.
+- **rejected:** declined by an administrator.
+- **revoked / expired:** the invitation was withdrawn, or ran out before it was used.
+
+"Invited" is brought up to date from Clerk whenever the requests are viewed, so no webhook is needed.
+
+**Privacy of the request form:** the reply is identical whether the address is new, already has an account, already has an invitation, or already has a pending request. Nobody can use the form to find out who has an account. Duplicates are dropped silently (a unique index backs this up), and no email goes out for them. The notification email only links to the review page. It can't approve, decline or change anything.
+
+**Roles and permissions** (`src/lib/auth/permissions.ts`):
+- **Permissions are defined in code**, because each one guards a piece of code. For example, `manage_users` guards requests, invitations, disabling and deleting.
+- **Roles are data.** The site starts with Administrator, Music Director, Song Leader, Musician and Member. In `/admin/roles` you can change what each role allows or create new roles. Administrator is locked to every permission. Member is held by everyone signed in.
+- **People can hold several roles**, and their permissions add up. The actual music director should hold *both* Administrator (accounts and site) and Music Director (music).
+- **Per-person exceptions** grant or deny one permission on top of someone's roles, from their page under **People**.
+- **Effective permissions** = every role's permissions + grants − denies. An administrator can never be denied `manage_users` or `manage_roles`, so nobody can be locked out by mistake.
+- **Escalation guards:**
+  - Nobody can change their own exceptions. Only administrators can change their own roles (they already hold every permission), and nobody can remove their own Administrator role.
+  - Only administrators can give, remove or disable the Administrator role.
+  - Nobody can grant a permission they don't hold.
+  - The last administrator can't be removed.
+
+**Profiles:**
+- **Owners:** Clerk holds the first name, last name and photo. The site holds the middle name, preferred name, bio, phone, voice part, usual services and instruments (each with a skill level and a primary).
+- **Musicians** also answer a **By ear ↔ Sheet music** slider and give a separate music-theory level. **Song leaders** answer "Can you read basic sheet music?"
+- **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Titles & instruments**. An item still in use is archived, not deleted.
+- **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator.
+
+**Security model:**
+- **Every protected page and every server action checks, on the server:**
+  - the Clerk session is verified;
+  - the user ID is resolved to this site's roles for this Clerk instance;
+  - the permission is checked;
+  - the input is validated;
+  - and only then does the action run.
+  This all goes through `src/lib/auth/session.ts`.
+- **Things that are never trusted:** hidden buttons, the header menu, the proxy and the admin layout. The header's "Admin" link is only a convenience.
+- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards. It doesn't run on the public pages at all, so they stay static and cached.
+
+**One database, two Clerk instances:**
+- Local, Preview and Production share one Neon database, but Clerk Development and Production have separate users.
+- Every account row therefore carries `clerk_env` (`development`/`production`), derived from the key prefix, and every query filters on it.
+- Test users and test requests never appear in the production admin.
+
+**When accounts are off:** if the Clerk keys are missing, or they're wrong for the environment (test keys on Production, live keys anywhere else, a mismatched pair), accounts switch off. The public site carries on unchanged, the account pages fail closed with "Accounts are temporarily unavailable", and the reason is logged once as `[auth] Accounts are disabled: …`. The log never includes key values.
+
+The tables are created on first use, like the song archive's: see `src/lib/auth/schema.mjs`.
+
 ---
 
 ## Design conventions
@@ -380,6 +466,13 @@ CRON_SECRET           = <a long random string>
 
 `DATABASE_URL` is added for you when Neon is connected (see [Song archive](#song-archive)). `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` are described under [Sheet music (service account)](#sheet-music-service-account).
 
+**Except the Clerk keys**, which are added **twice**, with a different value for each environment (see [Accounts (Clerk)](#accounts-clerk)):
+
+```
+Production only:            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = pk_live_…   CLERK_SECRET_KEY = sk_live_…
+Preview (and Development):  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = pk_test_…   CLERK_SECRET_KEY = sk_test_…
+```
+
 ### 3. Domains
 In **Settings → Domains**:
 1. Add `faithfulwordmusic.com` as the **primary** domain. It must match `siteConfig.url` in `src/config/site.ts`, which canonical URLs, the sitemap and the metadata are built from.
@@ -394,6 +487,8 @@ In **Settings → Domains**:
 - [ ] On a phone, **Send as picture** and **Send as text** open the share sheet.
 - [ ] A message sent through `/contact` arrives, and **Reply** goes to the visitor.
 - [ ] `/sitemap.xml` and `/robots.txt` only list `faithfulwordmusic.com` addresses.
+- [ ] The footer says "Have an account? **Log in!**", and `/login` shows the Clerk form (not "Accounts are temporarily unavailable").
+- [ ] Vercel Logs have no `[auth] Accounts are disabled` line.
 
 ---
 
@@ -485,6 +580,107 @@ On a `502`, the log line looks like this:
 `validation_error (403)` means verify the domain. `invalid_access (401)` means the key is wrong or revoked.
 
 Don't turn on Resend's "Receiving" feature: it adds mail records that would clash with the existing inbox.
+
+### Accounts (Clerk)
+
+Clerk has two **separate instances** in one application: **Development** and **Production**. They share no users, invitations, sessions or settings. An administrator in one is *not* an administrator in the other.
+
+| Environment | Clerk instance | Keys | Users | Rows tagged |
+|---|---|---|---|---|
+| Local (`npm run dev`) | Development | `pk_test_` / `sk_test_` in `.env.local` | Test users | `development` |
+| Vercel Preview | Development | `pk_test_` / `sk_test_`, Vercel *Preview* scope | The same test users | `development` |
+| Vercel Production | Production | `pk_live_` / `sk_live_`, Vercel *Production* scope | Real users | `production` |
+
+The site enforces this table: see `src/lib/auth/clerk-env.ts` and its tests.
+
+#### A. Development instance (local and Preview)
+1. **Create the app.** At [dashboard.clerk.com](https://dashboard.clerk.com), create an application named "Faithful Word Music". It starts with a Development instance.
+2. **Sign-in methods.** Under **Configure → User & authentication**:
+   - Turn on **Email** as an identifier and **Password** as the sign-in method.
+   - Leave phone, username and every social provider **off**.
+   - Under the name settings, turn on **First and last name** and make them **required**.
+   - If the dashboard offers it, turn **off** letting users delete their own accounts. Deletion happens from `/admin`, which also removes the site's data for that person.
+3. **Invite-only.** Go to **Configure → User & authentication → Access mode** and choose **Invite-only**, then **Save**. New accounts can then only come from invitations. (Older dashboards called this Restrictions → Sign-up mode → Restricted.)
+4. **Paths (optional).** You can skip this. The app passes `/login` and `/accept-invite` to Clerk in code, and the dashboard **Paths** page is only a fallback for Clerk's hosted pages, which this site doesn't use.
+5. **Local keys.** Under **Configure → API keys**, with **Development** selected, copy the keys into `.env.local`:
+   ```
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_…
+   CLERK_SECRET_KEY=sk_test_…
+   ```
+   Restart `npm run dev`. Local URLs need no configuring: a Development instance accepts `localhost` and any Preview address.
+6. **Your first test account.** Restricted mode blocks ordinary sign-up, so get the first account one of two ways:
+   - In Clerk go to **Users → Create user**, with your email, a password and your name.
+   - Or go to **Users → Invitations → Invite**, then open the emailed link, which lands on `http://localhost:3000/accept-invite`.
+   Development emails come from Clerk's shared `accounts.dev` domain.
+7. **Make yourself a Development administrator:**
+   ```
+   npm run auth:bootstrap-admin -- you@example.com
+   ```
+   The script:
+   - reads `.env.local`;
+   - confirms the account exists in the **Development** instance;
+   - creates the tables if needed;
+   - makes that account an Administrator (tagged `development`).
+   It's safe to run twice. Log in at `/login`, then open `/admin`.
+
+#### B. Vercel Preview
+- In **Vercel → Settings → Environment Variables**, add both Clerk keys with the **Development instance's** `pk_test_`/`sk_test_` values. Tick **Preview** (and **Development**, for `vercel env pull`). **Never tick Production** for these.
+- Previews then sign in against the same test users as your machine, and never touch real accounts.
+- Sign-in works on `*.vercel.app` preview addresses with no extra setup; Development instances aren't tied to a domain.
+- Invitation and review-email links from a Preview point at that Preview's branch address, not the live site.
+- A Development instance caps how many users it can hold, which is plenty for testing. If Vercel Deployment Protection is on, you pass Vercel's check first, then Clerk's.
+
+#### C. Production instance (faithfulwordmusic.com)
+1. **Create the Production instance.** In Clerk, switch the instance selector to **Production** and create it with domain **`faithfulwordmusic.com`**. You can clone the Development settings.
+   - Production can't use a `*.vercel.app` address.
+   - Production settings are **separate**, so check steps A2-A4 again on the Production instance.
+   - **Invite-only access mode in particular must be set here too.**
+2. **DNS.** Clerk's **Configure → Domains** page lists the DNS records to add, usually **five CNAMEs**:
+   - `clerk` → Clerk's Frontend API. Sign-in runs from `clerk.faithfulwordmusic.com`.
+   - `accounts` → the Account Portal.
+   - `clkmail` plus two `…_domainkey` records, so Clerk's emails (invitations, password resets) are sent from `faithfulwordmusic.com` and pass SPF/DKIM.
+
+   Add them exactly as shown wherever the domain's DNS lives: Vercel → Domains → DNS Records if Vercel hosts it, otherwise the registrar. They don't clash with Vercel's records or Resend's (`send`, `resend._domainkey`). Wait for Clerk to show every record as verified, then let it issue the certificates.
+3. **Production keys go into Vercel only.** Under **Configure → API keys**, with **Production** selected, copy the `pk_live_`/`sk_live_` keys into Vercel with **only Production ticked**. Don't put them in `.env.local`. Redeploy Production.
+4. **Redirects and callbacks:** nothing else to register.
+   - Sign-in, sign-up and invitation redirects all stay on `faithfulwordmusic.com`, which is the Production instance's own domain.
+   - Invitations are created with redirect `https://faithfulwordmusic.com/accept-invite`.
+   - No social providers are on, so there are no OAuth credentials to set up.
+5. **Your real account.** Development users don't exist here, so create yours again:
+   - **Clerk (Production) → Users → Create user**, or **Invitations → Invite** yourself and accept the emailed link on the live site.
+6. **Make yourself the Production administrator.** Pick one of these.
+   - **Option 1: the Neon SQL editor.** No live key ever touches your machine.
+     1. Log in on the live site once and open `/account`. That first signed-in page creates the tables and the starting roles.
+     2. Copy your user ID (`user_…`) from **Clerk (Production) → Users → you**.
+     3. In the Neon console's SQL editor, run:
+        ```sql
+        INSERT INTO roles (clerk_env, key, label, description, is_system)
+        VALUES ('production', 'administrator', 'Administrator', 'Runs the website: accounts, roles and settings. Always has every permission.', true)
+        ON CONFLICT DO NOTHING;
+        INSERT INTO user_roles (clerk_env, clerk_user_id, role_key, granted_by)
+        VALUES ('production', 'user_PASTE_YOUR_ID', 'administrator', 'bootstrap')
+        ON CONFLICT DO NOTHING;
+        ```
+   - **Option 2: the script, with the Production keys pulled temporarily.**
+     ```
+     npx vercel env pull .env.production.local --environment=production
+     node --env-file=.env.production.local scripts/bootstrap-admin.mjs you@example.com --production
+     ```
+     Then delete `.env.production.local`. The script refuses live keys without `--production`.
+
+   Then log in at `https://faithfulwordmusic.com/login` and open `/admin`. From now on, manage everyone from the website.
+
+#### D. Firewall rule for the request form
+Same as the contact form. **Firewall → New Rule:** Request Path equals `/api/account-requests` **and** Method equals `POST` → **Rate Limit**, Fixed Window, `600s`, `5` requests, keyed on IP.
+
+**If accounts show "temporarily unavailable",** Vercel Logs say why:
+
+| Log line | Fix |
+|---|---|
+| `Clerk Development (test) keys are set on the Production deployment` | Put the `pk_live_`/`sk_live_` keys in the Production scope and redeploy |
+| `Clerk Production (live) keys are set outside Production (preview)` | Replace the Preview-scoped keys with the `pk_test_`/`sk_test_` ones |
+| `…belong to different Clerk instances` | The two keys came from different instances. Copy both from the same one |
+| `DATABASE_URL is not set` | Accounts need the Neon database |
 
 ---
 

@@ -503,3 +503,50 @@ html.motion-ready .reveal {
     transform: none !important;
   }
 }
+
+/* --- Clerk sign-in and sign-up (see src/lib/auth/appearance.ts) -----------
+   On the first step the page already says "Log in" / "Create your account",
+   so Clerk's own heading would repeat it. Later steps ("Check your email",
+   "Enter your password") keep their heading, which says what to do next. */
+.cl-signIn-start .cl-header,
+.cl-signUp-start .cl-header {
+  display: none;
+}
+
+/* Field and outline-button edges. Clerk draws these as a faint box-shadow ring
+   with its own, more specific rules - so faint on the dark theme that inputs
+   looked like bare text. Redrawn here as a solid ring in the site's colours
+   (!important only to beat Clerk's generated class names). */
+.cl-formFieldInput,
+.cl-otpCodeFieldInput,
+.cl-socialButtonsBlockButton,
+.cl-alternativeMethodsBlockButton,
+.cl-identityPreview {
+  border: 0 !important;
+  box-shadow: 0 0 0 1px var(--color-staff) !important;
+}
+.cl-formFieldInput:hover,
+.cl-otpCodeFieldInput:hover,
+.cl-socialButtonsBlockButton:hover,
+.cl-alternativeMethodsBlockButton:hover {
+  box-shadow: 0 0 0 1px var(--color-muted) !important;
+}
+.cl-formFieldInput:focus,
+.cl-otpCodeFieldInput:focus,
+.cl-socialButtonsBlockButton:focus-visible,
+.cl-alternativeMethodsBlockButton:focus-visible,
+.cl-formButtonPrimary:focus-visible {
+  /* One rounded ring instead of the site's square focus outline on top of it. */
+  outline: none !important;
+  box-shadow:
+    0 0 0 1px var(--color-gold),
+    0 0 0 4px color-mix(in srgb, var(--color-gold) 30%, transparent) !important;
+}
+
+/* Clerk's frame clips its contents, and Clerk nudges fields and buttons a
+   pixel outside it - which shaved off their left edges and focus rings. The
+   page's own card is the frame here, so nothing needs clipping. */
+.cl-signIn-root .cl-cardBox,
+.cl-signUp-root .cl-cardBox {
+  overflow: visible !important;
+}

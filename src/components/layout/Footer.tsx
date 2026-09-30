@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { FooterAccountLink, FooterLoginLink } from "@/components/account/FooterAccountLink";
 import { Logo } from "@/components/layout/Logo";
 import { Container } from "@/components/ui/Container";
 import { ExternalLink } from "@/components/ui/ExternalLink";
@@ -11,7 +12,7 @@ import { footerContent } from "@/content/footer";
  * Site footer. External resources live here rather than on a dedicated page -
  * there are not enough of them yet to justify one.
  */
-export function Footer() {
+export function Footer({ authEnabled = false }: { authEnabled?: boolean }) {
   const year = new Date().getFullYear();
 
   return (
@@ -20,7 +21,12 @@ export function Footer() {
       style={{ viewTransitionName: "site-footer" }}
       className="mt-24 border-t border-line bg-surface"
     >
-      <Container size="wide" className="py-14">
+      {/* Extra bottom padding from tablet width until the page gutter is wide
+          enough: otherwise the fixed "Back to top" button (48px, 32px from
+          the corner) sits on top of the right-hand "Log in!" link when the
+          page is scrolled to the end. On phones the row stacks to the left,
+          clear of the button; from 1440px the gutter itself clears it. */}
+      <Container size="wide" className="py-14 sm:max-[1439px]:pb-24">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           {/* Identification */}
           <Reveal className="lg:pr-6">
@@ -91,10 +97,13 @@ export function Footer() {
           </Reveal>
         </div>
 
-        <div className="mt-12 border-t border-line pt-6">
+        {/* Copyright on the left, the account link on the right; stacked on
+            phones, where the two would not fit side by side comfortably. */}
+        <div className="mt-12 flex flex-col gap-2 border-t border-line pt-6 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
           <p className="text-xs text-muted">
             {footerContent.copyright.replace("{year}", String(year))}
           </p>
+          {authEnabled ? <FooterAccountLink /> : <FooterLoginLink />}
         </div>
       </Container>
     </footer>
