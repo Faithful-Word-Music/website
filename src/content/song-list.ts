@@ -189,6 +189,14 @@ export const songListContent = {
       title: "Sheet music",
       /** Shown when the Index lists files, but none may be shared publicly. */
       restricted: "Sheet music for this song isn't available publicly.",
+      /** Copyrighted files, open to signed-in members only. */
+      membersOnly: "Members only",
+      logIn: "Log in",
+      /** Above the list when members could open files the public cannot. */
+      membersNoteSignedOut: "This sheet music is copyrighted, so it's shared with members only.",
+      /** Follows the "Log in" link: "Log in to view it." */
+      membersNoteLogIn: "to view it.",
+      membersNoteDenied: "This sheet music is copyrighted. Your account doesn't include access to it yet.",
       previewTitle: "Sheet music preview: {title}",
       previewLoading: "Loading the sheet music…",
       /** Over the preview when a PDF has more than one page. {page} and {count} are replaced at render time. */

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { siteConfig } from "@/config/site";
+import { getViewer } from "@/lib/auth/session";
 import { fileLabel, findFile } from "@/lib/sheet-music";
-import { canAccessFile, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { openDriveFile } from "@/lib/sheet-music-index";
 import { getIndexSongForPage } from "@/lib/song-archive";
 
@@ -16,7 +17,8 @@ import { getIndexSongForPage } from "@/lib/song-archive";
  * the route decides for itself with the same canAccessFile() the page uses.
  *
  *   unknown song or file   -> 404
- *   not allowed            -> 403, and Drive is never asked
+ *   members only, signed out -> 401; signed in without access -> 403
+ *                            (Drive is never asked in either case)
  *   allowed                -> the file, streamed from Drive untouched
  *
  * PDFs open in the browser; MuseScore files download as the original .mscz.
@@ -54,8 +56,15 @@ export async function GET(
     return jsonError(404, "not-found");
   }
 
-  if (!canAccessFile(song, found.file, PUBLIC_VIEWER)) {
-    return jsonError(403, "restricted");
+  // Public files need no session at all. Anything else needs a signed-in
+  // member whose roles allow it - checked here, on the server, every time.
+  const isPublic = canAccessFile(song, found.file, PUBLIC_VIEWER);
+  if (!isPublic) {
+    const viewer = await getViewer().catch(() => null);
+    if (!viewer) return jsonError(401, "sign-in-required");
+    if (!viewer.can("view_sheet_music") || !canAccessFile(song, found.file, MEMBER_VIEWER)) {
+      return jsonError(403, "restricted");
+    }
   }
 
   const body = await openDriveFile(found.file.driveFileId);
@@ -72,11 +81,13 @@ export async function GET(
     headers: {
       "Content-Type": CONTENT_TYPES[file.format],
       "Content-Disposition": contentDisposition(file.format === "pdf" ? "inline" : "attachment", fileName),
-      // Public files only reach this point, so the CDN may keep a copy - but
-      // no longer than the Index cache, so a song made private again stops
-      // being served within minutes. Revisit when signed-in access arrives:
-      // restricted files must then be sent with "private, no-store".
-      "Cache-Control": `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds}`,
+      // A public file may be kept by the CDN - but no longer than the Index
+      // cache, so a song made private again stops being served within
+      // minutes. A members-only file must never be cached anywhere shared,
+      // or the next visitor could be handed it without signing in.
+      "Cache-Control": isPublic
+        ? `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds}`
+        : "private, no-store",
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex",
     },

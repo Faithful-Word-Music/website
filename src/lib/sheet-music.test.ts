@@ -11,7 +11,7 @@ import {
   rightsFromCell,
   toPublicSheetMusic,
 } from "@/lib/sheet-music";
-import { canAccessFile, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 
 const HYMNAL = "Soul-Stirring Songs and Hymns 1989";
 
@@ -317,5 +317,38 @@ describe("access and the public view", () => {
     const blessed = byId("SSSH1989-012");
     expect(canAccessFile(river, river.versions[0].files[0], PUBLIC_VIEWER)).toBe(true);
     expect(canAccessFile(blessed, blessed.versions[0].files[0], PUBLIC_VIEWER)).toBe(false);
+  });
+
+  it("lets signed-in members open every file, copyrighted or not", () => {
+    for (const id of ["SSSH1989-121", "SSSH1989-012", "SSSH1989-125", "PS-054"]) {
+      const song = byId(id);
+      expect(canAccessFile(song, song.versions[0].files[0], MEMBER_VIEWER)).toBe(true);
+    }
+  });
+
+  const memberView = (id: string) => {
+    const indexSong = byId(id);
+    return toPublicSheetMusic(
+      indexSong,
+      (file) => canAccessFile(indexSong, file, PUBLIC_VIEWER),
+      (file) => `/library/songs/x/sheet-music/${file.slug}`,
+      (file) => canAccessFile(indexSong, file, MEMBER_VIEWER),
+    );
+  };
+
+  it("gives copyrighted files a members' link only, never a public one", () => {
+    const music = memberView("SSSH1989-012");
+    const files = music.versions.flatMap((version) => version.files);
+    expect(music.available).toBe(false);
+    expect(music.membersOnly).toBe(true);
+    expect(files.every((file) => file.href === null && file.membersHref !== null)).toBe(true);
+  });
+
+  it("keeps public files public, with no separate members' link", () => {
+    const music = memberView("SSSH1989-121");
+    const files = music.versions.flatMap((version) => version.files);
+    expect(music.available).toBe(true);
+    expect(music.membersOnly).toBe(false);
+    expect(files.every((file) => file.href !== null && file.membersHref === null)).toBe(true);
   });
 });

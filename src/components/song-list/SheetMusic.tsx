@@ -1,7 +1,14 @@
+import {
+  MemberPreview,
+  MembersNote,
+  MembersOnlyFiles,
+  SheetMusicAccessProvider,
+} from "@/components/song-list/MemberSheetMusic";
 import { PdfPreview } from "@/components/song-list/PdfPreview";
-import { buttonClasses } from "@/components/ui/Button";
+import { SheetFileButton } from "@/components/song-list/SheetFileButton";
 import { Card } from "@/components/ui/Card";
 import { songListContent } from "@/content/song-list";
+import { currentClerkConfig } from "@/lib/auth/clerk-env";
 import type { PublicSheetFile, PublicSheetMusic, PublicVersion } from "@/lib/sheet-music";
 
 const { about, sheetMusic: copy } = songListContent.songPage;
@@ -97,67 +104,22 @@ function toRows(versions: PublicVersion[]): Row[] {
   });
 }
 
-function PdfIcon() {
-  return (
-    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M9.5 1.5H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5L9.5 1.5ZM9.5 1.5V5H13M5.5 8.5h5M5.5 11h5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <path
-        d="M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** PDF first and filled; MuseScore second and outlined. */
+/**
+ * One row's buttons: files anyone may open, then members-only files (unlocked
+ * in the browser for signed-in members), then anything nobody may open here,
+ * named but not linked.
+ */
 function FileActions({ files }: { files: PublicSheetFile[] }) {
   const open = files.filter((file) => file.href);
-  const closed = files.filter((file) => !file.href);
+  const members = files.filter((file) => file.membersHref);
+  const closed = files.filter((file) => !file.href && !file.membersHref);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {open.map((file) =>
-        file.format === "pdf" ? (
-          <a
-            key={file.href}
-            href={file.href!}
-            target="_blank"
-            rel="noopener"
-            className={buttonClasses("primary")}
-          >
-            <PdfIcon />
-            {copy.viewPdf}
-            <span className="sr-only">{copy.newTab}</span>
-          </a>
-        ) : (
-          <a
-            key={file.href}
-            href={file.href!}
-            download
-            title={copy.museScoreHint}
-            className={buttonClasses("secondary")}
-          >
-            <DownloadIcon />
-            {copy.downloadMuseScore}
-          </a>
-        ),
-      )}
+      {open.map((file) => (
+        <SheetFileButton key={file.href} format={file.format} href={file.href!} />
+      ))}
+      {members.length > 0 ? <MembersOnlyFiles files={members} /> : null}
       {closed.length > 0 ? (
         <span className="text-sm text-muted">
           {[...new Set(closed.map((file) => copy.formats[file.format]))].join(" · ")}
@@ -172,9 +134,9 @@ function FileActions({ files }: { files: PublicSheetFile[] }) {
  * button - "View PDF" first, "Download MuseScore" second - and the first PDF
  * is previewed in the page on every screen size (see PdfPreview).
  *
- * When nothing may be shared publicly the versions are still listed, with a
- * short note and no links. The route behind each link checks rights again,
- * so hiding a button here is a courtesy, not the protection.
+ * Copyrighted files are listed for everyone and unlocked for signed-in
+ * members (see MemberSheetMusic). The route behind each link checks access
+ * again, so hiding a button here is a courtesy, not the protection.
  */
 export function SheetMusic({
   music,
@@ -188,19 +150,40 @@ export function SheetMusic({
   const rows = toRows(music.versions);
   if (rows.length === 0) return null;
 
-  // The first PDF this visitor may open, named as its row is ("Standard").
-  const preview = rows
-    .map((row) => ({ label: row.label, href: row.files.find((file) => file.format === "pdf")?.href }))
+  // The first PDF anyone may open, named as its row is ("Standard") - or,
+  // failing that, the first members' PDF, previewed once a member is known.
+  const publicPreview = rows
+    .map((row) => ({ label: row.label, href: row.files.find((file) => file.format === "pdf" && file.href)?.href }))
     .find((candidate) => candidate.href);
+  const memberPreview = publicPreview
+    ? undefined
+    : rows
+        .map((row) => ({
+          label: row.label,
+          href: row.files.find((file) => file.format === "pdf" && file.membersHref)?.membersHref,
+        }))
+        .find((candidate) => candidate.href);
 
-  return (
+  // Members' files need accounts switched on in this deployment; without
+  // them the page reads exactly as it did before accounts existed.
+  const membersEnabled = music.membersOnly && currentClerkConfig().status === "ready";
+
+  const content = (
     <section aria-labelledby="sheet-music" className={className}>
       <h2 id="sheet-music" className="font-display text-2xl text-ink">
         {copy.title}
       </h2>
-      {music.available ? null : <p className="mt-2 text-muted">{copy.restricted}</p>}
+      {membersEnabled ? (
+        <MembersNote hasPublicFiles={music.available} />
+      ) : music.available ? null : (
+        <p className="mt-2 text-muted">{copy.restricted}</p>
+      )}
 
-      {preview?.href ? <PdfPreview src={preview.href} title={title} label={preview.label} /> : null}
+      {publicPreview?.href ? (
+        <PdfPreview src={publicPreview.href} title={title} label={publicPreview.label} />
+      ) : memberPreview?.href && membersEnabled ? (
+        <MemberPreview src={memberPreview.href} title={title} label={memberPreview.label} />
+      ) : null}
 
       <Card className="mt-4">
         <ul className="divide-y divide-line">
@@ -220,4 +203,6 @@ export function SheetMusic({
       </Card>
     </section>
   );
+
+  return membersEnabled ? <SheetMusicAccessProvider>{content}</SheetMusicAccessProvider> : content;
 }

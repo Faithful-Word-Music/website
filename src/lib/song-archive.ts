@@ -12,7 +12,7 @@ import {
   type PublicSheetMusic,
   toPublicSheetMusic,
 } from "@/lib/sheet-music";
-import { canAccessFile, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
+import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
 import {
   buildCompanions,
@@ -318,6 +318,7 @@ function publicSheetMusic(slug: string, song: IndexSong, viewer: Viewer): Public
     song,
     (file) => canAccessFile(song, file, viewer),
     (file) => `${songPath(slug)}/sheet-music/${file.slug}`,
+    (file) => canAccessFile(song, file, MEMBER_VIEWER),
   );
 }
 

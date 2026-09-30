@@ -516,8 +516,14 @@ export function fileLabel(version: SongVersion, file: SheetFile): string {
 export interface PublicSheetFile {
   format: SheetFormat;
   instrument: string | null;
-  /** Where to get it, or null when this visitor may not. */
+  /** Where to get it, or null when the public may not. */
   href: string | null;
+  /**
+   * Where a signed-in member gets it, when the public may not - null for a
+   * public file (use `href`). The address is only a song slug and a file
+   * slug; the file route checks the member's session before serving it.
+   */
+  membersHref: string | null;
 }
 
 export interface PublicVersion {
@@ -547,14 +553,18 @@ export interface PublicSheetMusic {
   /** Shown only when it is settled one way or the other. */
   copyright: "not-copyrighted" | "copyrighted" | null;
   versions: PublicVersion[];
-  /** True when at least one file has a link. */
+  /** True when at least one file is open to the public. */
   available: boolean;
+  /** True when at least one file is open to signed-in members only. */
+  membersOnly: boolean;
 }
 
 export function toPublicSheetMusic(
   song: IndexSong,
   mayOpen: (file: SheetFile) => boolean,
   hrefFor: (file: SheetFile) => string,
+  /** Whether a signed-in member may open a file the public may not. */
+  membersMayOpen: (file: SheetFile) => boolean = () => false,
 ): PublicSheetMusic {
   const versions = song.versions
     .filter((version) => version.files.length > 0)
@@ -564,11 +574,15 @@ export function toPublicSheetMusic(
         version: version.version,
         keys: version.keys,
         capoFret: version.capoFret,
-        files: version.files.map((file) => ({
-          format: file.format,
-          instrument: file.instrument,
-          href: mayOpen(file) ? hrefFor(file) : null,
-        })),
+        files: version.files.map((file) => {
+          const open = mayOpen(file);
+          return {
+            format: file.format,
+            instrument: file.instrument,
+            href: open ? hrefFor(file) : null,
+            membersHref: !open && membersMayOpen(file) ? hrefFor(file) : null,
+          };
+        }),
       }),
     );
 
@@ -587,5 +601,6 @@ export function toPublicSheetMusic(
       song.rights === "cleared" ? "not-copyrighted" : song.rights === "copyrighted" ? "copyrighted" : null,
     versions,
     available: versions.some((version) => version.files.some((file) => file.href !== null)),
+    membersOnly: versions.some((version) => version.files.some((file) => file.membersHref !== null)),
   };
 }

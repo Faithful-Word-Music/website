@@ -76,7 +76,7 @@ export const PERMISSIONS = {
   },
   view_sheet_music: {
     label: "View member sheet music",
-    description: "Open sheet music that is not available publicly.",
+    description: "Open copyrighted sheet music on song pages, which the public cannot see.",
     group: "members",
   },
   view_member_resources: {
@@ -150,7 +150,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: MEMBER_ROLE,
     label: "Member",
     description: "Everyone with an account. Held automatically.",
-    permissions: ["view_member_resources"],
+    permissions: ["view_sheet_music", "view_member_resources"],
   },
 ];
 

@@ -335,14 +335,14 @@ Google Drive (private) ──────┘   (read-only)             └─> /
   - The Files tab is no longer read. **Notes**, **Migration** and **References** never are.
 - **Matching a page to the Index:** a numbered song is looked up by its number in `siteConfig.sheetMusic.hymnalCollection` (Soul-Stirring Songs and Hymns 1989). An unnumbered song (a Psalm or an insert) is matched by title, but only when exactly one Index song has that title; an ambiguous title shows nothing rather than the wrong music. Pages still only exist for songs that have been sung or scheduled. Once a song gets a page, its Index entry appears automatically.
 - **Public details vs. protected files:** every matched song shows its details (composer, words, key, collection…), leaving out blank fields. The files are a separate question, answered by `canAccessFile()` in `lib/sheet-music-access.ts`.
-- **Rights, today:** a song's files are public **only when `Copyrighted?` is exactly `No`**. `Yes`, `Needs Review`, a blank or any other value keeps them private, and the page just says the sheet music isn't available publicly.
+- **Rights:** a song's files are **public only when `Copyrighted?` is exactly `No`**. `Yes`, `Needs Review`, a blank or any other value keeps them from the public. **Signed-in members can open every file**, copyrighted or not, if their roles include **View member sheet music** (the Member role has it by default, so that means every account; change it under Admin → Roles).
 - **Enforced on the server:** the file route runs `canAccessFile()` itself before touching Drive. A restricted file returns `403` even if someone types its address.
 - **PDF first, MuseScore second:** a PDF gets the main **View PDF** button and, on larger screens, an inline preview. It is served `inline`. A MuseScore file gets a secondary **Download MuseScore** button and is sent as the untouched original `.mscz`.
   - The format comes from the file's `.pdf` / `.mscz` extension. Drive's MIME type is ignored, because Drive often reports `.mscz` files (zip containers) as zip archives.
 - **What reaches the browser:** file addresses use a slug (`standard-1.pdf`, `capo-2-guitar.mscz`), never a Drive File ID. The Drive IDs, notes and paths stay on the server.
 - **Freshness:** the Drive listing and the Index are cached together for `siteConfig.sheetMusic.revalidateSeconds` (10 seconds), so a new file shows up within about 10-20 seconds. Served files are cached at the CDN for the same time, so making a song private again takes effect about as quickly.
 - **Without credentials:** the song pages work as before with no sheet-music section, and the file route returns `503 {"reason":"not-configured"}`.
-- **Adding accounts later:** extend the `Viewer` type in `lib/sheet-music-access.ts` (for example a signed-in member), build it from the session in the song page (`getSongPage`) and the file route, and widen the rule in `canAccessFile()`. Restricted files served to signed-in users must be sent with `Cache-Control: private, no-store` instead of the public CDN caching used today.
+- **Members-only files:** song pages stay cached and identical for everyone. Copyrighted files are listed with "Members only · Log in"; in the browser, `MemberSheetMusic` asks `/api/account/me` whether the visitor may see them and unlocks the buttons and the preview. The file route decides for itself: a public file needs no session; any other needs a signed-in member with the permission (`401` signed out, `403` without access), and is sent `Cache-Control: private, no-store` so no shared cache ever keeps it.
 
 ### Member accounts
 
@@ -551,7 +551,7 @@ Unlike the public song list, the Sheet Music Index and the sheet-music Drive fol
 | `Google Sheets responded with 400` | The Songs tab is missing or renamed | Restore the tab name "Songs" |
 | File URL returns `502`, and the log says `Google Drive responded with 404` | The file was deleted or moved in the last few minutes | Reload after a few seconds; the listing catches up |
 | `Google Drive responded with 403` | Downloads are disabled for viewers on that file, or the Drive API is off | Allow viewers to download; enable the API |
-| Song page has details but no buttons | The song's `Copyrighted?` isn't `No` | Working as intended |
+| Song page has details but no buttons | The song's `Copyrighted?` isn't `No` | Working as intended: members see the buttons once logged in |
 | A song has no sheet-music section | No Index match: the number isn't in the hymnal collection, or the title is ambiguous or spelled differently | Fix the Index's Hymn Number, Collection or Title |
 | A file in Drive doesn't show on its song's page | Wrong folder, no number or title match, a missing Songs row, or `IN PROGRESS` in the name | Check the folder, the filename, and that the song has a Songs row with the same Collection and Hymn Number |
 

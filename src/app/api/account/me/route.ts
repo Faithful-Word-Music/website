@@ -22,6 +22,7 @@ export async function GET() {
       {
         signedIn: true,
         canAccessAdmin: viewer.canAccessAdmin,
+        canViewSheetMusic: viewer.can("view_sheet_music"),
         title: titles.find((title) => title.isPrimary)?.label ?? titles[0]?.label ?? null,
       },
       { headers },

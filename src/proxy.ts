@@ -45,5 +45,13 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
  * that calls auth() or getViewer() must be added here.
  */
 export const config = {
-  matcher: ["/account/:path*", "/admin/:path*", "/login/:path*", "/accept-invite/:path*", "/api/account/:path*"],
+  matcher: [
+    "/account/:path*",
+    "/admin/:path*",
+    "/login/:path*",
+    "/accept-invite/:path*",
+    "/api/account/:path*",
+    // Sheet-music files: members-only ones are served after a session check.
+    "/library/songs/:song/sheet-music/:file",
+  ],
 };

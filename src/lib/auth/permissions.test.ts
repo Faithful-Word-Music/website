@@ -12,8 +12,8 @@ import {
 const rolePermissions = new Map(DEFAULT_ROLES.map((role) => [role.key, role.permissions as string[]]));
 
 describe("resolvePermissions", () => {
-  it("gives every signed-in person the Member role's permissions", () => {
-    expect([...resolvePermissions([], rolePermissions)]).toEqual(["view_member_resources"]);
+  it("gives every signed-in person the Member role's permissions, sheet music included", () => {
+    expect([...resolvePermissions([], rolePermissions)].sort()).toEqual(["view_member_resources", "view_sheet_music"]);
   });
 
   it("adds up permissions across several roles", () => {
