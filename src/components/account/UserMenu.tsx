@@ -98,7 +98,7 @@ export function UserMenu() {
       {open ? (
         <div
           id={menuId}
-          className="glass absolute right-0 top-full z-50 mt-2 w-64 rounded-card border border-line p-2 shadow-lift animate-enter"
+          className="absolute right-0 top-full z-50 mt-2 w-64 rounded-card border border-line bg-surface p-2 shadow-lift animate-enter"
         >
           <div className="border-b border-line px-3 pb-3 pt-2">
             <p className="truncate text-sm font-medium text-ink">{name}</p>

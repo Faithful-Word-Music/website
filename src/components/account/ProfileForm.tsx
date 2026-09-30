@@ -32,12 +32,11 @@ export function ProfileForm({
   initial,
   instrumentOptions,
   isMusician,
-  isSongLeader,
 }: {
   initial: ProfileFormValues;
   instrumentOptions: Array<{ id: number; label: string }>;
+  /** Only musicians are asked "How do you play?". */
   isMusician: boolean;
-  isSongLeader: boolean;
 }) {
   const ids = useId();
   const router = useRouter();
@@ -221,37 +220,34 @@ export function ProfileForm({
             <p className="mt-2 text-xs text-muted">Missing an instrument? Ask an administrator to add it to the list.</p>
           </fieldset>
 
+          <ChoiceChips
+            name={`${ids}-reads`}
+            legend="Can you read sheet music?"
+            options={[
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ]}
+            selected={values.readsSheetMusic === null ? [] : [values.readsSheetMusic ? "yes" : "no"]}
+            onChange={(next) => set("readsSheetMusic", next[0] === undefined ? null : next[0] === "yes")}
+          />
+
+          {/* Only musicians are asked how they play; everything else is for everyone. */}
           {isMusician ? (
-            <>
-              <LearningScaleInput
-                name={`${ids}-learning`}
-                value={values.learningStyle}
-                onChange={(next) => set("learningStyle", next)}
-              />
-
-              <ChoiceChips
-                name={`${ids}-theory`}
-                legend="Music theory"
-                hint={THEORY_LEVELS.map((level) => `${level.label}: ${level.description}`).join(" ")}
-                options={THEORY_LEVELS}
-                selected={values.theoryLevel ? [values.theoryLevel] : []}
-                onChange={(next) => set("theoryLevel", next[0] ?? null)}
-              />
-            </>
-          ) : null}
-
-          {isSongLeader ? (
-            <ChoiceChips
-              name={`${ids}-reads`}
-              legend="Can you read basic sheet music?"
-              options={[
-                { value: "yes", label: "Yes" },
-                { value: "no", label: "No" },
-              ]}
-              selected={values.readsSheetMusic === null ? [] : [values.readsSheetMusic ? "yes" : "no"]}
-              onChange={(next) => set("readsSheetMusic", next[0] === undefined ? null : next[0] === "yes")}
+            <LearningScaleInput
+              name={`${ids}-learning`}
+              value={values.learningStyle}
+              onChange={(next) => set("learningStyle", next)}
             />
           ) : null}
+
+          <ChoiceChips
+            name={`${ids}-theory`}
+            legend="Music theory"
+            hint={THEORY_LEVELS.map((level) => `${level.label}: ${level.description}`).join(" ")}
+            options={THEORY_LEVELS}
+            selected={values.theoryLevel ? [values.theoryLevel] : []}
+            onChange={(next) => set("theoryLevel", next[0] ?? null)}
+          />
 
           <ChoiceChips
             name={`${ids}-availability`}

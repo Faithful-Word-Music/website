@@ -5,6 +5,7 @@ import { useId, useState, useTransition } from "react";
 
 import { approveRequestAction, rejectRequestAction } from "@/app/admin/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
+import { InvitationRolePicker, type AssignableRole } from "@/components/admin/InviteForm";
 import { Button } from "@/components/ui/Button";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
 import type { ActionResult } from "@/lib/auth/session";
@@ -13,12 +14,22 @@ import type { ActionResult } from "@/lib/auth/session";
  * Approve or decline a pending request. Leaving the page does neither: a
  * request can stay pending for as long as needed.
  */
-export function RequestReview({ requestId, email }: { requestId: number; email: string }) {
+export function RequestReview({
+  requestId,
+  email,
+  roles,
+}: {
+  requestId: number;
+  email: string;
+  /** Roles the viewer may give out; empty hides the picker. */
+  roles: AssignableRole[];
+}) {
   const ids = useId();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [note, setNote] = useState("");
+  const [chosenRoles, setChosenRoles] = useState<string[]>([]);
   const [result, setResult] = useState<ActionResult | null>(null);
 
   function run(action: () => Promise<ActionResult>) {
@@ -52,8 +63,13 @@ export function RequestReview({ requestId, email }: { requestId: number; email: 
             Clerk will email an invitation to <strong className="font-medium">{email}</strong>. They choose a password
             and their account is created.
           </p>
+          <InvitationRolePicker name={`${ids}-roles`} roles={roles} selected={chosenRoles} onChange={setChosenRoles} />
           <div className="flex flex-wrap gap-3">
-            <Button type="button" disabled={pending} onClick={() => run(() => approveRequestAction(requestId))}>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => approveRequestAction(requestId, chosenRoles))}
+            >
               {pending ? "Sending…" : "Send invitation"}
             </Button>
             <Button type="button" variant="quiet" disabled={pending} onClick={() => setMode("idle")}>

@@ -7,6 +7,7 @@ import { RequestReview } from "@/components/admin/RequestReview";
 import { StatusPill } from "@/components/admin/StatusPill";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { assignableRoles } from "@/lib/auth/assignable-roles";
 import { getAccount } from "@/lib/auth/clerk";
 import { formatDateTime } from "@/lib/auth/format";
 import { reconcileRequests } from "@/lib/auth/reconcile";
@@ -74,7 +75,7 @@ export default async function RequestPage({ params }: PageProps<"/admin/requests
 
       <div className="mt-6">
         {request.status === "pending" ? (
-          <RequestReview requestId={request.id} email={request.email} />
+          <RequestReview requestId={request.id} email={request.email} roles={await assignableRoles(viewer)} />
         ) : request.status === "invited" ? (
           <p className="text-sm text-muted">
             An invitation has been sent and is waiting to be accepted. It can be withdrawn from{" "}

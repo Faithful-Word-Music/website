@@ -5,7 +5,7 @@ import { ProfileForm } from "@/components/account/ProfileForm";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { MUSICIAN_ROLE, SONG_LEADER_ROLE } from "@/lib/auth/permissions";
+import { MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import { requireViewer } from "@/lib/auth/session";
 import { getProfile, getUserInstruments, listOptions } from "@/lib/auth/store";
 
@@ -59,7 +59,6 @@ export default async function EditProfilePage() {
             }}
             instrumentOptions={instrumentOptions}
             isMusician={viewer.roleKeys.includes(MUSICIAN_ROLE)}
-            isSongLeader={viewer.roleKeys.includes(SONG_LEADER_ROLE)}
           />
         </div>
       </Container>

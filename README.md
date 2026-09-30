@@ -359,6 +359,8 @@ approve:  /admin/requests/<id> → claim row (pending→invited) → Clerk invit
 invite:   /admin/invitations → Clerk invitation directly (no request needed)
 ```
 
+**Roles at invitation time:** when inviting someone, or approving their request, you can tick the roles they should have (Musician, Song Leader…). They're stored with the invitation (`invitation_roles`) and given automatically the first time the new account is used, matched on the verified email the invitation went to. Choosing roles follows the same rules as assigning them on a person's page: it needs Manage roles, and only administrators can hand out Administrator. Revoking the invitation discards them.
+
 **Request lifecycle:**
 - **pending:** waiting for review. It can stay pending indefinitely.
 - **invited:** approved, and the invitation has been sent.
@@ -384,7 +386,7 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
 
 **Profiles:**
 - **Owners:** Clerk holds the first name, last name and photo. The site holds the middle name, preferred name, bio, phone, voice part, usual services and instruments (each with a skill level and a primary).
-- **Musicians** also answer a **By ear ↔ Sheet music** slider and give a separate music-theory level. **Song leaders** answer "Can you read basic sheet music?"
+- **Questions:** everyone answers "Can you read sheet music?" and gives a music-theory level. **Musicians** also answer **How do you play?** (a five-stop By ear ↔ Sheet music scale).
 - **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Titles & instruments**. An item still in use is archived, not deleted.
 - **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator.
 

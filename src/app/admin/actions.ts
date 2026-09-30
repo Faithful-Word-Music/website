@@ -21,7 +21,7 @@ import {
   reviewNoteSchema,
   roleSchema,
 } from "@/lib/auth/forms";
-import { ADMIN_ROLE, isPermission, roleKeyFromLabel, type Permission } from "@/lib/auth/permissions";
+import { ADMIN_ROLE, MEMBER_ROLE, isPermission, roleKeyFromLabel, type Permission } from "@/lib/auth/permissions";
 import { normalizeEmail } from "@/lib/auth/request-status";
 import { siteOrigin, withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
 import {
@@ -29,9 +29,11 @@ import {
   assignRole,
   claimRequestForApproval,
   createRole,
+  deleteInvitationRoles,
   deleteRole,
   deleteUserData,
   getRole,
+  listRoles,
   loadAuthorization,
   markInvitationRevoked,
   moveOption,
@@ -41,6 +43,7 @@ import {
   removeOverride,
   removeRole,
   renameOption,
+  setInvitationRoles,
   setOptionArchived,
   setOverride,
   setUserTitles,
@@ -91,6 +94,38 @@ function clerkError(result: Extract<ClerkResult<unknown>, { ok: false }>, fallba
   }
 }
 
+/**
+ * Roles to give someone when they accept an invitation. The same rules as
+ * giving roles on a person's page: it needs "Manage roles", only
+ * administrators can hand out Administrator, and nobody can hand out a role
+ * with permissions they lack themselves.
+ */
+async function checkInvitationRoles(
+  viewer: Viewer,
+  roleKeys: unknown,
+): Promise<{ ok: true; value: string[] } | { ok: false; error: string }> {
+  if (!Array.isArray(roleKeys) || roleKeys.length > 20 || !roleKeys.every((key) => typeof key === "string")) {
+    return { ok: false, error: "Unknown role." };
+  }
+  const keys = [...new Set(roleKeys as string[])].filter((key) => key !== MEMBER_ROLE);
+  if (keys.length === 0) return { ok: true, value: [] };
+  if (!viewer.can("manage_roles")) {
+    return { ok: false, error: "Choosing roles needs the Manage roles permission. Send the invitation without roles." };
+  }
+  const roles = new Map((await listRoles(viewer.env)).map((role) => [role.key, role]));
+  for (const key of keys) {
+    const role = roles.get(key);
+    if (!role) return { ok: false, error: "One of the chosen roles no longer exists." };
+    if (key === ADMIN_ROLE && !isAdmin(viewer)) {
+      return { ok: false, error: "Only administrators can give the Administrator role." };
+    }
+    if (exceedsOwn(viewer, role.permissions.filter(isPermission))) {
+      return { ok: false, error: `${role.label} includes permissions you do not have yourself.` };
+    }
+  }
+  return { ok: true, value: keys };
+}
+
 function parseId(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
@@ -105,10 +140,13 @@ function parseId(value: unknown): number | null {
  * the claim is released and the request is pending again - the database and
  * Clerk never disagree about whether an invitation went out.
  */
-export async function approveRequestAction(id: unknown): Promise<ActionResult> {
+export async function approveRequestAction(id: unknown, roleKeys: unknown = []): Promise<ActionResult> {
   return withPermission("manage_users", async (viewer) => {
     const requestId = parseId(id);
     if (!requestId) return { ok: false, error: "Unknown request." };
+    // Checked before anything is sent, so a refused role never leaves a half-done approval.
+    const roles = await checkInvitationRoles(viewer, roleKeys);
+    if (!roles.ok) return roles;
 
     const request = await claimRequestForApproval(viewer.env, requestId, viewer.userId);
     if (!request) return { ok: false, error: "This request has already been reviewed." };
@@ -120,6 +158,7 @@ export async function approveRequestAction(id: unknown): Promise<ActionResult> {
     }
 
     await recordRequestInvitation(viewer.env, requestId, invitation.value.id);
+    await setInvitationRoles(viewer.env, invitation.value.id, normalizeEmail(request.email), roles.value, viewer.userId);
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: `Invitation sent to ${request.email}.` };
   });
@@ -143,18 +182,22 @@ export async function rejectRequestAction(id: unknown, note: unknown): Promise<A
 // Invitations
 // ---------------------------------------------------------------------------
 
-export async function inviteAction(email: unknown): Promise<ActionResult> {
-  return withPermission("manage_users", async () => {
+export async function inviteAction(email: unknown, roleKeys: unknown = []): Promise<ActionResult> {
+  return withPermission("manage_users", async (viewer) => {
     const parsed = inviteSchema.safeParse({ email });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const roles = await checkInvitationRoles(viewer, roleKeys);
+    if (!roles.ok) return roles;
 
-    const invitation = await createInvitation(normalizeEmail(parsed.data.email), `${await siteOrigin()}/accept-invite`);
+    const address = normalizeEmail(parsed.data.email);
+    const invitation = await createInvitation(address, `${await siteOrigin()}/accept-invite`);
     if (!invitation.ok) {
       if (invitation.reason === "already-exists") {
         return { ok: false, error: "That address already has an account or a pending invitation." };
       }
       return clerkError(invitation, "The invitation could not be sent. Please try again.");
     }
+    await setInvitationRoles(viewer.env, invitation.value.id, address, roles.value, viewer.userId);
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: `Invitation sent to ${invitation.value.email}.` };
   });
@@ -168,6 +211,7 @@ export async function revokeInvitationAction(invitationId: unknown): Promise<Act
     const revoked = await revokeInvitation(parsed.data);
     if (!revoked.ok) return clerkError(revoked, "The invitation could not be revoked. Please try again.");
     await markInvitationRevoked(viewer.env, parsed.data);
+    await deleteInvitationRoles(viewer.env, parsed.data);
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: "Invitation revoked. Its link no longer works." };
   });

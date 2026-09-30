@@ -795,3 +795,91 @@ export async function markInvitationRevoked(env: ClerkEnv, invitationId: string)
     [env, invitationId],
   );
 }
+
+// ---------------------------------------------------------------------------
+// Roles chosen at invitation time
+// ---------------------------------------------------------------------------
+
+/**
+ * Remembers the roles to give whoever accepts this invitation. Any earlier,
+ * still-unused choice for the same address is replaced, so re-inviting
+ * someone with different roles does what it looks like.
+ */
+export async function setInvitationRoles(
+  env: ClerkEnv,
+  invitationId: string,
+  emailNormalized: string,
+  roleKeys: string[],
+  assignedBy: string,
+): Promise<void> {
+  if (roleKeys.length === 0) return;
+  const sql = await db(env);
+  await sql.transaction((txn) => [
+    txn.query(
+      `DELETE FROM invitation_roles WHERE clerk_env = $1 AND email_normalized = $2 AND applied_at IS NULL`,
+      [env, emailNormalized],
+    ),
+    txn.query(
+      `INSERT INTO invitation_roles (clerk_env, clerk_invitation_id, email_normalized, role_key, assigned_by)
+       SELECT $1, $2, $3, r.key, $5 FROM roles r WHERE r.clerk_env = $1 AND r.key = ANY($4::text[])`,
+      [env, invitationId, emailNormalized, roleKeys, assignedBy],
+    ),
+  ]);
+}
+
+/** Role keys chosen for each invitation not yet used, by invitation ID. */
+export async function pendingInvitationRoles(env: ClerkEnv): Promise<Map<string, string[]>> {
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT clerk_invitation_id, role_key FROM invitation_roles WHERE clerk_env = $1 AND applied_at IS NULL`,
+    [env],
+  )) as Array<{ clerk_invitation_id: string; role_key: string }>;
+  const result = new Map<string, string[]>();
+  for (const row of rows) {
+    result.set(row.clerk_invitation_id, [...(result.get(row.clerk_invitation_id) ?? []), row.role_key]);
+  }
+  return result;
+}
+
+export async function deleteInvitationRoles(env: ClerkEnv, invitationId: string): Promise<void> {
+  const sql = await db(env);
+  await sql.query(`DELETE FROM invitation_roles WHERE clerk_env = $1 AND clerk_invitation_id = $2`, [env, invitationId]);
+}
+
+/** Cheap check before looking up anyone's email: is any invitation waiting to hand out roles? */
+export async function hasPendingInvitationRoles(env: ClerkEnv): Promise<boolean> {
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT 1 FROM invitation_roles WHERE clerk_env = $1 AND applied_at IS NULL LIMIT 1`,
+    [env],
+  )) as unknown[];
+  return rows.length > 0;
+}
+
+/**
+ * Gives a newly joined person the roles chosen when they were invited.
+ * Accounts can only be created through an invitation (Clerk's Access mode is
+ * Invite-only), and Clerk only lets someone accept an invitation sent to an
+ * address they control, so matching on their verified email is safe. Returns
+ * how many roles were given.
+ */
+export async function applyInvitationRoles(env: ClerkEnv, userId: string, emailsNormalized: string[]): Promise<number> {
+  if (emailsNormalized.length === 0) return 0;
+  const sql = await db(env);
+  const [inserted] = await sql.transaction((txn) => [
+    txn.query(
+      `INSERT INTO user_roles (clerk_env, clerk_user_id, role_key, granted_by)
+       SELECT clerk_env, $2, role_key, assigned_by FROM invitation_roles
+        WHERE clerk_env = $1 AND email_normalized = ANY($3::text[]) AND applied_at IS NULL
+       ON CONFLICT DO NOTHING
+       RETURNING role_key`,
+      [env, userId, emailsNormalized],
+    ),
+    txn.query(
+      `UPDATE invitation_roles SET applied_at = now()
+        WHERE clerk_env = $1 AND email_normalized = ANY($2::text[]) AND applied_at IS NULL`,
+      [env, emailsNormalized],
+    ),
+  ]);
+  return (inserted as unknown[]).length;
+}

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -10,7 +10,13 @@ import { siteConfig } from "@/config/site";
 
 import { currentClerkConfig, warnIfMisconfigured, type ClerkEnv } from "./clerk-env";
 import { canAccessAdmin, resolvePermissions, type Permission } from "./permissions";
-import { AccountsUnavailableError, loadAuthorization } from "./store";
+import { normalizeEmail } from "./request-status";
+import {
+  AccountsUnavailableError,
+  applyInvitationRoles,
+  hasPendingInvitationRoles,
+  loadAuthorization,
+} from "./store";
 
 /**
  * Who is asking, and what they may do. The only entry point protected code
@@ -72,7 +78,19 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   const { userId } = await auth();
   if (!userId) return null;
 
-  const { roleKeys, rolePermissions, overrides } = await loadAuthorization(status.env, userId);
+  let { roleKeys, rolePermissions, overrides } = await loadAuthorization(status.env, userId);
+
+  // Someone new, with no roles yet: give them any roles chosen when they were
+  // invited. Their email is only looked up when an invitation is actually
+  // waiting to hand out roles, so ordinary requests pay nothing for this.
+  if (roleKeys.length === 0 && (await hasPendingInvitationRoles(status.env))) {
+    const user = await currentUser();
+    const emails = user?.emailAddresses.map((item) => normalizeEmail(item.emailAddress)) ?? [];
+    if ((await applyInvitationRoles(status.env, userId, emails)) > 0) {
+      ({ roleKeys, rolePermissions, overrides } = await loadAuthorization(status.env, userId));
+    }
+  }
+
   const permissions = resolvePermissions(roleKeys, rolePermissions, overrides);
   return {
     userId,

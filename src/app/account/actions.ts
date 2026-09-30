@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { updateAccountName } from "@/lib/auth/clerk";
 import { firstIssue, profileSchema } from "@/lib/auth/forms";
-import { MUSICIAN_ROLE, SONG_LEADER_ROLE } from "@/lib/auth/permissions";
+import { MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import { withPermission, type ActionResult } from "@/lib/auth/session";
 import { getProfile, saveProfile } from "@/lib/auth/store";
 
@@ -24,11 +24,10 @@ export async function saveOwnProfile(input: unknown): Promise<ActionResult> {
     const named = await updateAccountName(viewer.userId, { firstName: values.firstName, lastName: values.lastName });
     if (!named.ok) return { ok: false, error: "Your name could not be saved. Please try again." };
 
-    // Questions for a role the person does not hold are not on their form;
-    // keep whatever was saved before rather than wiping it.
+    // "How do you play?" is only on a musician's form; for anyone else keep
+    // whatever was saved before rather than wiping it.
     const existing = await getProfile(viewer.env, viewer.userId);
     const isMusician = viewer.roleKeys.includes(MUSICIAN_ROLE);
-    const isSongLeader = viewer.roleKeys.includes(SONG_LEADER_ROLE);
 
     // At most one primary instrument.
     let primaryTaken = false;
@@ -49,8 +48,8 @@ export async function saveOwnProfile(input: unknown): Promise<ActionResult> {
         voicePart: values.voicePart,
         serviceAvailability: [...new Set(values.serviceAvailability)],
         learningStyle: isMusician ? values.learningStyle : existing.learningStyle,
-        theoryLevel: isMusician ? values.theoryLevel : existing.theoryLevel,
-        readsSheetMusic: isSongLeader ? values.readsSheetMusic : existing.readsSheetMusic,
+        theoryLevel: values.theoryLevel,
+        readsSheetMusic: values.readsSheetMusic,
       },
       instruments,
     );

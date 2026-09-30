@@ -84,16 +84,21 @@ describe("missingProfileItems", () => {
     readsSheetMusic: null,
   };
 
-  it("asks members only for a name and photo", () => {
-    expect(missingProfileItems(base)).toEqual([]);
-    expect(missingProfileItems({ ...base, hasImage: false })).toEqual(["A profile photo"]);
+  it("asks everyone about reading sheet music and music theory", () => {
+    expect(missingProfileItems(base)).toEqual(["Whether you read sheet music", "Your music theory level"]);
+    expect(missingProfileItems({ ...base, roleKeys: ["song_leader"] })).toEqual(missingProfileItems(base));
+    expect(missingProfileItems({ ...base, readsSheetMusic: false, theoryLevel: "none" })).toEqual([]);
+    expect(missingProfileItems({ ...base, readsSheetMusic: true, theoryLevel: "basics", hasImage: false })).toEqual([
+      "A profile photo",
+    ]);
   });
 
-  it("asks musicians about instruments and reading music", () => {
-    expect(missingProfileItems({ ...base, roleKeys: ["musician"] })).toHaveLength(3);
-  });
-
-  it("asks song leaders whether they read sheet music", () => {
-    expect(missingProfileItems({ ...base, roleKeys: ["song_leader"] })).toEqual(["Whether you read basic sheet music"]);
+  it("asks only musicians about their instruments and how they play", () => {
+    const answered = { ...base, readsSheetMusic: true, theoryLevel: "basics" };
+    expect(missingProfileItems({ ...answered, roleKeys: ["musician"] })).toEqual([
+      "The instruments you play",
+      "How you play (by ear or from sheet music)",
+    ]);
+    expect(missingProfileItems({ ...answered, roleKeys: ["song_leader"] })).toEqual([]);
   });
 });

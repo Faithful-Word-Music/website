@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { LearningScaleDisplay } from "@/components/account/LearningScale";
 import { Card } from "@/components/ui/Card";
-import { MUSICIAN_ROLE, SONG_LEADER_ROLE } from "@/lib/auth/permissions";
+import { MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import {
   LEARNING_STYLES,
   PROFICIENCIES,
@@ -40,7 +40,6 @@ export function ProfileView({
   const primaryTitle = titles.find((title) => title.isPrimary) ?? titles[0];
   const otherTitles = titles.filter((title) => title !== primaryTitle);
   const isMusician = roleKeys.includes(MUSICIAN_ROLE);
-  const isSongLeader = roleKeys.includes(SONG_LEADER_ROLE);
   const learning = LEARNING_STYLES.find((style) => style.value === profile.learningStyle);
 
   return (
@@ -98,20 +97,16 @@ export function ProfileView({
           <SectionLabel>Music</SectionLabel>
           <dl className="mt-3 space-y-3 text-sm">
             <Row label="Voice part" value={labelOf(VOICE_PARTS, profile.voicePart)} />
+            <Row
+              label="Reads sheet music"
+              value={profile.readsSheetMusic === null ? null : profile.readsSheetMusic ? "Yes" : "No"}
+            />
             {isMusician || profile.learningStyle !== null ? (
               <Row label="Plays" value={learning ? learning.label : null}>
                 {learning ? <LearningScaleDisplay value={learning.value} /> : null}
               </Row>
             ) : null}
-            {isMusician || profile.theoryLevel !== null ? (
-              <Row label="Music theory" value={labelOf(THEORY_LEVELS, profile.theoryLevel)} />
-            ) : null}
-            {isSongLeader || profile.readsSheetMusic !== null ? (
-              <Row
-                label="Reads basic sheet music"
-                value={profile.readsSheetMusic === null ? null : profile.readsSheetMusic ? "Yes" : "No"}
-              />
-            ) : null}
+            <Row label="Music theory" value={labelOf(THEORY_LEVELS, profile.theoryLevel)} />
           </dl>
         </Card>
 

@@ -45,6 +45,21 @@ export const AUTH_SCHEMA = [
      PRIMARY KEY (clerk_env, clerk_user_id, role_key),
      FOREIGN KEY (clerk_env, role_key) REFERENCES roles (clerk_env, key) ON DELETE CASCADE
    )`,
+  // Roles chosen when an invitation was sent, given to the person the first
+  // time their new account is used (see applyInvitationRoles in store.ts).
+  `CREATE TABLE IF NOT EXISTS invitation_roles (
+     ${ENV},
+     clerk_invitation_id text        NOT NULL,
+     email_normalized    text        NOT NULL,
+     role_key            text        NOT NULL,
+     assigned_by         text,
+     created_at          timestamptz NOT NULL DEFAULT now(),
+     applied_at          timestamptz,
+     PRIMARY KEY (clerk_env, clerk_invitation_id, role_key),
+     FOREIGN KEY (clerk_env, role_key) REFERENCES roles (clerk_env, key) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS invitation_roles_pending
+     ON invitation_roles (clerk_env, email_normalized) WHERE applied_at IS NULL`,
   `CREATE TABLE IF NOT EXISTS user_permission_overrides (
      ${ENV},
      clerk_user_id text        NOT NULL,
