@@ -9,6 +9,22 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
   },
+
+  /**
+   * Song pages moved from /song-list/archive/<song> to /library/songs/<song>.
+   * Links already shared (and the quarterly emails) keep working. The archive
+   * itself stays at /song-list/archive.
+   */
+  async redirects() {
+    return [
+      { source: "/song-list/archive/:song", destination: "/library/songs/:song", permanent: true },
+      {
+        source: "/song-list/archive/:song/sheet-music/:file",
+        destination: "/library/songs/:song/sheet-music/:file",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 /**

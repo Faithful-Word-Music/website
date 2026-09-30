@@ -45,8 +45,9 @@ One Next.js app on Vercel. There's no separate backend, CMS or login. The song l
 | `/` | Home: what the ministry is, with links to the song list and contact page |
 | `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
 | `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
-| `/song-list/archive/<song>` | One song's history: times sung, keys used, upcoming services, plus its sheet music and details from the Sheet Music Index |
-| `/song-list/archive/<song>/sheet-music/<file>` | One sheet-music file (PDF or `.mscz`) from private Drive, served only if the song's rights allow it |
+| `/library` | The Library: every song with a page, A-Z (audio and other resources to follow). Old `/song-list/archive/<song>` links redirect to `/library/songs/<song>` |
+| `/library/songs/<song>` | One song's history: times sung, keys used, upcoming services, plus its sheet music and details from the Sheet Music Index |
+| `/library/songs/<song>/sheet-music/<file>` | One sheet-music file (PDF or `.mscz`) from private Drive, served only if the song's rights allow it |
 | `/song-list/year/<year>` | A year of singing: most sung hymns, songs per month, keys, favourites (`/song-list/year` goes to the latest) |
 | `/song-list/pdf/<month>` | A month as a one-page printable PDF |
 | `/song-list/image/<month>?s=<ids>` | One to three services as a PNG picture, for sharing |
@@ -203,7 +204,7 @@ The sheet only keeps a rolling twelve months, so every past service is also save
 - **Fresh for 30 days:** a recent service can still be corrected in the sheet, and the sheet's version wins.
 - **Frozen after that:** reusing a tab for next year never changes last year's record.
 - **Always up to date:** pages combine the database with the sheet, so the history is current even before the nightly run. Without a database, the site falls back to the sheet's twelve months.
-- **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/song-list/archive/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
+- **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/library/songs/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
   - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
 - **"Often sung with":** a song's page lists up to three songs it is habitually paired with (`buildCompanions()` in `lib/song-history.ts`). A pair only counts when it was sung together at least 3 times, and in at least a third of the services where either song was sung, so a hymn that's simply sung a lot doesn't look paired with everything. Most songs have no such partner and show no section at all. Tune the rule with `siteConfig.songList.pairings`.
 - **Quarterly report:** on January 1, April 1, July 1 and October 1 at 7 AM Arizona time, a Vercel Cron job (`/api/cron/quarterly-report`) emails a report on the quarter just ended to `siteConfig.mail.to` only. It is kept short. First come four totals compared with the quarter before. Next is **Before you plan**: close repeats already scheduled, songs due to come back, forgotten favourites, and songs sung this time last year but not since. Last is a brief **Looking back**: a chart of variety by quarter, most sung, new songs, habitual pairs, and a bar chart of keys. Charts are HTML tables, since mail apps strip scripts and SVG, and every bar carries its value. Lists are capped at five songs (eight for the season ahead), sections with nothing to say are left out, and it uses the site's fonts and colours, including its dark theme where the mail app allows. The figures are in `lib/quarterly-report.ts`, the email layout in `lib/quarterly-report-email.ts`, and its thresholds are constants at the top of the first.
@@ -281,7 +282,7 @@ Song pages show what the private **Sheet Music Index** (a Google Sheet, ID in `s
 ```
 Sheet Music Index (private) ─┐                          ┌─> song page: details + sheet-music buttons
                              ├─ service account ─> server ┤
-Google Drive (private) ──────┘   (read-only)             └─> /song-list/archive/<song>/sheet-music/<file>
+Google Drive (private) ──────┘   (read-only)             └─> /library/songs/<song>/sheet-music/<file>
                                                              after canAccessFile() says yes
 ```
 

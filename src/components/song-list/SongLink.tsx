@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { cn } from "@/components/ui/cn";
-import { songSlug } from "@/lib/song-list";
+import { songPath, songSlug } from "@/lib/song-list";
 
 const base =
   "underline decoration-dotted decoration-gold/55 decoration-1 underline-offset-4 transition-[text-decoration-color,color] print:no-underline";
@@ -18,7 +18,7 @@ export const songLinkGroupClasses = cn(base, "group-hover:text-gold-dark group-h
 /** A song title that opens that song's page. */
 export function SongLink({ title, className }: { title: string; className?: string }) {
   return (
-    <Link href={`/song-list/archive/${songSlug(title)}`} className={cn(songLinkClasses, className)}>
+    <Link href={songPath(songSlug(title))} className={cn(songLinkClasses, className)}>
       {title}
     </Link>
   );

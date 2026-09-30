@@ -7,8 +7,8 @@ import { openDriveFile } from "@/lib/sheet-music-index";
 import { getIndexSongForPage } from "@/lib/song-archive";
 
 /**
- * GET /song-list/archive/<song>/sheet-music/<file>
- * e.g. /song-list/archive/the-solid-rock/sheet-music/standard-1.pdf
+ * GET /library/songs/<song>/sheet-music/<file>
+ * e.g. /library/songs/the-solid-rock/sheet-music/standard-1.pdf
  *
  * Serves one sheet-music file from private Google Drive, after checking that
  * this visitor may have it. This check is the real protection: the song page
@@ -39,7 +39,7 @@ function contentDisposition(kind: "inline" | "attachment", fileName: string): st
 
 export async function GET(
   _request: Request,
-  ctx: RouteContext<"/song-list/archive/[song]/sheet-music/[file]">,
+  ctx: RouteContext<"/library/songs/[song]/sheet-music/[file]">,
 ) {
   const { song: slug, file: fileSlug } = await ctx.params;
 

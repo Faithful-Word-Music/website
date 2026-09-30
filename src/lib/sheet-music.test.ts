@@ -285,7 +285,7 @@ describe("access and the public view", () => {
     return toPublicSheetMusic(
       indexSong,
       (file) => canAccessFile(indexSong, file, PUBLIC_VIEWER),
-      (file) => `/song-list/archive/x/sheet-music/${file.slug}`,
+      (file) => `/library/songs/x/sheet-music/${file.slug}`,
     );
   };
 
@@ -294,7 +294,7 @@ describe("access and the public view", () => {
     expect(music.available).toBe(true);
     expect(music.copyright).toBe("not-copyrighted");
     expect(music.versions[0]).toMatchObject({ variant: "Standard", version: "1", keys: "F" });
-    expect(music.versions[0].files[0].href).toBe("/song-list/archive/x/sheet-music/standard-1.pdf");
+    expect(music.versions[0].files[0].href).toBe("/library/songs/x/sheet-music/standard-1.pdf");
   });
 
   it("links nothing for Yes, Needs Review or anything else", () => {

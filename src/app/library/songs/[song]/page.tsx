@@ -14,6 +14,7 @@ import { songListContent } from "@/content/song-list";
 import { getSongPage, type SongPlay } from "@/lib/song-archive";
 import type { Companion } from "@/lib/song-history";
 import { churchYear, formatChurchTime, formatDayDate } from "@/lib/service-time";
+import { songPath } from "@/lib/song-list";
 
 const { songPage, serviceMarkerLabels } = songListContent;
 
@@ -22,7 +23,7 @@ export const revalidate = 10;
 
 export async function generateMetadata({
   params,
-}: PageProps<"/song-list/archive/[song]">): Promise<Metadata> {
+}: PageProps<"/library/songs/[song]">): Promise<Metadata> {
   const { song } = await params;
   const data = await getSongPage(song);
   if (!data) return { title: songPage.notFoundTitle };
@@ -34,7 +35,7 @@ export async function generateMetadata({
   return {
     title: `${data.title} | ${songListContent.archive.title}`,
     description,
-    alternates: { canonical: `/song-list/archive/${song}` },
+    alternates: { canonical: songPath(song) },
   };
 }
 
@@ -42,7 +43,7 @@ export async function generateMetadata({
  * One song's page: how often it has been sung, the keys it was sung in, any
  * services it is scheduled for, and every date it was sung.
  */
-export default async function SongPage({ params }: PageProps<"/song-list/archive/[song]">) {
+export default async function SongPage({ params }: PageProps<"/library/songs/[song]">) {
   const { song } = await params;
   const data = await getSongPage(song);
   if (!data) notFound();

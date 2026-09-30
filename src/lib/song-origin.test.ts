@@ -4,7 +4,8 @@ import { isSongPage, songBackTarget } from "@/lib/song-origin";
 
 describe("isSongPage", () => {
   it("matches only a single song's page", () => {
-    expect(isSongPage("/song-list/archive/amazing-grace")).toBe(true);
+    expect(isSongPage("/library/songs/amazing-grace")).toBe(true);
+    expect(isSongPage("/library")).toBe(false);
     expect(isSongPage("/song-list/archive")).toBe(false);
     expect(isSongPage("/song-list")).toBe(false);
     expect(isSongPage("/song-list/year/2026")).toBe(false);
@@ -28,6 +29,10 @@ describe("songBackTarget", () => {
       href: "/song-list/archive?q=grace",
       label: "Back to the archive",
     });
+  });
+
+  it("goes back to the Library", () => {
+    expect(songBackTarget("/library")).toEqual({ href: "/library", label: "Back to the Library" });
   });
 
   it("falls back to the song list when the origin is unknown or elsewhere", () => {

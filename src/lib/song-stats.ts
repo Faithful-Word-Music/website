@@ -4,7 +4,7 @@ import { normalizeKey, songKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
 /**
- * The figures on one song's page, for /song-list/archive/[song]. Pure
+ * The figures on one song's page, for /library/songs/[song]. Pure
  * functions only: the page passes in every past service and the song's
  * upcoming dates (see getSongPage).
  *

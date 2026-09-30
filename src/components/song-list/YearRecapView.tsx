@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import { churchMonth, formatDayDate, formatLongDate } from "@/lib/service-time";
-import { songSlug } from "@/lib/song-list";
+import { songPath, songSlug } from "@/lib/song-list";
 import { ONCE_EXAMPLES, type RecapSong, type YearRecap } from "@/lib/year-recap";
 
 const { yearRecap: copy } = songListContent;
@@ -31,7 +31,7 @@ export function formatGap(days: number): string {
   return `${Math.round(days / 365.25)} years`;
 }
 
-const songHref = (song: RecapSong) => `/song-list/archive/${songSlug(song.title)}`;
+const songHref = (song: RecapSong) => songPath(songSlug(song.title));
 
 /** The opening sentence: the year's size in words, in the display face. */
 export function RecapLead({ recap }: { recap: YearRecap }) {

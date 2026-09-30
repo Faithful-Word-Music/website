@@ -5,6 +5,7 @@ import { unstable_cache } from "next/cache";
 import { siteConfig } from "@/config/site";
 import { loadStoredServices, saveServices, type SaveSummary } from "@/lib/archive-store";
 import { getSongList } from "@/lib/google-sheets";
+import { buildLibrary, type LibrarySong } from "@/lib/library";
 import {
   type IndexSong,
   matchIndexSong,
@@ -22,7 +23,7 @@ import {
   pastServices,
   type PlayIndex,
 } from "@/lib/song-history";
-import { datedServices, songKey, songSlug } from "@/lib/song-list";
+import { datedServices, songKey, songPath, songSlug } from "@/lib/song-list";
 import { buildSongStats, type SongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap, type YearRecap } from "@/lib/year-recap";
 import type {
@@ -200,6 +201,39 @@ export async function getYearRecapData(year?: number): Promise<YearRecapData> {
   };
 }
 
+export type LibraryData =
+  | { ok: true; songs: LibrarySong[]; loadedAt: number }
+  | { ok: false };
+
+/**
+ * The Library, /library: every song that has a page - sung in a past
+ * service, or scheduled in an upcoming one on the visible months.
+ */
+export async function getLibraryData(): Promise<LibraryData> {
+  const [history, sheet, index] = await Promise.all([loadPast(), getSongList(), getSheetMusicIndex()]);
+  if (!history) return { ok: false };
+  const { past, loadedAt } = history;
+
+  const upcoming = sheet.ok
+    ? datedServices(sheet.months)
+        .filter((service) => Date.parse(service.startsAt) > loadedAt)
+        .flatMap((service) => service.songs)
+    : [];
+
+  // Marked only when the song's page would offer a file to anyone.
+  const hasSheetMusic = (song: { title: string; number: string | null }) => {
+    if (!index.ok) return false;
+    const indexSong = matchIndexSong(index.index, song, siteConfig.sheetMusic.hymnalCollection);
+    return indexSong ? publicSheetMusic(songSlug(song.title), indexSong, PUBLIC_VIEWER).available : false;
+  };
+
+  return {
+    ok: true,
+    songs: buildLibrary(buildSongRecords(past), upcoming, hasSheetMusic),
+    loadedAt,
+  };
+}
+
 /** One time a song was (or will be) sung. */
 export interface SongPlay {
   startsAt: string;
@@ -237,7 +271,7 @@ interface FoundSong {
 }
 
 /**
- * The song at /song-list/archive/[slug]: sung in the archive, or scheduled in
+ * The song at /library/songs/[slug]: sung in the archive, or scheduled in
  * the sheet. null when the address matches no song at all.
  */
 async function findSong(slug: string): Promise<FoundSong | null> {
@@ -283,7 +317,7 @@ function publicSheetMusic(slug: string, song: IndexSong, viewer: Viewer): Public
   return toPublicSheetMusic(
     song,
     (file) => canAccessFile(song, file, viewer),
-    (file) => `/song-list/archive/${slug}/sheet-music/${file.slug}`,
+    (file) => `${songPath(slug)}/sheet-music/${file.slug}`,
   );
 }
 
@@ -311,7 +345,7 @@ export async function getIndexSongForPage(
 }
 
 /**
- * Everything about one song, for /song-list/archive/[song]: its full history
+ * Everything about one song, for /library/songs/[song]: its full history
  * from the archive, plus any upcoming services it is already scheduled for,
  * and what the Sheet Music Index has for it.
  *

@@ -451,12 +451,20 @@ export function songKey(title: string): string {
 }
 
 /**
- * The song's address in the archive: its identity with hyphens, so
- * "Hallelujah, 'Tis Done" lives at /song-list/archive/hallelujah-tis-done.
- * One song, one address, however its title was punctuated in the sheet.
+ * The song's slug: its identity with hyphens, so "Hallelujah, 'Tis Done"
+ * lives at /library/songs/hallelujah-tis-done. One song, one address,
+ * however its title was punctuated in the sheet.
  */
 export function songSlug(title: string): string {
   return songKey(title).replace(/ /g, "-");
+}
+
+/** Where song pages live. Old /song-list/archive/<song> links redirect here (next.config.ts). */
+export const SONG_PAGES = "/library/songs";
+
+/** A song page's path, from its slug. */
+export function songPath(slug: string): string {
+  return `${SONG_PAGES}/${slug}`;
 }
 
 /**

@@ -154,11 +154,12 @@ export const songListContent = {
       "This month's schedule is laid out differently than usual, so it is shown below exactly as it appears in the spreadsheet.",
   },
 
-  /** One song's page in the archive, /song-list/archive/[song]. */
+  /** One song's page in the archive, /library/songs/[song]. */
   songPage: {
     /** The back link names the page the visitor came from. {year} is replaced at render time. */
     backLabels: {
       archive: "Back to the archive",
+      library: "Back to the Library",
       songList: "Back to the song list",
       year: "Back to {year} in song",
     },

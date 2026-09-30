@@ -6,7 +6,7 @@ import { useId, useRef, useState } from "react";
 import { songLinkGroupClasses } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import { formatLongDate } from "@/lib/service-time";
-import { songSlug } from "@/lib/song-list";
+import { songPath, songSlug } from "@/lib/song-list";
 import type { RecapSong } from "@/lib/year-recap";
 
 const { facts } = songListContent.yearRecap;
@@ -74,7 +74,7 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
               {[...songs].reverse().map((song) => (
                 <li key={song.id} className="border-b border-line last:border-b-0">
                   <Link
-                    href={`/song-list/archive/${songSlug(song.title)}`}
+                    href={songPath(songSlug(song.title))}
                     className="group grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-3 py-2.5"
                   >
                     <span className="tnum text-sm font-medium text-muted">

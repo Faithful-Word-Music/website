@@ -57,7 +57,8 @@ export const siteConfig = {
      * Each refresh is 2 Sheets API requests and only happens when someone visits,
      * so 10s is at most 12 requests a minute against a 300/minute quota.
      * Keep in step with `revalidate` in src/app/page.tsx, src/app/song-list/page.tsx and
-     * src/app/song-list/archive/page.tsx, which Next.js needs as literal numbers.
+     * src/app/song-list/archive/page.tsx, src/app/library/page.tsx and
+     * src/app/library/songs/[song]/page.tsx, which Next.js needs as literal numbers.
      */
     revalidateSeconds: 10,
 
@@ -183,6 +184,7 @@ export const siteConfig = {
   nav: [
     { label: "Home", href: "/" },
     { label: "Song List", href: "/song-list" },
+    { label: "Library", href: "/library" },
     { label: "Contact", href: "/contact" },
   ],
 } as const;

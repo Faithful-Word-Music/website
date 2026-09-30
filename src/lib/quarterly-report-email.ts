@@ -8,7 +8,7 @@ import {
   type ReportSong,
 } from "@/lib/quarterly-report";
 import { churchDay, formatLongDate, formatShortDate } from "@/lib/service-time";
-import { songSlug } from "@/lib/song-list";
+import { songPath, songSlug } from "@/lib/song-list";
 
 /**
  * The quarterly report as an email: HTML plus a plain-text copy.
@@ -73,7 +73,7 @@ const FONTS =
   "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap";
 
 const songUrl = (song: Pick<ReportSong, "title">) =>
-  `${siteConfig.url}/song-list/archive/${songSlug(song.title)}`;
+  `${siteConfig.url}${songPath(songSlug(song.title))}`;
 
 const times = (count: number) => (count === 1 ? "once" : count === 2 ? "twice" : `${count} times`);
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
