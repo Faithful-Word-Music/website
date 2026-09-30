@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
 import { SongBackLink } from "@/components/song-list/SongBackLink";
 import { SongLink } from "@/components/song-list/SongLink";
 import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
@@ -46,7 +47,7 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
   const data = await getSongPage(song);
   if (!data) notFound();
 
-  const { title, number, plays, upcoming, companions, stats, loadedAt } = data;
+  const { title, number, plays, upcoming, companions, stats, sheetMusic, loadedAt } = data;
 
   return (
     <PageTransition>
@@ -62,7 +63,36 @@ export default async function SongPage({ params }: PageProps<"/song-list/archive
           className="mt-6 max-w-2xl"
         />
 
-        <StatBand stats={stats} loadedAt={loadedAt} upcoming={upcoming.length} />
+        {/*
+          What most visitors come for sits first: the sheet music when it can
+          be shared, then the song's details. When it can't, the details lead
+          and the short "not available publicly" note follows them.
+        */}
+        {sheetMusic ? (
+          sheetMusic.available ? (
+            <>
+              <SheetMusic music={sheetMusic} title={title} className="mt-10" />
+              <AboutSong music={sheetMusic} />
+            </>
+          ) : (
+            <>
+              <AboutSong music={sheetMusic} className="mt-10" />
+              <SheetMusic music={sheetMusic} title={title} />
+            </>
+          )
+        ) : null}
+
+        {sheetMusic ? (
+          <h2 id="singing" className="mt-12 font-display text-2xl text-ink">
+            {songPage.statsTitle}
+          </h2>
+        ) : null}
+        <StatBand
+          stats={stats}
+          loadedAt={loadedAt}
+          upcoming={upcoming.length}
+          className={sheetMusic ? "mt-4" : "mt-10"}
+        />
         <div className="mt-5">
           <SongTimeline stats={stats} loadedAt={loadedAt} />
         </div>

@@ -164,6 +164,49 @@ export const songListContent = {
     },
     /** {number} is replaced at render time. */
     numberEyebrow: "Hymn No. {number}",
+    /** From the Sheet Music Index. Rows with nothing filled in are left out. */
+    about: {
+      title: "About this song",
+      labels: {
+        composer: "Music",
+        lyricist: "Words",
+        keys: "Key",
+        collection: "Collection",
+        hymnNumber: "Hymn number",
+        type: "Type",
+        category: "Category",
+        occasion: "Occasion",
+        source: "Source",
+        copyright: "Copyright",
+      },
+      copyright: {
+        "not-copyrighted": "Not under copyright",
+        copyrighted: "Under copyright",
+      },
+    },
+    sheetMusic: {
+      title: "Sheet music",
+      /** Shown when the Index lists files, but none may be shared publicly. */
+      restricted: "Sheet music for this song isn't available publicly.",
+      previewTitle: "Sheet music preview: {title}",
+      previewLoading: "Loading the sheet music…",
+      /** Over the preview when a PDF has more than one page. {page} and {count} are replaced at render time. */
+      pageOf: "Page {page} of {count}",
+      /** Shown in place of the preview if it cannot be drawn; the buttons below still work. */
+      previewError: "The preview couldn't be shown here. Use View PDF below to open it.",
+      viewPdf: "View PDF",
+      downloadMuseScore: "Download MuseScore",
+      /** Format names, for files listed but not available. */
+      formats: { pdf: "PDF", musescore: "MuseScore" },
+      /** A second or third chart of the same variant. {version} is replaced at render time. */
+      version: "Version {version}",
+      /** {fret} is replaced at render time. */
+      capo: "Capo {fret}",
+      /** {key} is replaced at render time. */
+      key: "Key of {key}",
+      newTab: " (PDF, opens in a new tab)",
+      museScoreHint: "Opens in MuseScore, the free notation program.",
+    },
     /** Songs without a hymnal number are inserts, printed in the front of every hymnal. */
     fallbackEyebrow: "Insert",
     stats: {
@@ -275,6 +318,8 @@ export const songListContent = {
     },
     /** {count} is replaced at render time. */
     keyCount: "{count}×",
+    /** Heads the singing statistics when sheet music sits above them. */
+    statsTitle: "Sung at Faithful Word",
     companionsTitle: "Often sung with",
     /** {count} is replaced at render time. */
     togetherCount: "Sung together {count} times",

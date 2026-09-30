@@ -6,6 +6,14 @@ import { siteConfig } from "@/config/site";
 import { loadStoredServices, saveServices, type SaveSummary } from "@/lib/archive-store";
 import { getSongList } from "@/lib/google-sheets";
 import {
+  type IndexSong,
+  matchIndexSong,
+  type PublicSheetMusic,
+  toPublicSheetMusic,
+} from "@/lib/sheet-music";
+import { canAccessFile, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
+import { getSheetMusicIndex, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
+import {
   buildCompanions,
   buildPlayIndex,
   buildSongRecords,
@@ -209,18 +217,30 @@ export interface SongPageData {
   /** Songs habitually sung in the same service; usually none. */
   companions: Companion[];
   stats: SongStats;
+  /**
+   * What the Sheet Music Index knows about it, with links to the files this
+   * visitor may open. null when the song is not in the Index, or the Index
+   * cannot be read.
+   */
+  sheetMusic: PublicSheetMusic | null;
+  loadedAt: number;
+}
+
+interface FoundSong {
+  history: Awaited<ReturnType<typeof loadPast>>;
+  record: SongRecord | undefined;
+  /** Services it is scheduled for, soonest first. */
+  upcoming: Array<SongPlay & { title: string; number: string | null }>;
+  title: string;
+  number: string | null;
   loadedAt: number;
 }
 
 /**
- * Everything about one song, for /song-list/archive/[song]: its full history
- * from the archive, plus any upcoming services it is already scheduled for.
- *
- * A song scheduled for the first time has no history yet but still gets a
- * page, so links from the schedule never lead nowhere. Returns null for an
- * address that matches no song at all.
+ * The song at /song-list/archive/[slug]: sung in the archive, or scheduled in
+ * the sheet. null when the address matches no song at all.
  */
-export async function getSongPage(slug: string): Promise<SongPageData | null> {
+async function findSong(slug: string): Promise<FoundSong | null> {
   const [history, sheet] = await Promise.all([loadPast(), getSongList()]);
   const loadedAt = history?.loadedAt ?? Date.now();
 
@@ -228,7 +248,7 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
     ? buildSongRecords(history.past).find((candidate) => songSlug(candidate.title) === slug)
     : undefined;
 
-  const upcoming: Array<SongPlay & { title: string; number: string | null }> = [];
+  const upcoming: FoundSong["upcoming"] = [];
   if (sheet.ok) {
     for (const service of datedServices(sheet.months)) {
       if (Date.parse(service.startsAt) <= loadedAt) continue;
@@ -249,8 +269,69 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
   if (!record && upcoming.length === 0) return null;
 
   return {
+    history,
+    record,
+    upcoming,
     title: record?.title ?? upcoming[0].title,
     number: record?.number ?? upcoming.find((play) => play.number)?.number ?? null,
+    loadedAt,
+  };
+}
+
+/** The browser-safe sheet music for a song page; links point at the file route. */
+function publicSheetMusic(slug: string, song: IndexSong, viewer: Viewer): PublicSheetMusic {
+  return toPublicSheetMusic(
+    song,
+    (file) => canAccessFile(song, file, viewer),
+    (file) => `/song-list/archive/${slug}/sheet-music/${file.slug}`,
+  );
+}
+
+/**
+ * The Index entry behind a song page, Drive File IDs included - for the file
+ * route only, which must still check canAccessFile() before serving anything.
+ */
+export async function getIndexSongForPage(
+  slug: string,
+): Promise<{ ok: true; song: IndexSong | null } | { ok: false; reason: SheetMusicErrorReason }> {
+  const index = await getSheetMusicIndex();
+  if (!index.ok) return index;
+
+  const found = await findSong(slug);
+  return {
+    ok: true,
+    song: found
+      ? matchIndexSong(
+          index.index,
+          { title: found.title, number: found.number },
+          siteConfig.sheetMusic.hymnalCollection,
+        )
+      : null,
+  };
+}
+
+/**
+ * Everything about one song, for /song-list/archive/[song]: its full history
+ * from the archive, plus any upcoming services it is already scheduled for,
+ * and what the Sheet Music Index has for it.
+ *
+ * A song scheduled for the first time has no history yet but still gets a
+ * page, so links from the schedule never lead nowhere. Returns null for an
+ * address that matches no song at all.
+ */
+export async function getSongPage(slug: string): Promise<SongPageData | null> {
+  const [found, index] = await Promise.all([findSong(slug), getSheetMusicIndex()]);
+  if (!found) return null;
+  const { history, record, upcoming, title, number, loadedAt } = found;
+
+  const indexSong = index.ok
+    ? matchIndexSong(index.index, { title, number }, siteConfig.sheetMusic.hymnalCollection)
+    : null;
+
+  return {
+    title,
+    number,
+    sheetMusic: indexSong ? publicSheetMusic(slug, indexSong, PUBLIC_VIEWER) : null,
     plays: [...(record?.plays ?? [])].reverse(),
     upcoming: upcoming.map(({ startsAt, slot, key }) => ({ startsAt, slot, key })),
     companions:

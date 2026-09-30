@@ -128,6 +128,33 @@ export const siteConfig = {
     alertEmail: "contact@faithfulwordmusic.com",
   },
 
+  sheetMusic: {
+    /**
+     * The PRIVATE "Sheet Music Index" Google Sheet: one row per song, with its
+     * details and rights. The files themselves are found in the Drive folders.
+     * Both are read by the site's Google service account (see
+     * src/lib/google-auth.ts) and are not shared publicly - the ID alone opens
+     * nothing. See src/lib/sheet-music-index.ts.
+     */
+    indexSpreadsheetId: "1vlPXiPuYooLpGACOTqwueYdB2wqkKZQb40lJoxi3tPE",
+
+    /**
+     * The hymnal the song list's numbers refer to. A song listed as "233" is
+     * matched to the Index song in this collection with Hymn Number 233.
+     */
+    hymnalCollection: "Soul-Stirring Songs and Hymns 1989",
+
+    /**
+     * How long (seconds) a read of the Index and the Drive folders is reused,
+     * and how long the CDN keeps a served file. A file dropped into Drive or
+     * an edit to the sheet reaches the song pages within this time, without a
+     * redeploy. Each refresh is 2 Sheets and ~2 Drive requests, and only
+     * happens when someone visits - so 10s is at most ~12 Sheets requests a
+     * minute, against the service account's limit of 60.
+     */
+    revalidateSeconds: 10,
+  },
+
   /**
    * Contact form email addressing (see src/lib/resend.ts).
    *
@@ -148,8 +175,6 @@ export const siteConfig = {
     church: "https://www.faithfulwordbaptist.org/",
     youtube: "https://www.youtube.com/@FWBCMusic1611",
     musescore: "https://musescore.com/user/98461567",
-    songSheets:
-      "https://drive.google.com/drive/folders/1-14CFjpOzHwAlvTLvjVOAEF7JqWYl8_L?usp=sharing",
     hymnCds:
       "https://drive.google.com/drive/folders/13GVPOYOG1_G-5IL6b5CDTpWBsWOCUnAg?usp=drive_link",
   },

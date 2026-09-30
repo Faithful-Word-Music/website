@@ -27,6 +27,9 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 | The social share card (link previews) | `src/lib/og.tsx` |
 | Animation speed, or turning animation off | `src/app/globals.css` (the `MOTION` section at the bottom) |
 | How fresh the song list is (default 10s) | `src/config/site.ts` → `songList.revalidateSeconds` |
+| Sheet music files on song pages | **The Drive folders** - drop the file in; see [Adding sheet music](#adding-sheet-music) |
+| Song details and whether its sheet music is public | **The Sheet Music Index**, Songs tab - one row per song. Files are public **only when `Copyrighted?` is `No`** |
+| Song page / sheet music wording | `src/content/song-list.ts` → `songPage.about` and `songPage.sheetMusic` |
 | Local secrets (API keys) | `.env.local` - never committed |
 | Which environment variables exist | `.env.example` - placeholders only, safe to commit |
 
@@ -83,6 +86,21 @@ plainly, with a short note.
 
 Cells pulling from another spreadsheet (`IMPORTRANGE` and similar) are fine. The website reads the
 **displayed value**, never the formula. Whatever the public sheet shows is what the website shows.
+
+---
+
+## Adding sheet music
+
+1. **Put the file in the right Drive folder**, named like the others:
+   - `Sheet Music/01 - Congregational/Hymnals/<Hymnal>/Standard/PDF/121 - Like a River Glorious.pdf`
+   - Chord charts go in `Chords/Standard/…`, and guitar capo charts in `Chords/Capo/…`. MuseScore files go in the `MuseScore` folder beside `PDF`.
+   - Songs without a number (Psalms, Other Songs) are just the title: `Psalm 54.pdf`.
+   - A second version of the same chart ends in ` (2)`, e.g. `… Saviour! (2).mscz`.
+   - Put `IN PROGRESS` in the name of a draft to keep it off the website.
+2. **Only if the song is new to the Index,** add one row to the **Songs** tab: Song ID, Title, Collection (the hymnal's folder name, exactly), Hymn Number, and `Copyrighted?`.
+3. **Set `Copyrighted?` to `No`** only when the song is cleared to share. `Yes` or `Needs Review` keeps the file off the public site, and the song's page just says it isn't available publicly.
+
+That's all. The site picks it up within about 10-20 seconds. There's no file list to update, and the **Versions** tab is optional: add a row there only to show a key or capo fret for one version.
 
 ---
 

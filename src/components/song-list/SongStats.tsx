@@ -34,7 +34,17 @@ const labelClasses =
  * phone the count takes the whole top row and the two dates share the one
  * below, so a date never has to break across lines.
  */
-export function StatBand({ stats, loadedAt, upcoming }: { stats: SongStats; loadedAt: number; upcoming: number }) {
+export function StatBand({
+  stats,
+  loadedAt,
+  upcoming,
+  className = "mt-10",
+}: {
+  stats: SongStats;
+  loadedAt: number;
+  upcoming: number;
+  className?: string;
+}) {
   const details: string[] = [];
   if (stats.count > 0) {
     details.push(
@@ -54,7 +64,7 @@ export function StatBand({ stats, loadedAt, upcoming }: { stats: SongStats; load
   }
 
   return (
-    <Card className="mt-10">
+    <Card className={className}>
       <dl className="grid grid-cols-2 sm:grid-cols-3">
         <div className="col-span-2 border-b border-line px-5 py-5 sm:col-span-1 sm:border-b-0 sm:border-r sm:px-6">
           <dt className={labelClasses}>{copy.stats.count}</dt>

@@ -26,10 +26,11 @@ The website of **Faithful Word Music**, the music ministry of
    - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
+   - [Sheet music](#sheet-music)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
-9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Resend](#resend)
+9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Sheet music (service account)](#sheet-music-service-account) · [Resend](#resend)
 10. [Gotchas](#gotchas)
 11. [Accessibility and SEO](#accessibility-and-seo)
 
@@ -44,7 +45,8 @@ One Next.js app on Vercel. There's no separate backend, CMS or login. The song l
 | `/` | Home: what the ministry is, with links to the song list and contact page |
 | `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
 | `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
-| `/song-list/archive/<song>` | One song's history: times sung, keys used, upcoming services |
+| `/song-list/archive/<song>` | One song's history: times sung, keys used, upcoming services, plus its sheet music and details from the Sheet Music Index |
+| `/song-list/archive/<song>/sheet-music/<file>` | One sheet-music file (PDF or `.mscz`) from private Drive, served only if the song's rights allow it |
 | `/song-list/year/<year>` | A year of singing: most sung hymns, songs per month, keys, favourites (`/song-list/year` goes to the latest) |
 | `/song-list/pdf/<month>` | A month as a one-page printable PDF |
 | `/song-list/image/<month>?s=<ids>` | One to three services as a PNG picture, for sharing |
@@ -89,11 +91,13 @@ The site runs without any keys. The song list shows a "not connected" message an
 
 ## Environment variables
 
-All four are **server-only secrets**. None starts with `NEXT_PUBLIC_`, because that prefix puts a value into the browser's JavaScript, where anyone can read it.
+All of these are **server-only secrets**. None starts with `NEXT_PUBLIC_`, because that prefix puts a value into the browser's JavaScript, where anyone can read it.
 
 | Variable | Powers | Where it's read | Needed in |
 |---|---|---|---|
 | `GOOGLE_SHEETS_API_KEY` | The song list | `src/lib/google-sheets.ts` | Development, Preview, Production |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
+| `GOOGLE_PRIVATE_KEY` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
 | `RESEND_API_KEY` | The contact form and archive alerts | `src/lib/resend.ts` | Development, Preview, Production |
 | `DATABASE_URL` | The permanent song archive (optional) | `src/lib/db.ts` | All, and added automatically by the Neon integration |
 | `CRON_SECRET` | Protects the nightly archive sync | `src/app/api/cron/sync-archive/route.ts` | Production, and locally if you run the sync by hand |
@@ -152,6 +156,10 @@ src/
 | `text-measure.ts` | Predicts where Inter text wraps (used by the PDF and the picture) |
 | `og.tsx` | Link-preview cards, plus the fonts, logo and colours the picture reuses |
 | `resend.ts`, `validation.ts` | Email sending and the shared form schema |
+| `google-auth.ts` | The service account's access token (server-only) |
+| `sheet-music-index.ts` | Reads the Sheet Music Index and streams files from Drive (server-only) |
+| `sheet-music.ts` | Reads Drive folders and file names, joins them to the Songs tab, matches song-list songs, builds the browser-safe view (pure, no I/O) |
+| `sheet-music-access.ts` | `canAccessFile()`: the one rule for who may open which file |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
 `NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
@@ -202,7 +210,7 @@ The sheet only keeps a rolling twelve months, so every past service is also save
   - Christmas songs follow the church rule: sung only from the first service after Thanksgiving to Christmas Day (`lib/church-calendar.ts`). A Christmas song is detected from the records as one only ever sung in that season. Christmas songs are never called due, forgotten or overused, get their own list when the coming quarter holds Christmas, and are flagged if scheduled before the season.
   - It is sent at most once per quarter (recorded in a `report_log` table), and only from production.
   - To see it without sending, run `curl -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/cron/quarterly-report?preview=1&at=2026-10-01" > report.html`. `at` shows it as it would be sent that day. `?force=1` (with `&at=` if wanted) sends a test copy now, subject marked "[Test]". It is never recorded as sent, so the scheduled email still goes out.
-- **Links:** every song title, on the schedule, in the archive and on the year pages, links to its song page, with a faint dotted gold underline so it reads as a link (`SongLink` / `songLinkClasses`). The song page is where the sheet music files will go.
+- **Links:** every song title, on the schedule, in the archive and on the year pages, links to its song page, with a faint dotted gold underline so it reads as a link (`SongLink` / `songLinkClasses`). The song page also shows the song's sheet music (see [Sheet music](#sheet-music)).
 - **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
 
 ### The year in song
@@ -266,6 +274,53 @@ visitor → /contact → POST /api/contact → BotID → honeypot → Zod valida
    - **Firewall → Configure → New Rule:** Request Path equals `/api/contact` **and** Method equals `POST` → **Rate Limit**, Fixed Window, `600s`, `10` requests, keyed on IP.
    - Leave the exceeded-action on **Log** for the first week, then switch it to **Deny**.
 
+### Sheet music
+
+Song pages show what the private **Sheet Music Index** (a Google Sheet, ID in `siteConfig.sheetMusic`) knows about a song, and its sheet music when it may be shared. The files themselves stay in private Google Drive.
+
+```
+Sheet Music Index (private) ─┐                          ┌─> song page: details + sheet-music buttons
+                             ├─ service account ─> server ┤
+Google Drive (private) ──────┘   (read-only)             └─> /song-list/archive/<song>/sheet-music/<file>
+                                                             after canAccessFile() says yes
+```
+
+- **The Drive folders are the file index.** The server lists everything shared with the service account, in about 5 requests at most every 10 seconds, and only when someone visits (never per page view), and reads each file's folder and name. Adding sheet music means dropping a file into the right folder. Nobody types file IDs anywhere.
+
+  ```
+  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Standard/<PDF|MuseScore>/
+  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Chords/Standard/<PDF|MuseScore>/
+  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Chords/Capo/<PDF|MuseScore>/   → Capo, Guitar
+  Sheet Music/02 - Instrument Parts/<Instrument>/<Collection>/<PDF|MuseScore>/
+  Sheet Music/03 - Ensemble & Classical/<Collection>/<PDF|MuseScore>/
+  Sheet Music/90 - Reference/…   → never used (complete hymnals stay private)
+  ```
+
+  Filenames work like this:
+  - **Numbered:** `121 - Like a River Glorious.pdf`. `121 Title` and `014 - Title` also work.
+  - **Unnumbered:** `Psalm 54.mscz`.
+  - **Versions:** a trailing ` (2)` marks version 2; no number means version 1.
+  - **Notes:** other bracketed notes such as `(Stedfast Baptist Church)` are ignored.
+  - **Drafts:** anything containing `IN PROGRESS` is skipped.
+  - **Duplicates:** when the same file exists twice, the most recently changed copy wins.
+  - **Where it lives:** `parseDrivePath()` in `lib/sheet-music.ts`, and `listDrive()` in `lib/sheet-music-index.ts`.
+- **The Index (Sheet Music Index sheet):**
+  - **Songs** has one row per song, keyed by **Song ID** (`SSSH1989-233`). It holds the details and the rights. A file joins its song by Collection (the folder name) + Hymn Number, or, without a number, by a title only one song in that collection has. Bracketed notes and punctuation are ignored when matching titles.
+  - A file whose song has no Songs row is left out, since there's no rights decision for it.
+  - **Versions** (older name: **Editions**) is optional. A row only adds a key or capo fret to one version; it never has to exist.
+  - Columns are found by header name, and blank or placeholder cells (`?`) are ignored.
+  - The Files tab is no longer read. **Notes**, **Migration** and **References** never are.
+- **Matching a page to the Index:** a numbered song is looked up by its number in `siteConfig.sheetMusic.hymnalCollection` (Soul-Stirring Songs and Hymns 1989). An unnumbered song (a Psalm or an insert) is matched by title, but only when exactly one Index song has that title; an ambiguous title shows nothing rather than the wrong music. Pages still only exist for songs that have been sung or scheduled. Once a song gets a page, its Index entry appears automatically.
+- **Public details vs. protected files:** every matched song shows its details (composer, words, key, collection…), leaving out blank fields. The files are a separate question, answered by `canAccessFile()` in `lib/sheet-music-access.ts`.
+- **Rights, today:** a song's files are public **only when `Copyrighted?` is exactly `No`**. `Yes`, `Needs Review`, a blank or any other value keeps them private, and the page just says the sheet music isn't available publicly.
+- **Enforced on the server:** the file route runs `canAccessFile()` itself before touching Drive. A restricted file returns `403` even if someone types its address.
+- **PDF first, MuseScore second:** a PDF gets the main **View PDF** button and, on larger screens, an inline preview. It is served `inline`. A MuseScore file gets a secondary **Download MuseScore** button and is sent as the untouched original `.mscz`.
+  - The format comes from the file's `.pdf` / `.mscz` extension. Drive's MIME type is ignored, because Drive often reports `.mscz` files (zip containers) as zip archives.
+- **What reaches the browser:** file addresses use a slug (`standard-1.pdf`, `capo-2-guitar.mscz`), never a Drive File ID. The Drive IDs, notes and paths stay on the server.
+- **Freshness:** the Drive listing and the Index are cached together for `siteConfig.sheetMusic.revalidateSeconds` (10 seconds), so a new file shows up within about 10-20 seconds. Served files are cached at the CDN for the same time, so making a song private again takes effect about as quickly.
+- **Without credentials:** the song pages work as before with no sheet-music section, and the file route returns `503 {"reason":"not-configured"}`.
+- **Adding accounts later:** extend the `Viewer` type in `lib/sheet-music-access.ts` (for example a signed-in member), build it from the session in the song page (`getSongPage`) and the file route, and widen the rule in `canAccessFile()`. Restricted files served to signed-in users must be sent with `Cache-Control: private, no-store` instead of the public CDN caching used today.
+
 ---
 
 ## Design conventions
@@ -322,7 +377,7 @@ RESEND_API_KEY        = <your key>
 CRON_SECRET           = <a long random string>
 ```
 
-`DATABASE_URL` is added for you when Neon is connected (see [Song archive](#song-archive)).
+`DATABASE_URL` is added for you when Neon is connected (see [Song archive](#song-archive)). `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` are described under [Sheet music (service account)](#sheet-music-service-account).
 
 ### 3. Domains
 In **Settings → Domains**:
@@ -366,6 +421,41 @@ The spreadsheet is public and read-only, so a simple API key is enough.
    ```
    The response reports how many services were `added`, `refreshed` and `frozen`.
 5. From then on it runs nightly. Check **Settings → Cron Jobs**.
+
+### Sheet music (service account)
+Unlike the public song list, the Sheet Music Index and the sheet-music Drive folder are **private**. The site reads them as a Google **service account**, a robot Google identity that can only see what is shared with it.
+
+1. **Google Cloud project:** in the [Google Cloud console](https://console.cloud.google.com/), select the same project as the Sheets API key.
+2. **Enable the APIs:** go to **APIs & Services → Library** and enable **Google Sheets API** (probably already on) and **Google Drive API**.
+3. **Create the service account:**
+   - Go to **IAM & Admin → Service Accounts → Create service account**. A name such as `faithful-word-music-website` works.
+   - **Skip** "Grant this service account access to project" (no roles) and "Grant users access". It needs no Cloud permissions, only Drive sharing.
+4. **Create a key:** open the account, go to **Keys → Add key → Create new key → JSON**, and download the file.
+   - It contains `client_email` and `private_key`.
+   - Don't commit it, email it or leave it in Downloads. Delete the file once the two values are in Vercel and `.env.local`.
+5. **Share the files:** in Google Drive, share the **Sheet Music** folder with the `client_email` address.
+   - Set it to **Viewer** and untick **Notify people**.
+   - If the Index spreadsheet isn't inside that folder, share it the same way.
+   - Don't use "Anyone with the link", and don't enable Domain-Wide Delegation.
+   - Leave "Viewers can download" allowed on those files: a service account's download counts as a viewer's.
+6. **Set the environment variables** in Vercel (Production, Preview, Development):
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` = `client_email`
+   - `GOOGLE_PRIVATE_KEY` = `private_key`, including the `-----BEGIN/END PRIVATE KEY-----` lines. Paste it either with real line breaks or with the literal `\n` sequences exactly as the JSON file has them; the code accepts both.
+7. **Redeploy**, then open a song page, such as one numbered from the hymnal.
+
+**Troubleshooting** (read the `[sheet-music]` lines in Vercel → Logs):
+
+| Symptom | Meaning | Fix |
+|---|---|---|
+| No sheet-music section anywhere; file URLs return `503 not-configured` | The two variables aren't reaching the server | Add both for that environment, then redeploy |
+| `Google refused the service account credentials (...)` | The key is malformed or was deleted | Re-paste `private_key` with its BEGIN/END lines, or create a new key |
+| `Google Sheets responded with 403` | The Index isn't shared with the service account, or the Sheets API is off | Share it (Viewer); enable the API |
+| `Google Sheets responded with 400` | The Songs tab is missing or renamed | Restore the tab name "Songs" |
+| File URL returns `502`, and the log says `Google Drive responded with 404` | The file was deleted or moved in the last few minutes | Reload after a few seconds; the listing catches up |
+| `Google Drive responded with 403` | Downloads are disabled for viewers on that file, or the Drive API is off | Allow viewers to download; enable the API |
+| Song page has details but no buttons | The song's `Copyrighted?` isn't `No` | Working as intended |
+| A song has no sheet-music section | No Index match: the number isn't in the hymnal collection, or the title is ambiguous or spelled differently | Fix the Index's Hymn Number, Collection or Title |
+| A file in Drive doesn't show on its song's page | Wrong folder, no number or title match, a missing Songs row, or `IN PROGRESS` in the name | Check the folder, the filename, and that the song has a Songs row with the same Collection and Hymn Number |
 
 ### Resend
 1. Create an account at [resend.com](https://resend.com).
