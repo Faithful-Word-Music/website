@@ -68,7 +68,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
       {/* The thumb index: every letter, with those that have no songs dimmed. */}
       <nav
         aria-label={libraryContent.lettersLabel}
-        className="glass sticky top-16 z-30 -mx-4 mt-8 border-y border-line/80 px-4 sm:mx-0 sm:rounded-full sm:border sm:px-2"
+        className="glass sticky top-16 z-20 -mx-4 mt-8 border-y border-line/80 px-4 sm:mx-0 sm:rounded-full sm:border sm:px-2"
       >
         <ul className="flex overflow-x-auto py-1 [scrollbar-width:none] sm:justify-between">
           {letters.map((letter) => (
