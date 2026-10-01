@@ -1,8 +1,8 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 
+import { useAccount } from "@/components/account/AccountContext";
 import { footerContent } from "@/content/footer";
 
 const linkClass =
@@ -31,18 +31,19 @@ export function FooterLoginLink() {
 }
 
 /**
- * The footer's account link once accounts are switched on: the login prompt
- * for visitors, a link to their account for someone signed in. Until Clerk
- * has loaded it shows the login prompt, which is what the static page holds.
+ * The footer's account link: the login prompt for visitors (and whenever
+ * accounts are switched off), a link to their Dashboard for someone signed
+ * in. Until Clerk has loaded it shows the login prompt, which is what the
+ * static page holds.
  */
 export function FooterAccountLink() {
-  const { isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded || !isSignedIn) return <FooterLoginLink />;
+  const { nav } = useAccount();
+  if (!nav.signedIn) return <FooterLoginLink />;
   return (
     <p className="text-xs text-muted">
       {footerContent.account.signedIn}{" "}
-      <Link href="/account" className={linkClass} onClick={scrollUpIfCurrent}>
-        {footerContent.account.account}
+      <Link href="/dashboard" className={linkClass} onClick={scrollUpIfCurrent}>
+        {footerContent.account.dashboard}
       </Link>
     </p>
   );

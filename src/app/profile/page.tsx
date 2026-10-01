@@ -1,5 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Notice } from "@/components/account/Notices";
 import { ProfileView } from "@/components/account/ProfileView";
@@ -8,27 +9,31 @@ import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { accountContent } from "@/content/account";
+import { activateOwnRequests } from "@/lib/auth/activation";
 import { summarize } from "@/lib/auth/clerk";
-import { MEMBER_ROLE } from "@/lib/auth/permissions";
+import { MEMBER_ROLE, MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import { missingProfileItems } from "@/lib/auth/profile-completeness";
-import { normalizeEmail } from "@/lib/auth/request-status";
+import { toProfileRecord, visibleProfile } from "@/lib/auth/profile-visibility";
 import { requireViewer } from "@/lib/auth/session";
-import { activateRequestsFor, getProfile, getUserInstruments, getUserTitles, listRoles } from "@/lib/auth/store";
+import { getProfile, getUserInstruments, getUserTitles, listRoles } from "@/lib/auth/store";
 
 export const metadata: Metadata = {
-  title: "Your account",
+  title: "Your profile",
   robots: { index: false, follow: false },
 };
 
-/** /account - the signed-in person's own profile. Nobody else's is reachable from here. */
-export default async function AccountPage() {
-  const viewer = await requireViewer("/account");
+/**
+ * /profile - the signed-in person's own profile: who they are in the music
+ * ministry. Nobody else's is reachable from here. (How they sign in lives on
+ * /account; what is coming up for them on /dashboard.)
+ */
+export default async function ProfilePage() {
+  const viewer = await requireViewer("/profile");
   const user = await currentUser();
   if (!user) return null;
   const person = summarize(user);
 
-  // The first visit after accepting an invitation closes the request that led to it.
-  await activateRequestsFor(viewer.env, person.emails.map(normalizeEmail));
+  await activateOwnRequests(viewer, person.emails);
 
   const [profile, instruments, titles, roles] = await Promise.all([
     getProfile(viewer.env, viewer.userId),
@@ -49,24 +54,18 @@ export default async function AccountPage() {
     theoryLevel: profile.theoryLevel,
     readsSheetMusic: profile.readsSheetMusic,
   });
-  const copy = accountContent.account;
+  const copy = accountContent.profile;
 
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <SectionHeading as="h1" eyebrow={copy.eyebrow} title={`Welcome, ${profile.preferredName || person.firstName || "friend"}`} />
-
-        <div className="mt-8 flex flex-wrap gap-3">
-          <ButtonLink href="/account/edit">{copy.edit}</ButtonLink>
-          <ButtonLink href="/account/security" variant="secondary">
-            {copy.security}
-          </ButtonLink>
-          {viewer.canAccessAdmin ? (
-            <ButtonLink href="/admin" variant="secondary">
-              {copy.admin}
-            </ButtonLink>
-          ) : null}
-        </div>
+        <SectionHeading as="h1" title={copy.title}>
+          <p className="text-base">
+            <Link href="/account" className="text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold">
+              {copy.settingsLink}
+            </Link>
+          </p>
+        </SectionHeading>
 
         {missing.length > 0 ? (
           <Notice title={copy.completeTitle} className="mt-8">
@@ -81,12 +80,9 @@ export default async function AccountPage() {
 
         <div className="mt-8">
           <ProfileView
-            person={person}
-            profile={profile}
-            instruments={instruments}
-            titles={titles}
-            roleKeys={viewer.roleKeys}
-            roleLabels={roleLabels}
+            profile={visibleProfile(toProfileRecord(person, profile, { titles, instruments, roleLabels }), "self")}
+            isMusician={viewer.roleKeys.includes(MUSICIAN_ROLE)}
+            actions={<ButtonLink href="/profile/edit">{copy.edit}</ButtonLink>}
           />
         </div>
       </Container>

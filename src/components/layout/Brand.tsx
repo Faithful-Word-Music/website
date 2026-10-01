@@ -14,10 +14,17 @@ import { siteConfig } from "@/config/site";
  * container's padding, the mark and the menu button take about 118px, leaving
  * roughly 200px for a wordmark that sets in about 170px.
  */
-export function Brand({ className }: { className?: string }) {
+export function Brand({
+  className,
+  href = "/",
+}: {
+  className?: string;
+  /** Where the logo leads: "/" for visitors, the Dashboard once signed in. */
+  href?: string;
+}) {
   return (
     <Link
-      href="/"
+      href={href}
       className={cn(
         "inline-flex items-center gap-2.5 transition-opacity hover:opacity-80",
         className,

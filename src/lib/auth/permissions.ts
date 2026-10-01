@@ -61,7 +61,7 @@ export const PERMISSIONS = {
   },
   manage_sheet_music: {
     label: "Manage sheet music",
-    description: "Add and change sheet music.",
+    description: "Look after the sheet music, and choose which type of sheet music each person is given.",
     group: "music",
   },
   view_analytics: {
@@ -94,8 +94,27 @@ export function isPermission(value: string): value is Permission {
   return Object.hasOwn(PERMISSIONS, value);
 }
 
-/** Permissions that open the admin area. Anyone holding one sees the Admin link. */
-export const ADMIN_PERMISSIONS: Permission[] = ["manage_users", "manage_roles", "view_profiles", "manage_profiles"];
+/**
+ * Permissions that open the admin area. Anyone holding one sees the Admin
+ * link. manage_sheet_music is here because each person's sheet music is
+ * chosen on their page under People.
+ */
+export const ADMIN_PERMISSIONS: Permission[] = [
+  "manage_users",
+  "manage_roles",
+  "view_profiles",
+  "manage_profiles",
+  "manage_sheet_music",
+];
+
+/** Permissions that open People (/admin/users): everything that works on a person's page. */
+export const PEOPLE_PERMISSIONS: Permission[] = [
+  "manage_users",
+  "view_profiles",
+  "manage_roles",
+  "manage_profiles",
+  "manage_sheet_music",
+];
 
 /** The role that always holds every permission and cannot be edited or deleted. */
 export const ADMIN_ROLE = ADMIN_ROLE_ROW.key;

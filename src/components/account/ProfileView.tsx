@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 import { LearningScaleDisplay } from "@/components/account/LearningScale";
 import { Card } from "@/components/ui/Card";
-import { MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import {
   LEARNING_STYLES,
   PROFICIENCIES,
@@ -11,60 +10,66 @@ import {
   VOICE_PARTS,
   labelOf,
 } from "@/lib/auth/profile-options";
-import type { ProfileData, UserInstrument, UserTitle } from "@/lib/auth/store";
+import type { VisibleProfile } from "@/lib/auth/profile-visibility";
 
 /**
- * A member's profile, as shown to themselves on /account and to
- * administrators on /admin/users/[id]. Both pages check who may see it before
- * rendering this.
+ * A member's profile, as one audience sees it: the owner on /profile,
+ * administrators on /admin/users/[id], and later other members on /people.
+ *
+ * It shows whatever it is given. Deciding what that is happens before, on
+ * the server, through visibleProfile() (src/lib/auth/profile-visibility.ts):
+ * a field the audience may not see is absent, and its row or card is left
+ * out. A field that is present but empty shows as "Not given".
  */
 export function ProfileView({
-  person,
   profile,
-  instruments,
-  titles,
-  roleKeys,
-  roleLabels,
+  isMusician = false,
   actions,
 }: {
-  person: { firstName: string; lastName: string; email: string | null; imageUrl: string };
-  profile: ProfileData;
-  instruments: UserInstrument[];
-  titles: UserTitle[];
-  roleKeys: string[];
-  roleLabels: string[];
+  profile: VisibleProfile;
+  /** Musicians are asked "How do you play?", so it shows even when unanswered. */
+  isMusician?: boolean;
   actions?: ReactNode;
 }) {
   const fullName =
-    [person.firstName, profile.middleName, person.lastName].filter(Boolean).join(" ") || person.email || "Unnamed";
+    [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(" ") || profile.email || "Unnamed";
+  const titles = profile.titles ?? [];
   const primaryTitle = titles.find((title) => title.isPrimary) ?? titles[0];
-  const otherTitles = titles.filter((title) => title !== primaryTitle);
-  const isMusician = roleKeys.includes(MUSICIAN_ROLE);
+  const orderedTitles = primaryTitle ? [primaryTitle, ...titles.filter((title) => title !== primaryTitle)] : [];
   const learning = LEARNING_STYLES.find((style) => style.value === profile.learningStyle);
+
+  const showsMusic =
+    profile.voicePart !== undefined ||
+    profile.readsSheetMusic !== undefined ||
+    profile.learningStyle !== undefined ||
+    profile.theoryLevel !== undefined;
+  const showsDetails = profile.roleLabels !== undefined || profile.phone !== undefined;
 
   return (
     <div className="space-y-6">
       <Card className="p-6 sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-          {/* eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted photo */}
-          <img
-            src={person.imageUrl}
-            alt=""
-            width={96}
-            height={96}
-            className="h-24 w-24 shrink-0 rounded-full border border-line object-cover"
-          />
+          {profile.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted photo
+            <img
+              src={profile.imageUrl}
+              alt=""
+              width={96}
+              height={96}
+              className="h-24 w-24 shrink-0 rounded-full border border-line object-cover"
+            />
+          ) : null}
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-3xl text-ink">{fullName}</h2>
             {profile.preferredName ? (
               <p className="mt-1 text-sm text-muted">Goes by {profile.preferredName}</p>
             ) : null}
-            {primaryTitle ? (
+            {orderedTitles.length > 0 ? (
               <p className="mt-2 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
-                {[primaryTitle, ...otherTitles].map((title) => title.label).join(" · ")}
+                {orderedTitles.map((title) => title.label).join(" · ")}
               </p>
             ) : null}
-            {person.email ? <p className="mt-2 truncate text-sm text-muted">{person.email}</p> : null}
+            {profile.email ? <p className="mt-2 truncate text-sm text-muted">{profile.email}</p> : null}
           </div>
           {actions ? <div className="flex shrink-0 flex-wrap gap-3">{actions}</div> : null}
         </div>
@@ -74,64 +79,80 @@ export function ProfileView({
       </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="p-6">
-          <SectionLabel>Instruments</SectionLabel>
-          {instruments.length > 0 ? (
-            <ul className="mt-3 divide-y divide-line">
-              {instruments.map((instrument) => (
-                <li key={instrument.instrumentId} className="flex items-center justify-between gap-4 py-2 text-sm">
-                  <span className="text-ink">
-                    {instrument.label}
-                    {instrument.isPrimary ? <span className="ml-2 text-xs text-gold-dark">Primary</span> : null}
-                  </span>
-                  <span className="text-muted">{labelOf(PROFICIENCIES, instrument.proficiency)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty>No instruments yet.</Empty>
-          )}
-        </Card>
+        {profile.instruments ? (
+          <Card className="p-6">
+            <SectionLabel>Instruments</SectionLabel>
+            {profile.instruments.length > 0 ? (
+              <ul className="mt-3 divide-y divide-line">
+                {profile.instruments.map((instrument) => (
+                  <li key={instrument.instrumentId} className="flex items-center justify-between gap-4 py-2 text-sm">
+                    <span className="text-ink">
+                      {instrument.label}
+                      {instrument.isPrimary ? <span className="ml-2 text-xs text-gold-dark">Primary</span> : null}
+                    </span>
+                    {instrument.proficiency ? (
+                      <span className="text-muted">{labelOf(PROFICIENCIES, instrument.proficiency)}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>No instruments yet.</Empty>
+            )}
+          </Card>
+        ) : null}
 
-        <Card className="p-6">
-          <SectionLabel>Music</SectionLabel>
-          <dl className="mt-3 space-y-3 text-sm">
-            <Row label="Voice part" value={labelOf(VOICE_PARTS, profile.voicePart)} />
-            <Row
-              label="Reads sheet music"
-              value={profile.readsSheetMusic === null ? null : profile.readsSheetMusic ? "Yes" : "No"}
-            />
-            {isMusician || profile.learningStyle !== null ? (
-              <Row label="Plays" value={learning ? learning.label : null}>
-                {learning ? <LearningScaleDisplay value={learning.value} /> : null}
-              </Row>
-            ) : null}
-            <Row label="Music theory" value={labelOf(THEORY_LEVELS, profile.theoryLevel)} />
-          </dl>
-        </Card>
+        {showsMusic ? (
+          <Card className="p-6">
+            <SectionLabel>Music</SectionLabel>
+            <dl className="mt-3 space-y-3 text-sm">
+              {profile.voicePart !== undefined ? (
+                <Row label="Voice part" value={labelOf(VOICE_PARTS, profile.voicePart)} />
+              ) : null}
+              {profile.readsSheetMusic !== undefined ? (
+                <Row
+                  label="Reads sheet music"
+                  value={profile.readsSheetMusic === null ? null : profile.readsSheetMusic ? "Yes" : "No"}
+                />
+              ) : null}
+              {profile.learningStyle !== undefined && (isMusician || profile.learningStyle !== null) ? (
+                <Row label="Plays" value={learning ? learning.label : null}>
+                  {learning ? <LearningScaleDisplay value={learning.value} /> : null}
+                </Row>
+              ) : null}
+              {profile.theoryLevel !== undefined ? (
+                <Row label="Music theory" value={labelOf(THEORY_LEVELS, profile.theoryLevel)} />
+              ) : null}
+            </dl>
+          </Card>
+        ) : null}
 
-        <Card className="p-6">
-          <SectionLabel>Usually available</SectionLabel>
-          {profile.serviceAvailability.length > 0 ? (
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {SERVICE_AVAILABILITY.filter((slot) => profile.serviceAvailability.includes(slot.value)).map((slot) => (
-                <li key={slot.value} className="rounded-full border border-line px-3 py-1 text-sm text-ink">
-                  {slot.label}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty>Not given.</Empty>
-          )}
-        </Card>
+        {profile.serviceAvailability ? (
+          <Card className="p-6">
+            <SectionLabel>Usually available</SectionLabel>
+            {profile.serviceAvailability.length > 0 ? (
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {SERVICE_AVAILABILITY.filter((slot) => profile.serviceAvailability!.includes(slot.value)).map((slot) => (
+                  <li key={slot.value} className="rounded-full border border-line px-3 py-1 text-sm text-ink">
+                    {slot.label}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>Not given.</Empty>
+            )}
+          </Card>
+        ) : null}
 
-        <Card className="p-6">
-          <SectionLabel>Account</SectionLabel>
-          <dl className="mt-3 space-y-3 text-sm">
-            <Row label="Roles" value={roleLabels.join(", ") || "Member"} />
-            <Row label="Phone" value={profile.phone || null} />
-          </dl>
-        </Card>
+        {showsDetails ? (
+          <Card className="p-6">
+            <SectionLabel>Roles & contact</SectionLabel>
+            <dl className="mt-3 space-y-3 text-sm">
+              {profile.roleLabels ? <Row label="Roles" value={profile.roleLabels.join(", ") || "Member"} /> : null}
+              {profile.phone !== undefined ? <Row label="Phone" value={profile.phone || null} /> : null}
+            </dl>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import "server-only";
 import type { NeonQueryFunction } from "@neondatabase/serverless";
 
 import { getSql } from "@/lib/db";
+import type { SheetMusicType } from "@/lib/sheet-music-type";
 
 import type { ClerkEnv } from "./clerk-env";
 import { ADMIN_ROLE, DEFAULT_ROLES, type OverrideEffect, type PermissionOverride } from "./permissions";
@@ -317,7 +318,14 @@ export async function removeOverride(env: ClerkEnv, userId: string, permission: 
 export async function deleteUserData(env: ClerkEnv, userId: string): Promise<void> {
   const sql = await db(env);
   await sql.transaction((txn) =>
-    ["user_roles", "user_permission_overrides", "user_profiles", "user_instruments", "user_titles"].map((table) =>
+    [
+      "user_roles",
+      "user_permission_overrides",
+      "user_profiles",
+      "user_instruments",
+      "user_titles",
+      "user_sheet_music",
+    ].map((table) =>
       txn.query(`DELETE FROM ${table} WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
     ),
   );
@@ -647,6 +655,65 @@ export async function getUserInstruments(env: ClerkEnv, userId: string): Promise
     proficiency: row.proficiency,
     isPrimary: row.is_primary,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Assigned sheet music
+// ---------------------------------------------------------------------------
+
+/** The sheet music type assigned to each person. Anyone without one is absent from the map. */
+export async function sheetMusicTypesForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, SheetMusicType>> {
+  const result = new Map<string, SheetMusicType>();
+  if (userIds.length === 0) return result;
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT clerk_user_id, variant, instrument FROM user_sheet_music
+      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[])`,
+    [env, userIds],
+  )) as Array<{ clerk_user_id: string; variant: string; instrument: string | null }>;
+  for (const row of rows) result.set(row.clerk_user_id, { variant: row.variant, instrument: row.instrument });
+  return result;
+}
+
+export async function getSheetMusicType(env: ClerkEnv, userId: string): Promise<SheetMusicType | null> {
+  return (await sheetMusicTypesForUsers(env, [userId])).get(userId) ?? null;
+}
+
+/** Assigns a person's sheet music type, or clears it (null). */
+export async function setSheetMusicType(
+  env: ClerkEnv,
+  userId: string,
+  type: SheetMusicType | null,
+  assignedBy: string,
+): Promise<void> {
+  const sql = await db(env);
+  if (!type) {
+    await sql.query(`DELETE FROM user_sheet_music WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]);
+    return;
+  }
+  await sql.query(
+    `INSERT INTO user_sheet_music (clerk_env, clerk_user_id, variant, instrument, assigned_by)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
+       variant = EXCLUDED.variant, instrument = EXCLUDED.instrument,
+       assigned_by = EXCLUDED.assigned_by, assigned_at = now()`,
+    [env, userId, type.variant, type.instrument, assignedBy],
+  );
+}
+
+/** How many instruments each person lists. Anyone listing none is absent from the map. */
+export async function instrumentCountsForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (userIds.length === 0) return result;
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT clerk_user_id, count(*)::int AS count FROM user_instruments
+      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[])
+      GROUP BY clerk_user_id`,
+    [env, userIds],
+  )) as Array<{ clerk_user_id: string; count: number }>;
+  for (const row of rows) result.set(row.clerk_user_id, row.count);
+  return result;
 }
 
 export interface UserTitle {

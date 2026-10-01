@@ -10,6 +10,7 @@ import {
   RecapFacts,
   RecapLead,
 } from "@/components/song-list/YearRecapView";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -70,13 +71,7 @@ export default async function YearRecapPage({ params }: PageProps<"/song-list/ye
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <Link
-          href="/song-list/archive"
-          className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-muted transition-colors hover:text-ink"
-        >
-          <span aria-hidden="true">←</span>
-          {copy.backLabel}
-        </Link>
+        <BackLink fallback="/song-list/archive" />
 
         <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
           <SectionHeading

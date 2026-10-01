@@ -54,7 +54,8 @@ export async function saveOwnProfile(input: unknown): Promise<ActionResult> {
       instruments,
     );
 
-    revalidatePath("/account");
+    revalidatePath("/profile");
+    revalidatePath("/dashboard");
     return { ok: true, value: null, message: "Your profile has been saved." };
   });
 }

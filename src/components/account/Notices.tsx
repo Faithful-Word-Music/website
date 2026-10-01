@@ -54,10 +54,7 @@ export function NoAccess() {
         update your role.
       </p>
       <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <ButtonLink href="/account">Your account</ButtonLink>
-        <ButtonLink href="/" variant="secondary">
-          Back to Home
-        </ButtonLink>
+        <ButtonLink href="/dashboard">Back to Dashboard</ButtonLink>
       </div>
     </Card>
   );

@@ -46,10 +46,13 @@ import {
   setInvitationRoles,
   setOptionArchived,
   setOverride,
+  setSheetMusicType,
   setUserTitles,
   updateRole,
   type OptionList,
 } from "@/lib/auth/store";
+import { getSheetMusicIndex } from "@/lib/sheet-music-index";
+import { availableTypes, typeKey, typeLabel } from "@/lib/sheet-music-type";
 
 /**
  * Every change made from the admin area. Server actions are public POST
@@ -311,6 +314,34 @@ export async function setTitlesAction(userId: unknown, titleIds: unknown, primar
     await setUserTitles(viewer.env, target.data, titleIds as number[], primary, viewer.userId);
     revalidatePath(`/admin/users/${target.data}`);
     return { ok: true, value: null, message: "Titles saved." };
+  });
+}
+
+/**
+ * Chooses the one type of sheet music a person is given (a key such as
+ * "Capo|Guitar"), or clears it (null). Only a type the Sheet Music Index
+ * actually has can be chosen - checked here against the Index itself.
+ */
+export async function setSheetMusicTypeAction(userId: unknown, key: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const target = clerkUserIdSchema.safeParse(userId);
+    if (!target.success) return { ok: false, error: "Unknown person." };
+
+    if (key === null) {
+      await setSheetMusicType(viewer.env, target.data, null, viewer.userId);
+      revalidatePath(`/admin/users/${target.data}`);
+      return { ok: true, value: null, message: "Sheet music cleared. Their Dashboard shows no sheet music links." };
+    }
+
+    if (typeof key !== "string" || key.length > 200) return { ok: false, error: "Unknown sheet music type." };
+    const index = await getSheetMusicIndex();
+    if (!index.ok) return { ok: false, error: "The Sheet Music Index could not be read. Please try again shortly." };
+    const type = availableTypes(index.index).find((candidate) => typeKey(candidate) === key);
+    if (!type) return { ok: false, error: "That sheet music type no longer exists." };
+
+    await setSheetMusicType(viewer.env, target.data, type, viewer.userId);
+    revalidatePath(`/admin/users/${target.data}`);
+    return { ok: true, value: null, message: `Sheet music set to ${typeLabel(type)}.` };
   });
 }
 

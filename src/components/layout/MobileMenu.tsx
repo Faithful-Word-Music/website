@@ -7,6 +7,7 @@ import { MobileSearchBar } from "@/components/search/CommandPalette";
 import { cn } from "@/components/ui/cn";
 import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { siteConfig } from "@/config/site";
+import type { NavItem } from "@/lib/navigation";
 
 /**
  * The mobile navigation: a full-screen overlay below the header bar.
@@ -19,12 +20,15 @@ export function MobileMenu({
   open,
   onClose,
   panelId,
+  items,
   isActive,
   onSearch,
 }: {
   open: boolean;
   onClose: () => void;
   panelId: string;
+  /** The links, from primaryNav(): the same ones the header shows. */
+  items: NavItem[];
   isActive: (href: string) => boolean;
   /** Opens the search palette (the menu closes as it opens). */
   onSearch: () => void;
@@ -75,7 +79,7 @@ export function MobileMenu({
           />
           <nav aria-label="Primary" className="mt-2">
             <ul className="flex flex-col">
-              {siteConfig.nav.map((item, index) => (
+              {items.map((item, index) => (
                 <li key={item.href}>
                   <Link
                     href={item.href}

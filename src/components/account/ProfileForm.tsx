@@ -4,11 +4,12 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useId, useRef, useState, useTransition } from "react";
 
-import { saveOwnProfile } from "@/app/account/actions";
+import { saveOwnProfile } from "@/app/profile/actions";
 import { ActionMessage, ChoiceChips, SelectField, TextField } from "@/components/account/fields";
 import { LearningScaleInput } from "@/components/account/LearningScale";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { accountContent } from "@/content/account";
 import type { ProfileFormValues } from "@/lib/auth/forms";
 import {
   PROFICIENCIES,
@@ -24,7 +25,7 @@ type Result = { ok: boolean; message?: string; error?: string } | null;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 /**
- * The profile form on /account/edit. The photo is saved straight to Clerk
+ * The profile form on /profile/edit. The photo is saved straight to Clerk
  * (which stores and serves profile images); everything else is saved in one
  * go by the saveOwnProfile server action.
  */
@@ -32,11 +33,14 @@ export function ProfileForm({
   initial,
   instrumentOptions,
   isMusician,
+  welcome = false,
 }: {
   initial: ProfileFormValues;
   instrumentOptions: Array<{ id: number; label: string }>;
   /** Only musicians are asked "How do you play?". */
   isMusician: boolean;
+  /** A new member's first visit: saving or skipping goes on to their Dashboard. */
+  welcome?: boolean;
 }) {
   const ids = useId();
   const router = useRouter();
@@ -80,7 +84,8 @@ export function ProfileForm({
     startTransition(async () => {
       const outcome = await saveOwnProfile(values);
       setResult(outcome);
-      if (outcome.ok) router.refresh();
+      if (outcome.ok && welcome) router.push("/dashboard");
+      else if (outcome.ok) router.refresh();
     });
   }
 
@@ -264,11 +269,16 @@ export function ProfileForm({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <ActionMessage result={result} />
         <div className="flex shrink-0 gap-3 sm:ml-auto">
-          <Button type="button" variant="secondary" size="lg" onClick={() => router.push("/account")}>
-            Cancel
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={() => router.push(welcome ? "/dashboard" : "/profile")}
+          >
+            {welcome ? accountContent.profile.welcome.skip : "Cancel"}
           </Button>
           <Button type="submit" size="lg" disabled={pending}>
-            {pending ? "Saving…" : "Save profile"}
+            {pending ? "Saving…" : welcome ? accountContent.profile.welcome.save : "Save profile"}
           </Button>
         </div>
       </div>

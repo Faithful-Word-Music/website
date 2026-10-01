@@ -38,6 +38,10 @@ export const searchContent = {
   /** Page entries. `keywords` are extra words that find them. */
   pages: {
     home: { label: "Home", keywords: "start welcome about" },
+    /** Signed in only: these replace Home. */
+    dashboard: { label: "Dashboard", keywords: "home start coming up next attention" },
+    profile: { label: "Your profile", keywords: "me instruments titles bio edit" },
+    account: { label: "Account settings", keywords: "password email security sign in devices" },
     songList: { label: "Song List", keywords: "schedule services this month upcoming next" },
     archive: { label: "Song archive", keywords: "history past every song sung stats most sung" },
     years: { label: "Year in songs", keywords: "recap year review annual" },

@@ -26,7 +26,7 @@ The website of **Faithful Word Music**, the music ministry of
    - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
-   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts)
+   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
@@ -42,7 +42,7 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 
 | Address | What it is |
 |---|---|
-| `/` | Home: what the ministry is, with links to the song list and contact page |
+| `/` | Home: what the ministry is, with links to the song list and contact page. Signed-in members are sent to `/dashboard` instead |
 | `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
 | `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
 | `/library` | The Library: every song with a page, A-Z (audio and other resources to follow). Old `/song-list/archive/<song>` links redirect to `/library/songs/<song>` |
@@ -58,7 +58,9 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `/login` | Member log in (Clerk). Linked only from the footer, never the main navigation |
 | `/request-access` | Ask for an account. Creates a request for an administrator to review, never an account |
 | `/accept-invite` | Where Clerk invitation emails land; the only place an account can be created |
-| `/account`, `/account/edit`, `/account/security` | A member's own profile, profile editor, and Clerk's password/security screen |
+| `/dashboard` | The signed-in home: what needs the member's attention and what is coming up for them |
+| `/profile`, `/profile/edit` | A member's own profile (who they are in the ministry) and its editor |
+| `/account` | Account settings: Clerk's screen for sign-in email, password and devices. Old `/account/edit` and `/account/security` links redirect |
 | `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
 | `POST /api/account-requests` | The request form's endpoint |
 
@@ -130,7 +132,7 @@ Anything **public** (the contact address, links, the spreadsheet ID, service tim
 assets/fonts/                 TTF/WOFF fonts for the PDF, pictures and link previews
 scripts/bootstrap-admin.mjs   Makes the first administrator, once per Clerk instance
 src/
-├── proxy.ts                          Sends signed-out visitors on /account and /admin to /login
+├── proxy.ts                          Signed-out visitors on the member pages → /login; signed-in visitors on / → /dashboard
 ├── app/
 │   ├── page.tsx                      Home
 │   ├── song-list/
@@ -142,7 +144,9 @@ src/
 │   ├── api/contact/route.ts          Contact form endpoint
 │   ├── api/cron/sync-archive/        Nightly archive sync
 │   ├── login/  request-access/  accept-invite/   Member log in, account requests, invitations (Clerk)
-│   ├── account/                      A member's own profile, profile editor, security
+│   ├── dashboard/                    The signed-in home
+│   ├── profile/                      A member's own profile and profile editor
+│   ├── account/                      Account settings (Clerk: email, password, devices)
 │   ├── admin/                        Requests, invitations, people, roles, titles & instruments
 │   ├── api/account-requests/         Account request endpoint
 │   ├── layout.tsx                    Fonts, header, footer, base metadata
@@ -150,7 +154,8 @@ src/
 │   └── opengraph-image.tsx, sitemap.ts, robots.ts, icon.svg, not-found.tsx
 ├── components/
 │   ├── song-list/                    Everything on /song-list (see below)
-│   ├── account/  admin/              Account pages' forms and the admin editors
+│   ├── account/  admin/              Account pages' forms, the account context and menu, and the admin editors
+│   ├── dashboard/                    The Dashboard's sections
 │   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
 │   └── layout/  home/  contact/
 ├── config/site.ts                    Every public setting, in one place
@@ -183,6 +188,9 @@ src/
 | `auth/permissions.ts` | The permission list, the starting roles, and how roles and exceptions combine (pure) |
 | `auth/store.ts`, `auth/schema.mjs` | The account tables in Neon, each row tagged with its Clerk instance (server-only) |
 | `auth/clerk.ts`, `auth/clerk-env.ts` | Every Clerk Backend API call, and which Clerk instance may be used where |
+| `auth/profile-visibility.ts` | Which profile fields each audience (self, staff, later other members) may see (pure) |
+| `navigation.ts` | Which links the header, mobile menu, footer and account menu show, for visitors and per permission (pure) |
+| `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up` and `sheet-choice` (pure) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
 `NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
@@ -399,7 +407,7 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
   - and only then does the action run.
   This all goes through `src/lib/auth/session.ts`.
 - **Things that are never trusted:** hidden buttons, the header menu, the proxy and the admin layout. The header's "Admin" link is only a convenience.
-- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards. It doesn't run on the public pages at all, so they stay static and cached.
+- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/dashboard`, `/profile`, `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards, and sends signed-in visitors on `/` to `/dashboard`. It doesn't run on any other public page, so they stay static and cached.
 
 **One database, two Clerk instances:**
 - Local, Preview and Production share one Neon database, but Clerk Development and Production have separate users.
@@ -409,6 +417,87 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
 **When accounts are off:** if the Clerk keys are missing, or they're wrong for the environment (test keys on Production, live keys anywhere else, a mismatched pair), accounts switch off. The public site carries on unchanged, the account pages fail closed with "Accounts are temporarily unavailable", and the reason is logged once as `[auth] Accounts are disabled: …`. The log never includes key values.
 
 The tables are created on first use, like the song archive's: see `src/lib/auth/schema.mjs`.
+
+### The signed-in experience
+
+The site is two experiences on one codebase:
+- **The public site** is the ministry's front door: home page, song list, Library, contact. Static and cached, the same for everyone.
+- **The signed-in application** is a working space for the music ministry. Its home is the **Dashboard**.
+
+**Four places, four jobs:**
+
+| Page | Answers | Owner |
+|---|---|---|
+| `/dashboard` | What do I need to know and do? What is coming up? | Built from current data |
+| `/profile` | Who am I in the ministry? (names, photo, bio, titles, instruments, music answers) | The site, plus name and photo from Clerk |
+| `/account` | How do I sign in? (email, password, devices). Later: account-wide settings such as notifications and profile privacy | Clerk |
+| `/admin` | Running the ministry's accounts | The site |
+
+Editing happens on the page being edited (the **Edit profile** button on `/profile`), never from a menu.
+
+**Signed-in people never see the public home page.** The proxy redirects `/` to `/dashboard` when there is a session, and the logo links to the Dashboard. The home page itself never reads the session, so it stays prerendered (ISR) for visitors.
+
+**Logging in:**
+- **Returning members** logging in with no page to return to (e.g. the footer's **Log in!**) land on `/dashboard` (`signInFallbackRedirectUrl` in `layout.tsx`).
+- **New members**, straight after creating their account from an invitation, land on `/profile/edit?welcome=1` (`signUpFallbackRedirectUrl`): the profile form introduced as "Set up your profile", where saving or skipping carries on to the Dashboard.
+- Sent to log in from a members' page, they arrive with `?redirect_url=…` and go back to that page, which always wins over the fallback.
+- Logging out goes to the public home page.
+
+**Navigation** (`src/lib/navigation.ts`, one place for every menu):
+- Visitors: Home, Song List, Library, Contact.
+- Signed in: **Dashboard** takes Home's place, and the public music pages stay.
+- The avatar menu holds Dashboard, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar.
+- A new destination is one entry in `APP_NAV` (or `ACCOUNT_MENU`) with the `permission` that opens it. Nothing unfinished is listed.
+
+**Why the header finds out in the browser:** public pages are static, so they can't know who is looking. `AccountProvider` (`components/account/AccountContext.tsx`) reads the Clerk session in the browser and asks `/api/account/me` once for the person's own permissions. The header, footer, search and members' sheet music all share that one answer. A signed-in person briefly sees the visitor's links on a static page until Clerk loads; that is the price of keeping the public site static. **Showing a link is never the protection**: every page, file and action checks permissions again on the server.
+
+**How the Dashboard decides what to show:**
+
+| Source | Decides | Example |
+|---|---|---|
+| **Permissions** | What may be shown or linked (security) | Members-only sheet music is linked only with `view_sheet_music`; account requests appear only with `manage_users` |
+| **Roles** | Broad responsibilities | Musician and Song Leader mean the service music matters to them |
+| **Titles, instruments** | What is most relevant | A pianist's song links open the piano part; a guitarist's the capo chart. A title never grants anything |
+| **Current data** | What appears at all | No "0 requests", no empty cards, no placeholders for future features |
+
+- These come together in one `DashboardFocus` (`lib/dashboard/focus.ts`). Capabilities are read from permissions, never role names, so a custom role with the right permission gets the same Dashboard.
+- Someone with several responsibilities (say Administrator, Music Director and Pianist) gets **one** page: each section draws on the parts of the focus it needs, and attention items are de-duplicated by id.
+- **Sections** (each shown only when it has something real to say):
+
+  | Section | Who sees it | What it shows |
+  |---|---|---|
+  In this order for everyone (absent sections are skipped): things to do, this week, preparing, what changed, the wider picture.
+
+  | Section | Who sees it | What it shows |
+  |---|---|---|
+  | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`) |
+  | **Coming up** | Everyone | The next services (up to three within a week). Someone with an assigned sheet music type gets a **Sheet Music** link under each song that has that type, and nothing under one that doesn't |
+  | **Songs to brush up on** | People who play or lead | Songs in the next two weeks not sung for six months, or not in the records at all |
+  | **Sheet music to finish** | `manage_sheet_music` | Songs in the next three services (never further ahead, however much of the month is planned) with no Index entry, no files, no Standard score, a chart with MuseScore but no PDF, or rights still to review |
+  | **New sheet music** | Everyone, among files they may open | Songs whose files changed in Drive in the last two weeks, upcoming first |
+  | **People** | The admin People permissions | Musicians (with their sheet music type, for `manage_sheet_music`), song leaders and people with no role beyond Member, each linking to their admin page |
+  | **Quarter at a glance** | `view_analytics` | Services, different songs and the most sung so far this quarter (or the quarter just ended, before the new one's first service) |
+
+- **Sheet music types are assigned, never guessed.** Two people on the same instrument can need different charts, so each person's type (Standard, Chords, Capo - Guitar, a part...) is chosen on their page under **Admin → People** by anyone with `manage_sheet_music`. The choices are read from the Drive folders, so a new kind of chart appears as soon as its first file is added. Stored in `user_sheet_music`; the logic is `src/lib/sheet-music-type.ts`. No type means no links.
+
+- The logic is in `lib/dashboard/` (pure, tested); the reads are in `lib/dashboard/load.ts`, each failing soft so one source being down never takes the page with it.
+
+**Adding a feature to the signed-in application** (Availability, Service Planner, Notifications…):
+1. Its route, protected by `requireViewer()` and its own permission (added to `permissions.ts` when something checks it), and added to the proxy matcher.
+2. A nav entry in `lib/navigation.ts` gated on that permission.
+3. If it can need action, an attention provider in `lib/dashboard/providers.ts` returning `AttentionItem`s (nothing when there is nothing to do).
+4. If it belongs on the Dashboard, its data loaded in `app/dashboard/page.tsx` (failing soft) and a section shown only when the focus and data call for it.
+
+**Profiles are built to be shown to other members later.**
+- `lib/auth/profile-visibility.ts` classifies every profile field by audience:
+  - `self`, the owner;
+  - `staff`, holders of `view_profiles`;
+  - `members`, other signed-in members (not reachable yet).
+- Pages filter with `visibleProfile()` on the server, so a hidden field never reaches the browser, and `ProfileView` renders what it is given.
+- **Member profiles, when built:**
+  - Live at `/people` and `/people/<id>` (`/profile` always means "mine").
+  - Get their own permission, returned as the `members` audience from `audienceFor()`.
+  - Any "show my profile to members" choice belongs on `/account`.
 
 ---
 
@@ -441,6 +530,8 @@ Vitest covers the pure logic in `src/lib`:
 - the shared text format (`share-services.test.ts`)
 - the light/dark choice and its no-flash script (`theme.test.ts`)
 - the year in song (`year-recap.test.ts`)
+- permissions, navigation per permission, and profile visibility (`auth/permissions.test.ts`, `navigation.test.ts`, `auth/profile-visibility.test.ts`)
+- the Dashboard's focus, attention list, coming services and sheet-music choice (`dashboard/dashboard.test.ts`)
 
 The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.
 
@@ -652,7 +743,7 @@ The site enforces this table: see `src/lib/auth/clerk-env.ts` and its tests.
    - **Clerk (Production) → Users → Create user**, or **Invitations → Invite** yourself and accept the emailed link on the live site.
 6. **Make yourself the Production administrator.** Pick one of these.
    - **Option 1: the Neon SQL editor.** No live key ever touches your machine.
-     1. Log in on the live site once and open `/account`. That first signed-in page creates the tables and the starting roles.
+     1. Log in on the live site once and open `/dashboard` (where logging in lands). That first signed-in page creates the tables and the starting roles.
      2. Copy your user ID (`user_…`) from **Clerk (Production) → Users → you**.
      3. In the Neon console's SQL editor, run:
         ```sql

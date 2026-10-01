@@ -156,13 +156,6 @@ export const songListContent = {
 
   /** One song's page in the archive, /library/songs/[song]. */
   songPage: {
-    /** The back link names the page the visitor came from. {year} is replaced at render time. */
-    backLabels: {
-      archive: "Back to the archive",
-      library: "Back to the Library",
-      songList: "Back to the song list",
-      year: "Back to {year} in song",
-    },
     /** {number} is replaced at render time. */
     numberEyebrow: "Hymn No. {number}",
     /** From the Sheet Music Index. Rows with nothing filled in are left out. */
@@ -346,7 +339,6 @@ export const songListContent = {
     eyebrow: "A year of singing",
     title: "{year} in song",
     metaTitle: "{year} in Song",
-    backLabel: "Back to the archive",
     /** Links from the archive and the song list. */
     linkLabel: "See our year in song",
     /** The opening sentence, by how much of the year is recorded. */
@@ -403,7 +395,6 @@ export const songListContent = {
   archive: {
     title: "Song Archive",
     lead: "Every song sung in our services, how often we have sung it, and when we last did.",
-    backLabel: "Back to the song list",
     stats: {
       services: "Services",
       songs: "Different songs",

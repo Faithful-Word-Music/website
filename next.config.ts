@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
         destination: "/library/songs/:song/sheet-music/:file",
         permanent: true,
       },
+      // The profile moved from /account to /profile; /account is now account
+      // settings (sign-in email, password, devices), which used to be
+      // /account/security.
+      { source: "/account/edit", destination: "/profile/edit", permanent: true },
+      { source: "/account/security", destination: "/account", permanent: true },
+      { source: "/account/security/:path*", destination: "/account/:path*", permanent: true },
     ];
   },
 };

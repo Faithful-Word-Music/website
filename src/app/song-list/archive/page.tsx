@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ArchiveView } from "@/components/song-list/ArchiveView";
 import { buttonClasses } from "@/components/ui/Button";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -38,13 +39,7 @@ export default async function SongArchivePage() {
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <Link
-          href="/song-list"
-          className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-muted transition-colors hover:text-ink"
-        >
-          <span aria-hidden="true">←</span>
-          {archive.backLabel}
-        </Link>
+        <BackLink fallback="/song-list" />
 
         <SectionHeading
           as="h1"

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { useAccount } from "@/components/account/AccountContext";
 import { UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
@@ -11,7 +12,7 @@ import { CommandPalette } from "@/components/search/CommandPalette";
 import { Container } from "@/components/ui/Container";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
-import { siteConfig } from "@/config/site";
+import { homeHref, isActivePath, primaryNav } from "@/lib/navigation";
 
 export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   const pathname = usePagePath();
@@ -19,6 +20,10 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
   const panelId = useId();
+  // Visitors get the public navigation; a signed-in person the Dashboard and
+  // whatever their permissions open (src/lib/navigation.ts).
+  const { nav } = useAccount();
+  const items = primaryNav(nav);
 
   // Close the mobile menu whenever the route changes. Adjusting state during
   // render is React's recommended way to reset state when an input changes -
@@ -47,7 +52,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   }, []);
 
   function isActive(href: string) {
-    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+    return isActivePath(pathname, href);
   }
 
   return (
@@ -60,13 +65,13 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
       >
         <Container size="wide">
           <div className="flex h-16 items-center justify-between">
-            <Brand />
+            <Brand href={homeHref(nav)} />
 
             <div className="flex items-center gap-1">
               {/* Desktop navigation */}
               <nav aria-label="Primary" className="hidden md:block">
                 <ul className="flex items-center gap-1">
-                  {siteConfig.nav.map((item) => (
+                  {items.map((item) => (
                     <li key={item.href}>
                       <Link
                         href={item.href}
@@ -148,6 +153,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
         open={open}
         onClose={close}
         panelId={panelId}
+        items={items}
         isActive={isActive}
         onSearch={openSearch}
       />

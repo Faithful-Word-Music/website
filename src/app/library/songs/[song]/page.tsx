@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
-import { SongBackLink } from "@/components/song-list/SongBackLink";
 import { SongLink } from "@/components/song-list/SongLink";
 import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -53,7 +53,7 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <SongBackLink />
+        <BackLink fallback="/song-list" skipSongPages />
 
         <SectionHeading
           as="h1"

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -6,16 +5,29 @@ import { NoAccess, Notice } from "@/components/account/Notices";
 import { ProfileView, SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
 import { Pill } from "@/components/admin/StatusPill";
-import { OverrideEditor, RoleEditor, TitleEditor } from "@/components/admin/UserEditors";
+import { OverrideEditor, RoleEditor, SheetMusicTypeEditor, TitleEditor } from "@/components/admin/UserEditors";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getAccount } from "@/lib/auth/clerk";
 import { formatDateTime } from "@/lib/auth/format";
 import { clerkUserIdSchema } from "@/lib/auth/forms";
-import { ADMIN_ROLE, MEMBER_ROLE, PERMISSIONS, PERMISSION_GROUPS, resolvePermissions } from "@/lib/auth/permissions";
+import {
+  ADMIN_ROLE,
+  MEMBER_ROLE,
+  MUSICIAN_ROLE,
+  PERMISSIONS,
+  PEOPLE_PERMISSIONS,
+  PERMISSION_GROUPS,
+  resolvePermissions,
+} from "@/lib/auth/permissions";
+import { audienceFor, toProfileRecord, visibleProfile } from "@/lib/auth/profile-visibility";
+import { getSheetMusicIndex } from "@/lib/sheet-music-index";
+import { availableTypes, typeKey, typeLabel } from "@/lib/sheet-music-type";
 import { requireAnyPermission } from "@/lib/auth/session";
 import {
   getProfile,
+  getSheetMusicType,
   getUserInstruments,
   getUserTitles,
   listOptions,
@@ -35,12 +47,7 @@ export const metadata = { title: "Person" };
  */
 export default async function UserPage({ params }: PageProps<"/admin/users/[id]">) {
   const { id } = await params;
-  const viewer = await requireAnyPermission(`/admin/users/${id}`, [
-    "manage_users",
-    "view_profiles",
-    "manage_roles",
-    "manage_profiles",
-  ]);
+  const viewer = await requireAnyPermission(`/admin/users/${id}`, PEOPLE_PERMISSIONS);
   if (!viewer) return <NoAccess />;
 
   const userId = clerkUserIdSchema.safeParse(id);
@@ -57,29 +64,32 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
   const person = account.value;
   const isSelf = person.id === viewer.userId;
 
-  const [authorization, overrides, roles, profile, instruments, titles, titleOptions] = await Promise.all([
-    loadAuthorization(viewer.env, person.id),
-    listOverrides(viewer.env, person.id),
-    listRoles(viewer.env),
-    getProfile(viewer.env, person.id),
-    getUserInstruments(viewer.env, person.id),
-    getUserTitles(viewer.env, person.id),
-    listOptions(viewer.env, "titles"),
-  ]);
+  const managesSheetMusic = viewer.can("manage_sheet_music");
+  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, sheetType, sheetIndex] =
+    await Promise.all([
+      loadAuthorization(viewer.env, person.id),
+      listOverrides(viewer.env, person.id),
+      listRoles(viewer.env),
+      getProfile(viewer.env, person.id),
+      getUserInstruments(viewer.env, person.id),
+      getUserTitles(viewer.env, person.id),
+      listOptions(viewer.env, "titles"),
+      getSheetMusicType(viewer.env, person.id),
+      managesSheetMusic ? getSheetMusicIndex() : null,
+    ]);
+  const sheetTypes = sheetIndex?.ok ? availableTypes(sheetIndex.index) : null;
   const effective = resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
   const roleLabels = roles
     .filter((role) => authorization.roleKeys.includes(role.key) || role.key === MEMBER_ROLE)
     .map((role) => role.label);
   const isTargetAdmin = authorization.roleKeys.includes(ADMIN_ROLE);
+  // The profile needs "View profiles"; the audience then decides which fields it shows.
+  const audience = viewer.can("view_profiles") ? audienceFor(viewer, person.id) : null;
 
   return (
     <div className="space-y-10">
       <div>
-        <p className="text-sm">
-          <Link href="/admin/users" className="text-muted transition-colors hover:text-ink">
-            ← All people
-          </Link>
-        </p>
+        <BackLink fallback="/admin/users" />
         <SectionHeading as="h1" title={person.fullName} className="mt-4">
           <p className="flex flex-wrap items-center gap-2 text-base">
             {person.email}
@@ -89,14 +99,10 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
         </SectionHeading>
       </div>
 
-      {viewer.can("view_profiles") ? (
+      {audience ? (
         <ProfileView
-          person={person}
-          profile={profile}
-          instruments={instruments}
-          titles={titles}
-          roleKeys={authorization.roleKeys}
-          roleLabels={roleLabels}
+          profile={visibleProfile(toProfileRecord(person, profile, { titles, instruments, roleLabels }), audience)}
+          isMusician={authorization.roleKeys.includes(MUSICIAN_ROLE)}
         />
       ) : null}
 
@@ -110,6 +116,23 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
               isSelf={isSelf}
               canEditSelf={viewer.roleKeys.includes(ADMIN_ROLE)}
             />
+          </Section>
+        ) : null}
+
+        {viewer.can("manage_sheet_music") ? (
+          <Section
+            title="Sheet music"
+            description="The one type of sheet music their Dashboard links under each upcoming song. Songs without this type get no link."
+          >
+            {sheetTypes ? (
+              <SheetMusicTypeEditor
+                userId={person.id}
+                types={sheetTypes.map((type) => ({ key: typeKey(type), label: typeLabel(type) }))}
+                assigned={sheetType ? { key: typeKey(sheetType), label: typeLabel(sheetType) } : null}
+              />
+            ) : (
+              <p className="text-sm text-muted">The Sheet Music Index could not be read just now, so types cannot be chosen.</p>
+            )}
           </Section>
         ) : null}
 

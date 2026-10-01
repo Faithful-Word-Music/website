@@ -53,6 +53,8 @@ export interface SheetFile {
   slug: string;
   /** SERVER ONLY. Never include in anything sent to the browser. */
   driveFileId: string;
+  /** When the file last changed in Drive (ISO), for "New sheet music" on the Dashboard. */
+  modifiedTime?: string;
 }
 
 /** One chart of a song: a variant (Standard, Chords, Capo) in one version. */
@@ -410,6 +412,7 @@ export function parseIndex(sources: IndexSources): SheetMusicIndex {
       instrument: sheet.instrument,
       slug: "",
       driveFileId: sheet.driveFileId,
+      modifiedTime: sheet.modifiedTime || undefined,
     });
   }
 

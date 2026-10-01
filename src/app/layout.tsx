@@ -3,14 +3,15 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 
+import { AccountProvider } from "@/components/account/AccountContext";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
-import { SongOriginTracker } from "@/components/song-list/SongOriginTracker";
+import { PageHistoryTracker } from "@/components/ui/BackLink";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
-import { clerkAppearance } from "@/lib/auth/appearance";
+import { clerkAppearance, clerkLocalization } from "@/lib/auth/appearance";
 import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
 import { themeInitScript } from "@/lib/theme";
 
@@ -82,13 +83,17 @@ function AccountsProvider({ enabled, children }: { enabled: boolean; children: R
     // read in the browser, and on the server only by the account pages.
     <ClerkProvider
       appearance={clerkAppearance}
+      localization={clerkLocalization}
       signInUrl="/login"
       signUpUrl="/accept-invite"
-      signInFallbackRedirectUrl="/account"
-      signUpFallbackRedirectUrl="/account"
+      // With no page to go back to (?redirect_url=...): someone logging in
+      // lands on their Dashboard; someone who has just created their account
+      // from an invitation is new, so they start by setting up their profile.
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/profile/edit?welcome=1"
       afterSignOutUrl="/"
     >
-      {children}
+      <AccountProvider>{children}</AccountProvider>
     </ClerkProvider>
   );
 }
@@ -126,14 +131,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
         {/* A thin bar across the top while the next page loads. */}
         <NavigationProgress />
-        <SongOriginTracker />
+        <PageHistoryTracker />
         <SkipLink />
         <AccountsProvider enabled={authEnabled}>
           <Header authEnabled={authEnabled} />
           <main id="main" className="flex-1">
             {children}
           </main>
-          <Footer authEnabled={authEnabled} />
+          <Footer />
         </AccountsProvider>
         {/* Site-wide: appears on any page once it has been scrolled more
             than a screen, so short pages never show it. */}

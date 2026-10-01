@@ -66,14 +66,37 @@ export const accountContent = {
       "If the link says it is invalid or expired, it may have already been used or run out. Ask for a new invitation, or log in if you already created your account.",
   },
 
-  account: {
-    eyebrow: "Your account",
+  /** /profile: the person in the ministry. */
+  profile: {
+    title: "Your profile",
     edit: "Edit profile",
-    security: "Password & security",
-    admin: "Admin",
-    logout: "Log out",
+    editTitle: "Edit profile",
+    editLead: "Only you and the ministry's administrators can see your profile.",
+    settingsLink: "Account settings",
+    /** /profile/edit?welcome=1: a new member's first page, straight after creating their account. */
+    welcome: {
+      eyebrow: "Welcome",
+      title: "Set up your profile",
+      lead: "Tell the music ministry a little about yourself. You can change any of this later from your profile.",
+      save: "Save and continue",
+      skip: "Skip for now",
+    },
     completeTitle: "Finish your profile",
     completeBody: "A few details help the music ministry know who plays and sings what.",
+  },
+
+  /** /account: how the person signs in (Clerk's screen), and later account-wide settings. */
+  settings: {
+    eyebrow: "Your account",
+    title: "Account settings",
+    lead: "Your sign-in email, password and signed-in devices.",
+    profileLink: "Your profile",
+  },
+
+  /** The avatar menu in the header. */
+  menu: {
+    button: "Account menu",
+    logout: "Log out",
   },
 
   errors: {

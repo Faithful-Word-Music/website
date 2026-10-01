@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import { useAccount } from "@/components/account/AccountContext";
 import { toggleTheme, useTheme } from "@/components/layout/ThemeToggle";
 import { NoteMark } from "@/components/library/SongIndex";
 import { Highlight, searchPillClass } from "@/components/song-list/Suggestions";
@@ -192,7 +193,8 @@ function Palette({ onClose }: { onClose: () => void }) {
     if (pathname !== openedOn) onClose();
   }, [pathname, openedOn, onClose]);
 
-  const results = useMemo(() => searchSite(index, query, dark), [index, query, dark]);
+  const { isSignedIn } = useAccount();
+  const results = useMemo(() => searchSite(index, query, dark, isSignedIn), [index, query, dark, isSignedIn]);
   const moreSongsEntry: SearchEntry | null =
     results.moreSongs > 0
       ? {

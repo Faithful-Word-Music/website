@@ -78,11 +78,22 @@ export function serviceAnchor(date: string, slot: ServiceSlot | null): string {
  */
 export const SHOW_SERVICE_EVENT = "fwm:show-service";
 
-/** The pages, in the order they are offered. `years` adds a recap page for each. */
-export function pageEntries(years: readonly number[] = []): SearchEntry[] {
+/**
+ * The pages, in the order they are offered. `years` adds a recap page for
+ * each. Signed in, the Dashboard, Profile and Account settings take Home's
+ * place: signed-in people never see the public home page.
+ */
+export function pageEntries(years: readonly number[] = [], signedIn = false): SearchEntry[] {
   const { pages } = searchContent;
+  const start: SearchEntry[] = signedIn
+    ? [
+        { id: "page:/dashboard", group: "pages", href: "/dashboard", ...pages.dashboard },
+        { id: "page:/profile", group: "pages", href: "/profile", ...pages.profile },
+        { id: "page:/account", group: "pages", href: "/account", ...pages.account },
+      ]
+    : [{ id: "page:/", group: "pages", href: "/", ...pages.home }];
   return [
-    { id: "page:/", group: "pages", href: "/", ...pages.home },
+    ...start,
     { id: "page:/song-list", group: "pages", href: "/song-list", ...pages.songList },
     { id: "page:/library", group: "pages", href: "/library", ...pages.library },
     { id: "page:/song-list/archive", group: "pages", href: "/song-list/archive", ...pages.archive },
@@ -198,8 +209,8 @@ function rankEntries(entries: SearchEntry[], query: string): SearchEntry[] {
  *
  * `index` is null until /api/search has answered.
  */
-export function searchSite(index: SearchIndex | null, query: string, dark: boolean): SearchResults {
-  const pages = pageEntries(index?.years);
+export function searchSite(index: SearchIndex | null, query: string, dark: boolean, signedIn = false): SearchResults {
+  const pages = pageEntries(index?.years, signedIn);
   const actions = actionEntries(dark, index?.pdfs);
   const typed = query.trim() !== "";
 

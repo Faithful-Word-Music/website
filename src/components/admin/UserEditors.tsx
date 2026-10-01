@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
-import { removeOverrideAction, setOverrideAction, setTitlesAction, setUserRoleAction } from "@/app/admin/actions";
+import {
+  removeOverrideAction,
+  setOverrideAction,
+  setSheetMusicTypeAction,
+  setTitlesAction,
+  setUserRoleAction,
+} from "@/app/admin/actions";
 import { ActionMessage, SelectField, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
@@ -193,6 +199,48 @@ export function OverrideEditor({
 }
 
 /** The titles an administrator assigns (Pianist, Organist, ...), with one marked as primary. */
+/** The empty choice: no sheet music links on their Dashboard. */
+const NO_SHEET_MUSIC = "";
+
+/**
+ * The one type of sheet music a person is given. The list is every type the
+ * Drive folders have; an assigned type that has since disappeared stays
+ * listed so it is not silently changed.
+ */
+export function SheetMusicTypeEditor({
+  userId,
+  types,
+  assigned,
+}: {
+  userId: string;
+  types: Array<{ key: string; label: string }>;
+  assigned: { key: string; label: string } | null;
+}) {
+  const ids = useId();
+  const { pending, result, run } = useAction();
+  const [chosen, setChosen] = useState(assigned?.key ?? NO_SHEET_MUSIC);
+
+  const listed = assigned && !types.some((type) => type.key === assigned.key) ? [assigned, ...types] : types;
+  const options = [
+    { value: NO_SHEET_MUSIC, label: "None - no sheet music links" },
+    ...listed.map((type) => ({ value: type.key, label: type.label })),
+  ];
+
+  return (
+    <div className="space-y-3">
+      <SelectField id={`${ids}-type`} label="Sheet music type" value={chosen} options={options} onChange={setChosen} />
+      <Button
+        type="button"
+        disabled={pending || chosen === (assigned?.key ?? NO_SHEET_MUSIC)}
+        onClick={() => run(() => setSheetMusicTypeAction(userId, chosen === NO_SHEET_MUSIC ? null : chosen))}
+      >
+        {pending ? "Saving…" : "Save sheet music"}
+      </Button>
+      <ActionMessage result={result} />
+    </div>
+  );
+}
+
 export function TitleEditor({
   userId,
   titles,

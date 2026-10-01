@@ -29,7 +29,7 @@ export const footerContent = {
     prompt: "Have an account?",
     login: "Log in!",
     signedIn: "Signed in ·",
-    account: "Your account",
+    dashboard: "Dashboard",
   },
 
   /** {year} is replaced with the current year at render time. */

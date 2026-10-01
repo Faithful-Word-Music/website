@@ -104,3 +104,19 @@ export const clerkProfileAppearance = {
     cardBox: { boxShadow: "none", border: "1px solid var(--color-line)", width: "100%", maxWidth: "100%" },
   },
 } as const;
+
+/**
+ * Clerk's account screen (/account) calls its first tab "Profile". On this
+ * site Profile means the person in the ministry (/profile); Clerk's screen is
+ * about signing in. Only these labels change - everything else is Clerk's own
+ * English wording.
+ */
+export const clerkLocalization = {
+  userProfile: {
+    navbar: { title: "Account", description: "How you sign in.", account: "Sign-in" },
+    start: {
+      headerTitle__account: "Sign-in details",
+      profileSection: { title: "Name and photo" },
+    },
+  },
+};

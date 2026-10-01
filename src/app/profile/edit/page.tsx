@@ -5,18 +5,29 @@ import { ProfileForm } from "@/components/account/ProfileForm";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { accountContent } from "@/content/account";
 import { MUSICIAN_ROLE } from "@/lib/auth/permissions";
 import { requireViewer } from "@/lib/auth/session";
 import { getProfile, getUserInstruments, listOptions } from "@/lib/auth/store";
+
+const copy = accountContent.profile;
 
 export const metadata: Metadata = {
   title: "Edit profile",
   robots: { index: false, follow: false },
 };
 
-/** /account/edit - the signed-in person edits their own profile. */
-export default async function EditProfilePage() {
-  const viewer = await requireViewer("/account/edit");
+/**
+ * /profile/edit - the signed-in person edits their own profile.
+ *
+ * ?welcome=1 is where a brand-new member lands straight after creating their
+ * account from an invitation (signUpFallbackRedirectUrl in layout.tsx): the
+ * same form, introduced as setting up, and saving (or skipping) carries on
+ * to their Dashboard.
+ */
+export default async function EditProfilePage({ searchParams }: PageProps<"/profile/edit">) {
+  const viewer = await requireViewer("/profile/edit");
+  const welcome = (await searchParams).welcome === "1";
   const [user, profile, instruments, options] = await Promise.all([
     currentUser(),
     getProfile(viewer.env, viewer.userId),
@@ -34,9 +45,15 @@ export default async function EditProfilePage() {
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <SectionHeading as="h1" eyebrow="Your account" title="Edit profile">
-          <p className="text-base">Only you and the ministry&apos;s administrators can see your profile.</p>
-        </SectionHeading>
+        {welcome ? (
+          <SectionHeading as="h1" eyebrow={copy.welcome.eyebrow} title={copy.welcome.title}>
+            <p className="text-base">{copy.welcome.lead}</p>
+          </SectionHeading>
+        ) : (
+          <SectionHeading as="h1" eyebrow={copy.title} title={copy.editTitle}>
+            <p className="text-base">{copy.editLead}</p>
+          </SectionHeading>
+        )}
         <div className="mt-10">
           <ProfileForm
             initial={{
@@ -59,6 +76,7 @@ export default async function EditProfilePage() {
             }}
             instrumentOptions={instrumentOptions}
             isMusician={viewer.roleKeys.includes(MUSICIAN_ROLE)}
+            welcome={welcome}
           />
         </div>
       </Container>

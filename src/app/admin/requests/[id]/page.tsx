@@ -5,6 +5,7 @@ import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { RequestReview } from "@/components/admin/RequestReview";
 import { StatusPill } from "@/components/admin/StatusPill";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { assignableRoles } from "@/lib/auth/assignable-roles";
@@ -33,11 +34,7 @@ export default async function RequestPage({ params }: PageProps<"/admin/requests
 
   return (
     <div className="max-w-3xl">
-      <p className="text-sm">
-        <Link href="/admin/requests" className="text-muted transition-colors hover:text-ink">
-          ← All requests
-        </Link>
-      </p>
+      <BackLink fallback="/admin/requests" />
       <SectionHeading as="h1" title={request.name} className="mt-4">
         <p className="text-base">{request.email}</p>
       </SectionHeading>

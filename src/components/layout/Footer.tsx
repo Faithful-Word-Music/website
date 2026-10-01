@@ -1,6 +1,6 @@
-import Link from "next/link";
 
-import { FooterAccountLink, FooterLoginLink } from "@/components/account/FooterAccountLink";
+import { FooterAccountLink } from "@/components/account/FooterAccountLink";
+import { FooterNav } from "@/components/layout/FooterNav";
 import { Logo } from "@/components/layout/Logo";
 import { Container } from "@/components/ui/Container";
 import { ExternalLink } from "@/components/ui/ExternalLink";
@@ -12,7 +12,7 @@ import { footerContent } from "@/content/footer";
  * Site footer. External resources live here rather than on a dedicated page -
  * there are not enough of them yet to justify one.
  */
-export function Footer({ authEnabled = false }: { authEnabled?: boolean }) {
+export function Footer() {
   const year = new Date().getFullYear();
 
   return (
@@ -45,18 +45,7 @@ export function Footer({ authEnabled = false }: { authEnabled?: boolean }) {
               <h2 className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
                 {footerContent.navHeading}
               </h2>
-              <ul className="mt-4 space-y-1">
-                {siteConfig.nav.map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className="inline-flex min-h-9 items-center text-sm text-muted transition-colors hover:text-ink"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <FooterNav />
             </nav>
           </Reveal>
 
@@ -103,7 +92,7 @@ export function Footer({ authEnabled = false }: { authEnabled?: boolean }) {
           <p className="text-xs text-muted">
             {footerContent.copyright.replace("{year}", String(year))}
           </p>
-          {authEnabled ? <FooterAccountLink /> : <FooterLoginLink />}
+          <FooterAccountLink />
         </div>
       </Container>
     </footer>

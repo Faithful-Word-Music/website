@@ -1,35 +1,32 @@
 "use client";
 
-import { useAuth, useClerk, useUser } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { useAccount } from "@/components/account/AccountContext";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { accountContent } from "@/content/account";
-
-interface MeResponse {
-  canAccessAdmin?: boolean;
-  title?: string | null;
-}
+import { accountMenu, isActivePath } from "@/lib/navigation";
 
 /**
  * The signed-in person's menu in the header: their photo, and links to their
- * account, the admin area (if they may use it) and Log out.
+ * Dashboard, Profile, Account settings, the admin area (if they may use it)
+ * and Log out. Editing lives on the pages themselves, not here.
  *
  * Renders nothing for visitors who are not signed in - the public header looks
- * exactly as it always has. Whether to show "Admin" comes from the server
- * (/api/account/me); it is only a convenience, and the admin pages check
- * permissions again themselves.
+ * exactly as it always has. Which links show comes from src/lib/navigation.ts
+ * and the person's permissions (/api/account/me); it is only a convenience,
+ * and every page checks permissions again itself.
  */
 export function UserMenu() {
-  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { isSignedIn, me, nav } = useAccount();
   const { user } = useUser();
   const { signOut } = useClerk();
   const pathname = usePagePath();
   const [open, setOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
-  const [me, setMe] = useState<{ userId: string; data: MeResponse } | null>(null);
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -37,20 +34,6 @@ export function UserMenu() {
     setLastPathname(pathname);
     setOpen(false);
   }
-
-  useEffect(() => {
-    if (!isSignedIn || !userId) return;
-    let cancelled = false;
-    fetch("/api/account/me", { cache: "no-store" })
-      .then((response) => (response.ok ? (response.json() as Promise<MeResponse>) : {}))
-      .then((data) => {
-        if (!cancelled) setMe({ userId, data });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn, userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,9 +51,8 @@ export function UserMenu() {
     };
   }, [open]);
 
-  if (!isLoaded || !isSignedIn || !user) return null;
+  if (!isSignedIn || !user) return null;
 
-  const details = me?.userId === userId ? me.data : {};
   const name = user.fullName || user.primaryEmailAddress?.emailAddress || "Your account";
   const itemClass =
     "flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-paper";
@@ -81,7 +63,7 @@ export function UserMenu() {
         type="button"
         aria-expanded={open}
         aria-controls={menuId}
-        aria-label="Account menu"
+        aria-label={accountContent.menu.button}
         onClick={() => setOpen((value) => !value)}
         className="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper"
       >
@@ -102,37 +84,34 @@ export function UserMenu() {
         >
           <div className="border-b border-line px-3 pb-3 pt-2">
             <p className="truncate text-sm font-medium text-ink">{name}</p>
-            {details.title ? (
-              <p className="truncate text-xs text-gold-dark">{details.title}</p>
+            {me?.title ? (
+              <p className="truncate text-xs text-gold-dark">{me.title}</p>
             ) : (
               <p className="truncate text-xs text-muted">{user.primaryEmailAddress?.emailAddress}</p>
             )}
           </div>
           <ul className="pt-2">
-            <li>
-              <Link href="/account" className={itemClass}>
-                Your account
-              </Link>
-            </li>
-            <li>
-              <Link href="/account/edit" className={itemClass}>
-                {accountContent.account.edit}
-              </Link>
-            </li>
-            {details.canAccessAdmin ? (
-              <li>
-                <Link href="/admin" className={itemClass}>
-                  {accountContent.account.admin}
-                </Link>
-              </li>
-            ) : null}
+            {accountMenu(nav).map((item) => {
+              const current = isActivePath(pathname, item.href);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={current ? "page" : undefined}
+                    className={cn(itemClass, current && "bg-paper")}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
             <li className="mt-1 border-t border-line pt-1">
               <button
                 type="button"
                 onClick={() => signOut({ redirectUrl: "/" })}
                 className={cn(itemClass, "text-muted hover:text-ink")}
               >
-                {accountContent.account.logout}
+                {accountContent.menu.logout}
               </button>
             </li>
           </ul>

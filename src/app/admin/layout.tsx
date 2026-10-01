@@ -4,6 +4,7 @@ import { NoAccess } from "@/components/account/Notices";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { Container } from "@/components/ui/Container";
 import { RehearsalMark } from "@/components/ui/SectionHeading";
+import { PEOPLE_PERMISSIONS } from "@/lib/auth/permissions";
 import { requireViewer } from "@/lib/auth/session";
 import { countRequestsByStatus } from "@/lib/auth/store";
 
@@ -38,7 +39,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     {
       href: "/admin/users",
       label: "People",
-      show: viewer.can("manage_users") || viewer.can("view_profiles") || viewer.can("manage_roles") || viewer.can("manage_profiles"),
+      show: PEOPLE_PERMISSIONS.some((permission) => viewer.can(permission)),
     },
     { href: "/admin/roles", label: "Roles", show: viewer.can("manage_roles") },
     { href: "/admin/profile-options", label: "Titles & instruments", show: viewer.can("manage_profiles") },

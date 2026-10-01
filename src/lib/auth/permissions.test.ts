@@ -60,8 +60,10 @@ describe("resolvePermissions", () => {
 describe("canAccessAdmin", () => {
   it("is true only with an admin-area permission", () => {
     expect(canAccessAdmin(resolvePermissions(["musician"], rolePermissions))).toBe(false);
-    expect(canAccessAdmin(resolvePermissions(["music_director"], rolePermissions))).toBe(false);
+    expect(canAccessAdmin(resolvePermissions(["song_leader"], rolePermissions))).toBe(false);
     expect(canAccessAdmin(resolvePermissions([ADMIN_ROLE], rolePermissions))).toBe(true);
+    // Through manage_sheet_music: each person's sheet music is chosen on their People page.
+    expect(canAccessAdmin(resolvePermissions(["music_director"], rolePermissions))).toBe(true);
     expect(
       canAccessAdmin(resolvePermissions(["musician"], rolePermissions, [{ permission: "view_profiles", effect: "grant" }])),
     ).toBe(true);

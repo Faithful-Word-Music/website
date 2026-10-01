@@ -5,6 +5,7 @@ import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
 import { RoleForm } from "@/components/admin/RoleForm";
+import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { listAccounts } from "@/lib/auth/clerk";
@@ -36,11 +37,7 @@ export default async function RolePage({ params }: PageProps<"/admin/roles/[key]
   return (
     <div className="space-y-8">
       <div>
-        <p className="text-sm">
-          <Link href="/admin/roles" className="text-muted transition-colors hover:text-ink">
-            ← All roles
-          </Link>
-        </p>
+        <BackLink fallback="/admin/roles" />
         <SectionHeading as="h1" title={role.label} className="mt-4">
           {role.description ? <p className="text-base">{role.description}</p> : null}
         </SectionHeading>

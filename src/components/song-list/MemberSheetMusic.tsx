@@ -1,10 +1,10 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
+import { useAccount } from "@/components/account/AccountContext";
 import { PdfPreview } from "@/components/song-list/PdfPreview";
 import { SheetFileButton } from "@/components/song-list/SheetFileButton";
 import { songListContent } from "@/content/song-list";
@@ -36,30 +36,13 @@ const AccessContext = createContext<Access>("unavailable");
 
 /** Wraps a song's sheet music when it has members-only files and accounts are on. */
 export function SheetMusicAccessProvider({ children }: { children: ReactNode }) {
-  const { isLoaded, isSignedIn, userId } = useAuth();
-  const [result, setResult] = useState<{ userId: string; allowed: boolean } | null>(null);
-
-  useEffect(() => {
-    if (!isSignedIn || !userId) return;
-    let cancelled = false;
-    fetch("/api/account/me", { cache: "no-store" })
-      .then((response) => (response.ok ? (response.json() as Promise<{ canViewSheetMusic?: boolean }>) : {}))
-      .then((data: { canViewSheetMusic?: boolean }) => {
-        if (!cancelled) setResult({ userId, allowed: Boolean(data.canViewSheetMusic) });
-      })
-      .catch(() => {
-        if (!cancelled) setResult({ userId, allowed: false });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn, userId]);
+  const { isLoaded, isSignedIn, me, meSettled } = useAccount();
 
   let access: Access;
   if (!isLoaded) access = "checking";
   else if (!isSignedIn) access = "signed-out";
-  else if (!result || result.userId !== userId) access = "checking";
-  else access = result.allowed ? "allowed" : "denied";
+  else if (!meSettled) access = "checking";
+  else access = me?.canViewSheetMusic ? "allowed" : "denied";
 
   return <AccessContext.Provider value={access}>{children}</AccessContext.Provider>;
 }

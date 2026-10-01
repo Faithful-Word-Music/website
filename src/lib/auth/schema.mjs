@@ -148,6 +148,19 @@ export const AUTH_SCHEMA = [
      assigned_at   timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (clerk_env, clerk_user_id, title_id)
    )`,
+  // The sheet music each person is given on their Dashboard, chosen for them
+  // by whoever looks after the sheet music (manage_sheet_music). A variant
+  // from the Drive folders (Standard, Chords, Capo...) and, for an
+  // instrument part or the capo chart, its instrument. One per person.
+  `CREATE TABLE IF NOT EXISTS user_sheet_music (
+     ${ENV},
+     clerk_user_id text        NOT NULL,
+     variant       text        NOT NULL,
+     instrument    text,
+     assigned_by   text,
+     assigned_at   timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id)
+   )`,
 ];
 
 /** The administrator role row, which the bootstrap script needs before it can assign it. */
