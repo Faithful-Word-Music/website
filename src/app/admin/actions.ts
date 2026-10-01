@@ -30,6 +30,7 @@ import {
   claimRequestForApproval,
   createRole,
   deleteInvitationRoles,
+  deleteOption,
   deleteRole,
   deleteUserData,
   getRole,
@@ -498,6 +499,19 @@ export async function archiveOptionAction(list: unknown, id: unknown, archived: 
     await setOptionArchived(viewer.env, which, optionId, archived);
     revalidatePath("/admin/profile-options");
     return { ok: true, value: null, message: archived ? "Archived." : "Restored." };
+  });
+}
+
+/** Deletes a title or instrument, taking it off any profile that had it. */
+export async function deleteOptionAction(list: unknown, id: unknown): Promise<ActionResult> {
+  return withPermission("manage_profiles", async (viewer) => {
+    const which = parseList(list);
+    const optionId = parseId(id);
+    if (!which || !optionId) return { ok: false, error: "Unknown item." };
+    await deleteOption(viewer.env, which, optionId);
+    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/users", "layout");
+    return { ok: true, value: null, message: "Deleted." };
   });
 }
 

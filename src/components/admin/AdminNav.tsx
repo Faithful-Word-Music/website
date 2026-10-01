@@ -10,7 +10,8 @@ export function AdminNav({ items }: { items: Array<{ href: string; label: string
   const pathname = usePagePath();
 
   return (
-    <nav aria-label="Admin" className="-mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+    // Swipes sideways on phones without a scrollbar, like the Library's letter bar.
+    <nav aria-label="Admin" className="-mx-5 overflow-x-auto px-5 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
       <ul className="flex min-w-max gap-1 border-b border-line">
         {items.map((item) => {
           const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);

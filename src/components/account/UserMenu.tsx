@@ -11,6 +11,68 @@ import { accountContent } from "@/content/account";
 import { accountMenu, isActivePath } from "@/lib/navigation";
 
 /**
+ * The account section at the foot of the mobile menu: who is signed in, then
+ * the same links as the header's account menu, and Log out. The Dashboard is
+ * left out here - it already leads the menu's main links.
+ */
+export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
+  const { isSignedIn, me, nav } = useAccount();
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const pathname = usePagePath();
+
+  if (!isSignedIn || !user) return null;
+
+  const name = user.fullName || user.primaryEmailAddress?.emailAddress || "Your account";
+  const links = accountMenu(nav).filter((item) => item.href !== "/dashboard");
+
+  return (
+    <div className="border-t border-line pt-6">
+      <div className="flex items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized by Clerk */}
+        <img
+          src={user.imageUrl}
+          alt=""
+          width={40}
+          height={40}
+          className="h-10 w-10 rounded-full border border-line object-cover"
+        />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-ink">{name}</p>
+          <p className="truncate text-xs text-muted">{me?.title ?? user.primaryEmailAddress?.emailAddress}</p>
+        </div>
+      </div>
+      <ul className="mt-4">
+        {links.map((item) => (
+          <li key={item.href}>
+            <Link
+              href={item.href}
+              onClick={onNavigate}
+              aria-current={isActivePath(pathname, item.href) ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 items-center text-base transition-colors hover:text-ink",
+                isActivePath(pathname, item.href) ? "text-ink" : "text-muted",
+              )}
+            >
+              {item.label}
+            </Link>
+          </li>
+        ))}
+        <li>
+          <button
+            type="button"
+            onClick={() => signOut({ redirectUrl: "/" })}
+            className="flex min-h-11 w-full items-center text-left text-base text-muted transition-colors hover:text-ink"
+          >
+            {accountContent.menu.logout}
+          </button>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/**
  * The signed-in person's menu in the header: their photo, and links to their
  * Dashboard, Profile, Account settings, the admin area (if they may use it)
  * and Log out. Editing lives on the pages themselves, not here.
@@ -58,7 +120,9 @@ export function UserMenu() {
     "flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-paper";
 
   return (
-    <div ref={rootRef} className="relative print:hidden">
+    // From md up only: on phones the header has no room for it, and the same
+    // links sit at the foot of the mobile menu instead (MobileAccountMenu).
+    <div ref={rootRef} className="relative hidden md:block print:hidden">
       <button
         type="button"
         aria-expanded={open}

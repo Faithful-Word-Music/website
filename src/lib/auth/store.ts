@@ -835,6 +835,15 @@ export async function setOptionArchived(env: ClerkEnv, list: OptionList, id: num
   await sql.query(`UPDATE ${list} SET archived = $3 WHERE clerk_env = $1 AND id = $2`, [env, id, archived]);
 }
 
+/**
+ * Deletes a title or instrument. Anyone who had it loses it from their
+ * profile (the link rows cascade). It can simply be added again later.
+ */
+export async function deleteOption(env: ClerkEnv, list: OptionList, id: number): Promise<void> {
+  const sql = await db(env);
+  await sql.query(`DELETE FROM ${list} WHERE clerk_env = $1 AND id = $2`, [env, id]);
+}
+
 /** Swaps an item with its neighbour in the list. */
 export async function moveOption(env: ClerkEnv, list: OptionList, id: number, direction: "up" | "down"): Promise<void> {
   const items = (await listOptions(env, list)).filter((item) => !item.archived);

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useState } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
-import { UserMenu } from "@/components/account/UserMenu";
+import { MobileAccountMenu, UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -156,6 +156,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
         items={items}
         isActive={isActive}
         onSearch={openSearch}
+        account={authEnabled ? <MobileAccountMenu onNavigate={close} /> : null}
       />
     </>
   );

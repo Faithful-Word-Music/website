@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { MobileSearchBar } from "@/components/search/CommandPalette";
 import { cn } from "@/components/ui/cn";
@@ -23,6 +23,7 @@ export function MobileMenu({
   items,
   isActive,
   onSearch,
+  account,
 }: {
   open: boolean;
   onClose: () => void;
@@ -32,6 +33,8 @@ export function MobileMenu({
   isActive: (href: string) => boolean;
   /** Opens the search palette (the menu closes as it opens). */
   onSearch: () => void;
+  /** The signed-in person's account section, when accounts are on. */
+  account?: ReactNode;
 }) {
   // Lock the page while the menu is open.
   useScrollLock(open);
@@ -115,7 +118,10 @@ export function MobileMenu({
           </nav>
         </div>
 
-        <div className="px-5 pb-10 pt-8">
+        <div className="space-y-6 px-5 pb-10 pt-8">
+          {/* Signed in: who, and their account links (in place of the
+              header's avatar menu, which phones have no room for). */}
+          {account}
           <div className="border-t border-line pt-6">
             <a
               href={`mailto:${siteConfig.contactEmail}`}

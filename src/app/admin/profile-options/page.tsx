@@ -26,14 +26,14 @@ export default async function ProfileOptionsPage() {
     <div>
       <SectionHeading as="h1" title="Titles & instruments" />
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Card className="p-6">
+        <Card className="min-w-0 p-4 sm:p-6">
           <SectionLabel>Titles</SectionLabel>
           <p className="mt-1 mb-5 text-sm text-muted">
             Positions in the music ministry, such as Pianist or Organist. You assign them on each person&apos;s page.
           </p>
           <OptionListEditor list="titles" items={titles} noun="a title" usageVerb="Held by" />
         </Card>
-        <Card className="p-6">
+        <Card className="min-w-0 p-4 sm:p-6">
           <SectionLabel>Instruments</SectionLabel>
           <p className="mt-1 mb-5 text-sm text-muted">
             The instruments members can choose on their profile.

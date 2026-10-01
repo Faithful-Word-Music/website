@@ -1,12 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState, useTransition, type ReactNode } from "react";
 
-import { addOptionAction, archiveOptionAction, moveOptionAction, renameOptionAction } from "@/app/admin/actions";
+import {
+  addOptionAction,
+  archiveOptionAction,
+  deleteOptionAction,
+  moveOptionAction,
+  renameOptionAction,
+} from "@/app/admin/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/components/ui/cn";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
 import type { ActionResult } from "@/lib/auth/session";
 
@@ -18,9 +25,11 @@ interface Item {
 }
 
 /**
- * One editable list - titles or instruments. Items in use are archived rather
- * than deleted, so nobody's profile loses what it had; archived items are
- * hidden from the pickers and can be restored.
+ * One editable list - titles or instruments. Each row has move up/down and
+ * Edit; editing offers Rename and Delete. Deleting an item takes it off the
+ * profiles that had it (it asks first, saying how many), and it can simply
+ * be added again. Items archived before deleting existed are listed below,
+ * to restore or delete.
  */
 export function OptionListEditor({
   list,
@@ -40,6 +49,30 @@ export function OptionListEditor({
   const [result, setResult] = useState<ActionResult | null>(null);
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<{ id: number; label: string } | null>(null);
+  /** The item whose Delete was pressed and is waiting for "Yes, delete". */
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+
+  function startEditing(item: Item) {
+    setConfirmingDelete(null);
+    setEditing({ id: item.id, label: item.label });
+  }
+
+  /** Items nobody has go at once; anything in use asks first. */
+  function remove(item: Item) {
+    if (item.usage > 0 && confirmingDelete !== item.id) {
+      setConfirmingDelete(item.id);
+      return;
+    }
+    run(
+      () => deleteOptionAction(list, item.id),
+      () => {
+        setEditing(null);
+        setConfirmingDelete(null);
+      },
+    );
+  }
+
+  const people = (count: number) => (count === 1 ? "1 person" : `${count} people`);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     setResult(null);
@@ -60,10 +93,10 @@ export function OptionListEditor({
     <div className="space-y-4">
       <ul className="divide-y divide-line rounded-card border border-line">
         {active.map((item, index) => (
-          <li key={item.id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center">
+          <li key={item.id} className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
             {editing?.id === item.id ? (
               <form
-                className="flex flex-1 items-center gap-2"
+                className="flex flex-1 flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault();
                   run(() => renameOptionAction(list, item.id, editing.label), () => setEditing(null));
@@ -77,48 +110,74 @@ export function OptionListEditor({
                   value={editing.label}
                   maxLength={PROFILE_LIMITS.optionLabel}
                   onChange={(event) => setEditing({ id: item.id, label: event.target.value })}
-                  className="min-h-10 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+                  // 16px on phones, so iOS does not zoom in on focus.
+                  className="min-h-10 w-full min-w-0 rounded-lg border border-line bg-surface px-3 text-base text-ink sm:text-sm"
                   autoFocus
                 />
-                <Button type="submit" disabled={pending}>
-                  Save
-                </Button>
-                <Button type="button" variant="quiet" onClick={() => setEditing(null)}>
-                  Cancel
-                </Button>
+                {confirmingDelete === item.id ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-ink">
+                      Delete {item.label}? It comes off {people(item.usage)}&apos;s profile.
+                    </span>
+                    <Button type="button" disabled={pending} onClick={() => remove(item)}>
+                      Yes, delete
+                    </Button>
+                    <Button type="button" variant="quiet" onClick={() => setConfirmingDelete(null)}>
+                      Keep it
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="submit" disabled={pending}>
+                      Save
+                    </Button>
+                    <Button type="button" variant="quiet" onClick={() => setEditing(null)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      disabled={pending}
+                      onClick={() => remove(item)}
+                      className="ml-auto"
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </form>
             ) : (
               <>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-ink">{item.label}</p>
-                  <p className="text-xs text-muted">{usageVerb} {item.usage === 1 ? "1 person" : `${item.usage} people`}</p>
+                  <p className="truncate text-sm text-ink">{item.label}</p>
+                  <p className="truncate text-xs text-muted">
+                    {usageVerb} {people(item.usage)}
+                  </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-1">
+                {/* Icons on phones; the word joins Edit where there is room. */}
+                <div className="flex shrink-0 items-center">
                   <IconButton
                     label={`Move ${item.label} up`}
                     disabled={pending || index === 0}
                     onClick={() => run(() => moveOptionAction(list, item.id, "up"))}
                   >
-                    ↑
+                    <ArrowIcon direction="up" />
                   </IconButton>
                   <IconButton
                     label={`Move ${item.label} down`}
                     disabled={pending || index === active.length - 1}
                     onClick={() => run(() => moveOptionAction(list, item.id, "down"))}
                   >
-                    ↓
+                    <ArrowIcon direction="down" />
                   </IconButton>
-                  <Button type="button" variant="quiet" onClick={() => setEditing({ id: item.id, label: item.label })}>
-                    Rename
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="quiet"
+                  <IconButton
+                    label={`Edit ${item.label}`}
+                    text="Edit"
                     disabled={pending}
-                    onClick={() => run(() => archiveOptionAction(list, item.id, true))}
+                    onClick={() => startEditing(item)}
                   >
-                    Archive
-                  </Button>
+                    <PencilIcon />
+                  </IconButton>
                 </div>
               </>
             )}
@@ -150,19 +209,37 @@ export function OptionListEditor({
 
       {archived.length > 0 ? (
         <div>
-          <p className="text-xs text-muted">Archived - hidden from the pickers, kept on profiles that already have them.</p>
+          <p className="text-xs text-muted">
+            Archived earlier - hidden from the pickers, still on profiles that have them.
+          </p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {archived.map((item) => (
-              <li key={item.id} className="flex items-center gap-1">
+              <li key={item.id} className="flex flex-wrap items-center gap-1">
                 <Pill tone="muted">{item.label}</Pill>
-                <Button
-                  type="button"
-                  variant="quiet"
-                  disabled={pending}
-                  onClick={() => run(() => archiveOptionAction(list, item.id, false))}
-                >
-                  Restore
-                </Button>
+                {confirmingDelete === item.id ? (
+                  <>
+                    <Button type="button" disabled={pending} onClick={() => remove(item)}>
+                      Yes, delete
+                    </Button>
+                    <Button type="button" variant="quiet" onClick={() => setConfirmingDelete(null)}>
+                      Keep it
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      disabled={pending}
+                      onClick={() => run(() => archiveOptionAction(list, item.id, false))}
+                    >
+                      Restore
+                    </Button>
+                    <Button type="button" variant="quiet" disabled={pending} onClick={() => remove(item)}>
+                      Delete
+                    </Button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -174,16 +251,22 @@ export function OptionListEditor({
   );
 }
 
+/**
+ * A row action: an icon, with its word beside it from sm up when `text` is
+ * given. 40px square on phones, so it stays easy to tap.
+ */
 function IconButton({
   label,
+  text,
   disabled,
   onClick,
   children,
 }: {
   label: string;
+  text?: string;
   disabled: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -192,9 +275,41 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink disabled:opacity-30"
+      className={cn(
+        "inline-flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full text-sm text-muted transition-colors hover:bg-paper hover:text-ink disabled:opacity-30",
+        text && "sm:px-3",
+      )}
     >
       {children}
+      {text ? <span className="hidden sm:inline">{text}</span> : null}
     </button>
+  );
+}
+
+const iconProps = {
+  "aria-hidden": true,
+  width: 16,
+  height: 16,
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.4,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+} as const;
+
+function ArrowIcon({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg {...iconProps} className={direction === "down" ? "rotate-180" : undefined}>
+      <path d="M8 13V3M4 7l4-4 4 4" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M10.5 2.5l3 3L6 13H3v-3l7.5-7.5z" />
+    </svg>
   );
 }
