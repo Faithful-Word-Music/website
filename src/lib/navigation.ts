@@ -7,7 +7,7 @@
  *                public home page (the proxy sends "/" to "/dashboard") - and
  *                the public music pages stay.
  *
- * A future signed-in destination (Availability, Service Planner...) is one
+ * A signed-in destination (Availability; later the Service Planner) is one
  * entry in APP_NAV with the permission that opens it. Showing a link is only
  * a convenience: the page itself must still check that permission on the
  * server (src/lib/auth/session.ts).
@@ -53,7 +53,12 @@ const PUBLIC_PAGES: NavEntry[] = siteConfig.nav.filter((item) => item.href !== "
  * The signed-in primary navigation, in order. Add new application pages
  * after the Dashboard, each with the permission that opens it.
  */
-const APP_NAV: NavEntry[] = [{ label: navigationContent.dashboard, href: "/dashboard" }, ...PUBLIC_PAGES];
+const APP_NAV: NavEntry[] = [
+  { label: navigationContent.dashboard, href: "/dashboard" },
+  // The music ministry's participants only - never a Member-only account.
+  { label: navigationContent.availability, href: "/availability", permission: "view_availability" },
+  ...PUBLIC_PAGES,
+];
 
 /** The account menu (the avatar in the header), in order. Log out follows it. */
 const ACCOUNT_MENU: NavEntry[] = [
@@ -83,7 +88,7 @@ export function accountMenu(context: NavContext): NavItem[] {
 }
 
 /** The pages only a signed-in person can reach (the proxy sends anyone else to /login). */
-const MEMBER_SECTIONS = ["/dashboard", "/profile", "/account", "/admin"];
+const MEMBER_SECTIONS = ["/dashboard", "/availability", "/profile", "/account", "/admin"];
 
 /**
  * Whether this page can only be open to someone signed in. While Clerk is

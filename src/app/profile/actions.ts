@@ -46,7 +46,6 @@ export async function saveOwnProfile(input: unknown): Promise<ActionResult> {
         bio: values.bio,
         phone: values.phone,
         voicePart: values.voicePart,
-        serviceAvailability: [...new Set(values.serviceAvailability)],
         learningStyle: isMusician ? values.learningStyle : existing.learningStyle,
         theoryLevel: values.theoryLevel,
         readsSheetMusic: values.readsSheetMusic,

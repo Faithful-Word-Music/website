@@ -4,7 +4,9 @@ import {
   ADMIN_ROLE,
   ALL_PERMISSIONS,
   DEFAULT_ROLES,
+  PERMISSION_FIXUPS,
   canAccessAdmin,
+  fixupGrants,
   resolvePermissions,
   roleKeyFromLabel,
 } from "@/lib/auth/permissions";
@@ -75,5 +77,29 @@ describe("roleKeyFromLabel", () => {
     expect(roleKeyFromLabel("Assistant Director")).toBe("assistant_director");
     expect(roleKeyFromLabel("  Choir -- Alto! ")).toBe("choir_alto");
     expect(roleKeyFromLabel("!!!")).toBe("");
+  });
+});
+
+describe("availability permissions", () => {
+  it("gives participants view_availability and only the Music Director manage_availability", () => {
+    const has = (roleKeys: string[], permission: "view_availability" | "manage_availability") =>
+      resolvePermissions(roleKeys, rolePermissions).has(permission);
+    expect(has(["musician"], "view_availability")).toBe(true);
+    expect(has(["song_leader"], "view_availability")).toBe(true);
+    expect(has(["music_director"], "view_availability")).toBe(true);
+    expect(has(["music_director"], "manage_availability")).toBe(true);
+    expect(has(["musician"], "manage_availability")).toBe(false);
+    expect(has([], "view_availability")).toBe(false);
+  });
+
+  it("grants them once to the existing built-in roles that should have them", () => {
+    const fixup = PERMISSION_FIXUPS.find((item) => item.permissions.includes("view_availability"));
+    expect(fixup).toBeDefined();
+    expect(fixupGrants(fixup!.permissions)).toEqual([
+      { role: "music_director", permission: "view_availability" },
+      { role: "music_director", permission: "manage_availability" },
+      { role: "song_leader", permission: "view_availability" },
+      { role: "musician", permission: "view_availability" },
+    ]);
   });
 });

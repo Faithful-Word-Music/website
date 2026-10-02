@@ -64,7 +64,6 @@ export default async function EditProfilePage({ searchParams }: PageProps<"/prof
               bio: profile.bio,
               phone: profile.phone,
               voicePart: profile.voicePart,
-              serviceAvailability: profile.serviceAvailability,
               learningStyle: profile.learningStyle,
               theoryLevel: profile.theoryLevel,
               readsSheetMusic: profile.readsSheetMusic,

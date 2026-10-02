@@ -7,8 +7,8 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * Runs before the account routes and the home page only - the rest of the
  * public site never passes through here (see the matcher below).
  *
- * - The signed-in pages (/dashboard, /profile, /account, /admin) need a
- *   signed-in person - anyone else is sent to /login and brought back
+ * - The signed-in pages (/dashboard, /availability, /profile, /account,
+ *   /admin) need a signed-in person - anyone else is sent to /login and brought back
  *   afterwards. WHAT a signed-in person may do is not decided here: every
  *   protected page and server action checks permissions itself on the server
  *   (src/lib/auth/session.ts).
@@ -22,7 +22,13 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * the signed-in pages fail closed.
  */
 
-const isAccountRoute = createRouteMatcher(["/dashboard(.*)", "/profile(.*)", "/account(.*)", "/admin(.*)"]);
+const isAccountRoute = createRouteMatcher([
+  "/dashboard(.*)",
+  "/availability(.*)",
+  "/profile(.*)",
+  "/account(.*)",
+  "/admin(.*)",
+]);
 
 let clerk: NextMiddleware | null = null;
 
@@ -60,6 +66,7 @@ export const config = {
   matcher: [
     "/",
     "/dashboard/:path*",
+    "/availability/:path*",
     "/profile/:path*",
     "/account/:path*",
     "/admin/:path*",

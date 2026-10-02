@@ -13,7 +13,14 @@ import {
 } from "@/lib/sheet-music-type";
 
 import { currentClerkConfig, type ClerkEnv } from "./clerk-env";
-import { ADMIN_ROLE, DEFAULT_ROLES, type OverrideEffect, type PermissionOverride } from "./permissions";
+import {
+  ADMIN_ROLE,
+  DEFAULT_ROLES,
+  PERMISSION_FIXUPS,
+  fixupGrants,
+  type OverrideEffect,
+  type PermissionOverride,
+} from "./permissions";
 import {
   DEFAULT_INSTRUMENTS,
   DEFAULT_TITLES,
@@ -35,7 +42,7 @@ import { AUTH_SCHEMA } from "./schema.mjs";
  * session.ts, which checks who is asking before anything here runs.
  */
 
-type Sql = NeonQueryFunction<false, false>;
+export type Sql = NeonQueryFunction<false, false>;
 
 export class AccountsUnavailableError extends Error {
   constructor() {
@@ -47,8 +54,12 @@ export class AccountsUnavailableError extends Error {
 let schemaReady = false;
 const seeded = new Set<ClerkEnv>();
 
-/** The query function, with the tables created and the defaults seeded for `env`. */
-async function db(env: ClerkEnv): Promise<Sql> {
+/**
+ * The query function, with the tables created and the defaults seeded for
+ * `env`. Exported for the other stores built on the account tables (such as
+ * src/lib/availability/store.ts), so they share one schema and one seed.
+ */
+export async function db(env: ClerkEnv): Promise<Sql> {
   const sql = getSql();
   if (!sql) throw new AccountsUnavailableError();
   if (!schemaReady) {
@@ -96,6 +107,35 @@ async function seedDefaults(sql: Sql, env: ClerkEnv): Promise<void> {
     );
   }
   await seedSheetMusicTypes(sql, env);
+  await applyPermissionFixups(sql, env);
+}
+
+/**
+ * Gives existing built-in roles the permissions added to DEFAULT_ROLES since
+ * they were created (PERMISSION_FIXUPS) - once per environment. The grants
+ * and the record that they were made go in one transaction; a role an
+ * administrator has deleted is simply skipped.
+ */
+async function applyPermissionFixups(sql: Sql, env: ClerkEnv): Promise<void> {
+  const applied = (await sql.query(`SELECT key FROM schema_fixups WHERE clerk_env = $1`, [env])) as Array<{
+    key: string;
+  }>;
+  const done = new Set(applied.map((row) => row.key));
+  for (const fixup of PERMISSION_FIXUPS) {
+    if (done.has(fixup.key)) continue;
+    const grants = fixupGrants(fixup.permissions);
+    await sql.transaction((txn) => [
+      txn.query(
+        `INSERT INTO role_permissions (clerk_env, role_key, permission)
+         SELECT $1, g.role, g.permission
+           FROM jsonb_to_recordset($2::jsonb) AS g(role text, permission text)
+           JOIN roles r ON r.clerk_env = $1 AND r.key = g.role
+         ON CONFLICT DO NOTHING`,
+        [env, JSON.stringify(grants)],
+      ),
+      txn.query(`INSERT INTO schema_fixups (clerk_env, key) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [env, fixup.key]),
+    ]);
+  }
 }
 
 /**
@@ -388,6 +428,7 @@ export async function deleteUserData(env: ClerkEnv, userId: string): Promise<voi
       "user_instruments",
       "user_titles",
       "user_sheet_music",
+      "availability_exceptions",
     ].map((table) =>
       txn.query(`DELETE FROM ${table} WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
     ),
@@ -642,23 +683,26 @@ export async function getProfile(env: ClerkEnv, userId: string): Promise<Profile
 /**
  * Saves a profile and the person's instruments together, so a half-saved
  * profile never shows.
+ *
+ * Normal service availability is NOT written here: it is edited on
+ * /availability (setNormalAvailability in src/lib/availability/store.ts), so
+ * saving the profile form can never wipe it.
  */
 export async function saveProfile(
   env: ClerkEnv,
   userId: string,
-  profile: ProfileData,
+  profile: Omit<ProfileData, "serviceAvailability">,
   instruments: Array<{ instrumentId: number; proficiency: Proficiency; isPrimary: boolean }>,
 ): Promise<void> {
   const sql = await db(env);
   await sql.transaction((txn) => [
     txn.query(
       `INSERT INTO user_profiles (clerk_env, clerk_user_id, middle_name, preferred_name, bio, phone, voice_part,
-                                  service_availability, learning_style, theory_level, reads_sheet_music)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11)
+                                  learning_style, theory_level, reads_sheet_music)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
          middle_name = EXCLUDED.middle_name, preferred_name = EXCLUDED.preferred_name, bio = EXCLUDED.bio,
-         phone = EXCLUDED.phone, voice_part = EXCLUDED.voice_part,
-         service_availability = EXCLUDED.service_availability, learning_style = EXCLUDED.learning_style,
+         phone = EXCLUDED.phone, voice_part = EXCLUDED.voice_part, learning_style = EXCLUDED.learning_style,
          theory_level = EXCLUDED.theory_level, reads_sheet_music = EXCLUDED.reads_sheet_music, updated_at = now()`,
       [
         env,
@@ -668,7 +712,6 @@ export async function saveProfile(
         profile.bio,
         profile.phone,
         profile.voicePart,
-        profile.serviceAvailability,
         profile.learningStyle,
         profile.theoryLevel,
         profile.readsSheetMusic,

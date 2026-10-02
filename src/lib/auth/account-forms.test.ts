@@ -46,7 +46,6 @@ describe("profileSchema", () => {
     bio: "",
     phone: "(602) 555-0100",
     voicePart: "alto",
-    serviceAvailability: ["sunday_am"],
     learningStyle: 4,
     theoryLevel: "basics",
     readsSheetMusic: null,

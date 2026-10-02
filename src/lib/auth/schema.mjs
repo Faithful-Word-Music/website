@@ -198,6 +198,34 @@ export const AUTH_SCHEMA = [
   `ALTER TABLE user_sheet_music ADD COLUMN IF NOT EXISTS type_id integer
      REFERENCES sheet_music_types (id) ON DELETE CASCADE`,
   `ALTER TABLE user_sheet_music ALTER COLUMN variant DROP NOT NULL`,
+  // One-time data changes already applied in an environment (see
+  // PERMISSION_FIXUPS in permissions.ts), so each runs exactly once.
+  `CREATE TABLE IF NOT EXISTS schema_fixups (
+     ${ENV},
+     key        text        NOT NULL,
+     applied_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, key)
+   )`,
+  // Availability (src/lib/availability/): a dated change from someone's
+  // normal services (user_profiles.service_availability), for one whole
+  // service - its date and AM/PM, the same identity the song archive uses.
+  // Only real differences are kept: "Normal" deletes the row, and a date
+  // range is stored as one row per service it covers.
+  `CREATE TABLE IF NOT EXISTS availability_exceptions (
+     ${ENV},
+     clerk_user_id text        NOT NULL,
+     service_date  date        NOT NULL,
+     slot          text        NOT NULL CHECK (slot IN ('AM', 'PM')),
+     status        text        NOT NULL CHECK (status IN ('available', 'unavailable')),
+     note          text,
+     created_by    text,
+     created_at    timestamptz NOT NULL DEFAULT now(),
+     updated_by    text,
+     updated_at    timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id, service_date, slot)
+   )`,
+  `CREATE INDEX IF NOT EXISTS availability_exceptions_date
+     ON availability_exceptions (clerk_env, service_date)`,
 ];
 
 /** The administrator role row, which the bootstrap script needs before it can assign it. */

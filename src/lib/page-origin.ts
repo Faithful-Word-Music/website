@@ -85,6 +85,7 @@ export function backLabel(entry: string): string {
   const named: Record<string, string> = {
     "/": labels.home,
     "/dashboard": labels.dashboard,
+    "/availability": labels.availability,
     "/song-list": labels.songList,
     "/song-list/archive": labels.archive,
     "/song-list/year": labels.years,

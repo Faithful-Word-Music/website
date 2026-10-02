@@ -10,6 +10,10 @@ import {
   sheetMusicTypesForUsers,
   titlesForUsers,
 } from "@/lib/auth/store";
+import { loadRoster, loadSongListServices } from "@/lib/availability/load";
+import { addDays, churchDate, serviceOccurrences } from "@/lib/availability/occurrences";
+import { listExceptions } from "@/lib/availability/store";
+import { buildAvailabilitySummary, type AvailabilitySummary } from "@/lib/availability/summary";
 import { getSongList } from "@/lib/google-sheets";
 import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
@@ -87,4 +91,29 @@ export async function loadInvitationFollowUps(): Promise<InvitationFollowUps | n
   ]);
   if (!pending.ok || !expired.ok) return null;
   return invitationFollowUps(pending.value, expired.value, siteConfig.accounts.invitationDays, Date.now());
+}
+
+/** How far ahead the Availability section looks for the person's own changes. */
+const AVAILABILITY_DAYS = 365;
+
+/**
+ * The Availability section's summary (src/lib/availability/summary.ts);
+ * null if the board could not be read.
+ */
+export async function loadAvailabilitySummary(viewer: Viewer): Promise<AvailabilitySummary | null> {
+  try {
+    const now = Date.now();
+    const today = churchDate(now);
+    const to = addDays(today, AVAILABILITY_DAYS);
+    const [roster, exceptions, songList] = await Promise.all([
+      loadRoster(viewer.env),
+      listExceptions(viewer.env, today, to),
+      loadSongListServices(),
+    ]);
+    const occurrences = serviceOccurrences(today, to, songList);
+    return buildAvailabilitySummary({ occurrences, roster, exceptions, viewerId: viewer.userId, now });
+  } catch (error) {
+    console.error("[dashboard] Could not load availability:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
 }

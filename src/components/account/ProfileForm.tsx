@@ -14,7 +14,6 @@ import type { ProfileFormValues } from "@/lib/auth/forms";
 import {
   PROFICIENCIES,
   PROFILE_LIMITS,
-  SERVICE_AVAILABILITY,
   THEORY_LEVELS,
   VOICE_PARTS,
   type Proficiency,
@@ -252,16 +251,6 @@ export function ProfileForm({
             options={THEORY_LEVELS}
             selected={values.theoryLevel ? [values.theoryLevel] : []}
             onChange={(next) => set("theoryLevel", next[0] ?? null)}
-          />
-
-          <ChoiceChips
-            name={`${ids}-availability`}
-            legend="Services you are usually available for"
-            hint="Optional - choose any"
-            options={SERVICE_AVAILABILITY}
-            selected={values.serviceAvailability}
-            multiple
-            onChange={(next) => set("serviceAvailability", next)}
           />
         </div>
       </Card>

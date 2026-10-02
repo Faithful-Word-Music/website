@@ -52,6 +52,10 @@ export interface DashboardFocus {
   seesAnalytics: boolean;
   /** Sees everyone's profiles (view_profiles). */
   seesProfiles: boolean;
+  /** Uses Availability (view_availability): its Dashboard section and nav link. */
+  tracksAvailability: boolean;
+  /** May change other people's availability (manage_availability). */
+  managesAvailability: boolean;
   /** May open the admin People pages - the same permissions as that tab. */
   seesPeople: boolean;
 }
@@ -79,6 +83,8 @@ export function buildFocus(input: FocusInput): DashboardFocus {
     managesSheetMusic: input.permissions.has("manage_sheet_music"),
     seesAnalytics: input.permissions.has("view_analytics"),
     seesProfiles: input.permissions.has("view_profiles"),
+    tracksAvailability: input.permissions.has("view_availability"),
+    managesAvailability: input.permissions.has("manage_availability"),
     seesPeople: PEOPLE_PERMISSIONS.some((permission) => input.permissions.has(permission)),
   };
 }

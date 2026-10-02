@@ -29,6 +29,21 @@ describe("primaryNav", () => {
     expect(hrefs(primaryNav(signedIn([])))).toEqual(["/dashboard", "/song-list", "/library", "/contact"]);
   });
 
+  it("puts Availability right after the Dashboard for the music ministry's participants", () => {
+    for (const role of ["musician", "song_leader", "music_director"]) {
+      expect(hrefs(primaryNav(signedIn([role])))).toEqual(["/dashboard", "/availability", "/song-list", "/library", "/contact"]);
+    }
+  });
+
+  it("does not show Availability to a Member-only account", () => {
+    expect(hrefs(primaryNav(signedIn([])))).not.toContain("/availability");
+    expect(hrefs(primaryNav(signedIn(["member"])))).not.toContain("/availability");
+  });
+
+  it("follows the permission: a custom role or a grant of view_availability shows it", () => {
+    expect(hrefs(primaryNav(signedIn([], ["view_availability"])))).toContain("/availability");
+  });
+
   it("works before the person's permissions are known", () => {
     expect(hrefs(primaryNav({ signedIn: true, permissions: new Set() }))[0]).toBe("/dashboard");
   });
@@ -66,6 +81,7 @@ describe("homeHref", () => {
 describe("isMemberPath", () => {
   it("knows the pages only a signed-in person can open", () => {
     expect(isMemberPath("/dashboard")).toBe(true);
+    expect(isMemberPath("/availability")).toBe(true);
     expect(isMemberPath("/profile/edit")).toBe(true);
     expect(isMemberPath("/admin/users/user_1")).toBe(true);
     expect(isMemberPath("/")).toBe(false);

@@ -64,6 +64,17 @@ export const PERMISSIONS = {
     description: "Look after the sheet music, and choose which type of sheet music each person is given.",
     group: "music",
   },
+  view_availability: {
+    label: "Take part in availability",
+    description:
+      "Appear on the shared availability board, keep your own normal services and exceptions, and see everyone else's.",
+    group: "music",
+  },
+  manage_availability: {
+    label: "Manage availability",
+    description: "Change anyone's normal services and availability exceptions on their behalf.",
+    group: "music",
+  },
   view_analytics: {
     label: "View analytics",
     description: "See song statistics and reports.",
@@ -147,6 +158,8 @@ export const DEFAULT_ROLES: RoleSeed[] = [
       "manage_songs",
       "manage_service_plans",
       "manage_sheet_music",
+      "view_availability",
+      "manage_availability",
       "view_analytics",
       "view_service_plans",
       "view_sheet_music",
@@ -157,13 +170,13 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: SONG_LEADER_ROLE,
     label: "Song Leader",
     description: "Leads congregational singing.",
-    permissions: ["view_service_plans", "view_member_resources"],
+    permissions: ["view_availability", "view_service_plans", "view_member_resources"],
   },
   {
     key: MUSICIAN_ROLE,
     label: "Musician",
     description: "Plays in services.",
-    permissions: ["view_service_plans", "view_sheet_music", "view_member_resources"],
+    permissions: ["view_availability", "view_service_plans", "view_sheet_music", "view_member_resources"],
   },
   {
     key: MEMBER_ROLE,
@@ -172,6 +185,28 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     permissions: ["view_sheet_music", "view_member_resources"],
   },
 ];
+
+/**
+ * Permissions added to DEFAULT_ROLES after a site already had its roles.
+ * seedDefaults() only writes a role's permissions when the role itself is
+ * new, so without this the existing built-in roles would never receive them.
+ * Each entry runs once per Clerk environment (recorded in schema_fixups):
+ * every built-in role whose DEFAULT_ROLES entry lists one of `permissions`
+ * gets it. Running once matters - an administrator who later takes the
+ * permission away from a role does not see it come back.
+ */
+export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readonly Permission[] }> = [
+  { key: "2026-10-availability-permissions", permissions: ["view_availability", "manage_availability"] },
+];
+
+/** The (role, permission) pairs one fix-up grants. */
+export function fixupGrants(permissions: readonly Permission[]): Array<{ role: string; permission: Permission }> {
+  return DEFAULT_ROLES.filter((role) => role.key !== ADMIN_ROLE).flatMap((role) =>
+    role.permissions
+      .filter((permission) => permissions.includes(permission))
+      .map((permission) => ({ role: role.key, permission })),
+  );
+}
 
 /** Role keys are lowercase words joined by underscores, e.g. "assistant_director". */
 export function roleKeyFromLabel(label: string): string {

@@ -82,6 +82,7 @@ export default async function ProfilePage() {
           <ProfileView
             profile={visibleProfile(toProfileRecord(person, profile, { titles, instruments, roleLabels }), "self")}
             isMusician={viewer.roleKeys.includes(MUSICIAN_ROLE)}
+            availabilityHref={viewer.can("view_availability") ? "/availability#normal" : undefined}
             actions={<ButtonLink href="/profile/edit">{copy.edit}</ButtonLink>}
           />
         </div>

@@ -100,6 +100,9 @@ export const PROFILE_FIELD_AUDIENCES: Record<Field, readonly ProfileAudience[]> 
   readsSheetMusic: PRIVATE,
   theoryLevel: PRIVATE,
   learningStyle: PRIVATE,
+  // Normal services. Also shared, separately, with everyone on the
+  // availability board (src/lib/availability/), who see each other's normal
+  // pattern and exceptions there - the music team, not every member.
   serviceAvailability: PRIVATE,
   instrumentProficiency: PRIVATE,
   roleLabels: PRIVATE,

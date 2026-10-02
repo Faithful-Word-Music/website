@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { LearningScaleDisplay } from "@/components/account/LearningScale";
@@ -24,11 +25,17 @@ import type { VisibleProfile } from "@/lib/auth/profile-visibility";
 export function ProfileView({
   profile,
   isMusician = false,
+  availabilityHref,
   actions,
 }: {
   profile: VisibleProfile;
   /** Musicians are asked "How do you play?", so it shows even when unanswered. */
   isMusician?: boolean;
+  /**
+   * Where normal availability is changed (/availability), for someone who
+   * may change it. Availability is only shown here, never edited.
+   */
+  availabilityHref?: string;
   actions?: ReactNode;
 }) {
   const fullName =
@@ -141,6 +148,16 @@ export function ProfileView({
             ) : (
               <Empty>Not given.</Empty>
             )}
+            {availabilityHref ? (
+              <p className="mt-4 text-sm">
+                <Link
+                  href={availabilityHref}
+                  className="text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold"
+                >
+                  Change on the Availability page
+                </Link>
+              </p>
+            ) : null}
           </Card>
         ) : null}
 

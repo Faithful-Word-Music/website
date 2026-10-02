@@ -9,6 +9,7 @@
  * Pure - no server-only import - so it can be unit tested.
  */
 
+import { availabilityContent } from "@/content/availability";
 import { dashboardContent } from "@/content/dashboard";
 
 import type { AttentionItem } from "./attention";
@@ -130,6 +131,29 @@ export function accountRequestAttention(focus: DashboardFocus, pending: number |
       detail: copy.requests.detail,
       href: "/admin/requests?status=pending",
       action: copy.requests.action,
+    },
+  ];
+}
+
+/**
+ * Availability participants with no normal services: nobody knows when to
+ * expect them. Low priority - the Availability section is always there too.
+ * `normal` is null when the person is not on the availability board.
+ */
+export function availabilityAttention(
+  focus: DashboardFocus,
+  normal: readonly string[] | null,
+): AttentionItem[] {
+  if (!focus.tracksAvailability || normal === null || normal.length > 0) return [];
+  const text = availabilityContent.attention;
+  return [
+    {
+      id: "availability:normal",
+      priority: "low",
+      title: text.title,
+      detail: text.detail,
+      href: "/availability#normal",
+      action: text.action,
     },
   ];
 }

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AttentionList } from "@/components/dashboard/AttentionList";
+import { AvailabilitySummary } from "@/components/dashboard/AvailabilitySummary";
 import { ComingUp } from "@/components/dashboard/ComingUp";
 import { DashboardGrid } from "@/components/dashboard/DashboardSection";
 import { BrushUp, NewSheetMusic, QuarterGlance, SheetGaps } from "@/components/dashboard/MusicSections";
@@ -26,11 +27,12 @@ import {
 import { collectAttention } from "@/lib/dashboard/attention";
 import { buildComingUp } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
-import { loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
+import { loadAvailabilitySummary, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
 import { newSheetMusic } from "@/lib/dashboard/new-sheet-music";
 import { groupPeople, musiciansWithoutInstruments } from "@/lib/dashboard/people";
 import {
   accountRequestAttention,
+  availabilityAttention,
   instrumentAttention,
   invitationAttention,
   profileAttention,
@@ -58,6 +60,8 @@ export const metadata: Metadata = {
  * zero counts or placeholders for features still to come.
  *
  *   everyone                 Coming up, New sheet music
+ *   view_availability        Availability (always, even when nothing is
+ *                            unusual), and "Set your normal services"
  *   an assigned sheet type   a "Sheet Music" link under each song that has it
  *   plays or leads singing   Songs to brush up on
  *   manage_sheet_music       Sheet music to finish, musicians with no sheet type
@@ -87,11 +91,12 @@ export default async function DashboardPage() {
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
-  const [music, requests, people, invitations] = await Promise.all([
+  const [music, requests, people, invitations, availability] = await Promise.all([
     loadMusicData(),
     focus.reviewsAccounts ? countRequestsByStatus(viewer.env).catch(() => null) : null,
     focus.seesPeople ? loadPeople(viewer) : null,
     focus.reviewsAccounts ? loadInvitationFollowUps() : null,
+    focus.tracksAvailability ? loadAvailabilitySummary(viewer) : null,
   ]);
   const now = music.loadedAt;
   const { hymnalCollection } = siteConfig.sheetMusic;
@@ -128,6 +133,7 @@ export default async function DashboardPage() {
     sheetGapAttention(focus, gaps),
     sheetTypeAttention(focus, withoutSheetMusic),
     instrumentAttention(focus, withoutInstruments),
+    availabilityAttention(focus, availability?.self?.normal ?? null),
     profileAttention(
       missingProfileItems({
         roleKeys: viewer.roleKeys,
@@ -173,13 +179,16 @@ export default async function DashboardPage() {
           everyone (sections they don't get are simply absent):
             1. Needs your attention   - things to do
             2. Coming up              - this week's services
-            3. Getting ready          - brush up, sheet music to finish
-            4. New sheet music        - what changed
-            5. People, the quarter    - the wider picture
+            3. Availability           - always, for those it applies to
+            4. Getting ready          - brush up, sheet music to finish
+            5. New sheet music        - what changed
+            6. People, the quarter    - the wider picture
         */}
         {attention.length > 0 ? <AttentionList items={attention} className="mt-10" /> : null}
 
         <ComingUp services={comingUp} unavailable={!music.services} now={now} className="mt-10" />
+
+        {focus.tracksAvailability ? <AvailabilitySummary summary={availability} now={now} className="mt-14" /> : null}
 
         {hasSideSections ? (
           // Its own heading, so it reads as a section of its own rather than

@@ -5,7 +5,6 @@ import {
   LEARNING_STYLES,
   PROFICIENCIES,
   PROFILE_LIMITS,
-  SERVICE_AVAILABILITY,
   THEORY_LEVELS,
   VOICE_PARTS,
 } from "./profile-options";
@@ -32,7 +31,8 @@ export const profileSchema = z.object({
     "Please use only digits, spaces and + ( ) - in your phone number.",
   ),
   voicePart: z.enum(values(VOICE_PARTS)).nullable(),
-  serviceAvailability: z.array(z.enum(values(SERVICE_AVAILABILITY))).max(SERVICE_AVAILABILITY.length),
+  // Normal service availability is not part of the profile form: it is
+  // edited on /availability (src/lib/availability/forms.ts).
   learningStyle: z.literal(LEARNING_STYLES.map((style) => style.value)).nullable(),
   theoryLevel: z.enum(values(THEORY_LEVELS)).nullable(),
   readsSheetMusic: z.boolean().nullable(),

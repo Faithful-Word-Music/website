@@ -4,7 +4,12 @@ import { DEFAULT_ROLES, resolvePermissions } from "@/lib/auth/permissions";
 import { collectAttention, type AttentionItem } from "@/lib/dashboard/attention";
 import { buildComingUp, selectComingUp } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic, type DashboardFocus } from "@/lib/dashboard/focus";
-import { accountRequestAttention, profileAttention, sheetTypeAttention } from "@/lib/dashboard/providers";
+import {
+  accountRequestAttention,
+  availabilityAttention,
+  profileAttention,
+  sheetTypeAttention,
+} from "@/lib/dashboard/providers";
 import type { IndexSong, SheetFile, SheetMusicIndex, SongVersion } from "@/lib/sheet-music";
 import { DEFAULT_SHEET_MUSIC_TYPES, describeSource, fileOfType, legacyVariant, songCount } from "@/lib/sheet-music-type";
 import type { Service } from "@/types/song-list";
@@ -61,6 +66,20 @@ describe("buildFocus", () => {
     expect(focus.managesSheetMusic).toBe(true);
     expect(focus.seesPeople).toBe(true);
     expect(focus.reviewsAccounts).toBe(false);
+  });
+
+  it("gives the music ministry's participants Availability, and only the Music Director manages it", () => {
+    for (const role of ["musician", "song_leader", "music_director"]) {
+      expect(focusFor([role]).tracksAvailability).toBe(true);
+    }
+    expect(focusFor(["musician"]).managesAvailability).toBe(false);
+    expect(focusFor(["song_leader"]).managesAvailability).toBe(false);
+    expect(focusFor(["music_director"]).managesAvailability).toBe(true);
+  });
+
+  it("leaves Availability out for a Member-only account, and it does not follow from an instrument or title", () => {
+    expect(focusFor([]).tracksAvailability).toBe(false);
+    expect(focusFor([], { instruments: ["Piano"], titles: ["Song Leader"] }).tracksAvailability).toBe(false);
   });
 
   it("follows permissions, not role names: a custom role with manage_users reviews accounts", () => {
@@ -311,4 +330,17 @@ describe("buildComingUp", () => {
     expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);
   });
 
+});
+
+describe("availabilityAttention", () => {
+  it("asks a participant with no normal services to set them, at low priority", () => {
+    const [item] = availabilityAttention(focusFor(["musician"]), []);
+    expect(item).toMatchObject({ id: "availability:normal", priority: "low", href: "/availability#normal" });
+  });
+
+  it("says nothing once normal services are set, to someone not on the board, or to a Member", () => {
+    expect(availabilityAttention(focusFor(["musician"]), ["sunday_am"])).toEqual([]);
+    expect(availabilityAttention(focusFor(["administrator"]), null)).toEqual([]);
+    expect(availabilityAttention(focusFor([]), [])).toEqual([]);
+  });
 });
