@@ -8,7 +8,9 @@ import { PdfViewer } from "@/components/app/PdfViewer";
 import { useInstalledAppOnTouch } from "@/components/app/standalone";
 import { cn } from "@/components/ui/cn";
 import { finishNavigationProgress, startNavigationProgress } from "@/components/ui/NavigationProgress";
+import { usePagePath } from "@/components/ui/use-page-path";
 import { appContent } from "@/content/app";
+import { isOpenInApp } from "@/lib/app-only";
 import { isPdfPath, PULL_THRESHOLD, pullDistance } from "@/lib/installed-app";
 
 /**
@@ -58,7 +60,11 @@ export function InstalledApp() {
     finishNavigationProgress();
   }, [refreshing]);
 
-  const distance = usePullToRefresh(active && pdf === null && !refreshing, refresh);
+  // Not on the login, invitation and request-an-account screens: as in a
+  // native app's sign-in screen, there is nothing there to refresh, and a
+  // pull would only get in the way of the form.
+  const path = usePagePath();
+  const distance = usePullToRefresh(active && pdf === null && !refreshing && !isOpenInApp(path), refresh);
 
   if (!active) return null;
   return (
