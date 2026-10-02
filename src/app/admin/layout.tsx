@@ -42,7 +42,11 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       show: PEOPLE_PERMISSIONS.some((permission) => viewer.can(permission)),
     },
     { href: "/admin/roles", label: "Roles", show: viewer.can("manage_roles") },
-    { href: "/admin/profile-options", label: "Titles & instruments", show: viewer.can("manage_profiles") },
+    {
+      href: "/admin/configuration",
+      label: "Configuration",
+      show: viewer.can("manage_profiles") || viewer.can("manage_sheet_music"),
+    },
   ].filter((item) => item.show);
 
   return (

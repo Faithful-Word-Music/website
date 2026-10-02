@@ -6,7 +6,7 @@ import { buildComingUp, selectComingUp } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic, type DashboardFocus } from "@/lib/dashboard/focus";
 import { accountRequestAttention, profileAttention, sheetTypeAttention } from "@/lib/dashboard/providers";
 import type { IndexSong, SheetFile, SheetMusicIndex, SongVersion } from "@/lib/sheet-music";
-import { availableTypes, fileOfType, typeKey, typeLabel } from "@/lib/sheet-music-type";
+import { DEFAULT_SHEET_MUSIC_TYPES, describeSource, fileOfType, legacyVariant, songCount } from "@/lib/sheet-music-type";
 import type { Service } from "@/types/song-list";
 
 const rolePermissions = new Map(DEFAULT_ROLES.map((role) => [role.key, role.permissions as string[]]));
@@ -118,12 +118,23 @@ describe("attention providers", () => {
 
 /* ---------------------------------------------------------------------- */
 
-function file(slug: string, instrument: string | null = null, format: SheetFile["format"] = "pdf"): SheetFile {
-  return { format, instrument, slug, driveFileId: `drive-${slug}` };
+const STANDARD = 1;
+const CHORDS = 2;
+const CAPO = 3;
+const CLARINET = 4;
+const TYPE_LABELS: Record<number, string> = {
+  [STANDARD]: "Standard",
+  [CHORDS]: "Standard (Chords)",
+  [CAPO]: "Capo (Chords)",
+  [CLARINET]: "Clarinet (Bb)",
+};
+
+function file(slug: string, format: SheetFile["format"] = "pdf"): SheetFile {
+  return { format, slug, driveFileId: `drive-${slug}` };
 }
 
-function version(variant: string, files: SheetFile[]): SongVersion {
-  return { variant, version: "1", keys: null, capoFret: null, files };
+function version(typeId: number, files: SheetFile[]): SongVersion {
+  return { typeId, label: TYPE_LABELS[typeId], version: "1", keys: null, capoFret: null, files };
 }
 
 function song(versions: SongVersion[], rights: IndexSong["rights"] = "copyrighted"): IndexSong {
@@ -145,46 +156,48 @@ function song(versions: SongVersion[], rights: IndexSong["rights"] = "copyrighte
 }
 
 const fullSong = song([
-  version("Standard", [file("standard-1.pdf"), file("standard-1.mscz", null, "musescore"), file("standard-1-piano.pdf", "Piano")]),
-  version("Chords", [file("chords-1.pdf")]),
-  version("Capo", [file("capo-1-guitar.pdf", "Guitar")]),
+  version(STANDARD, [file("standard-1.pdf"), file("standard-1.mscz", "musescore")]),
+  version(CHORDS, [file("standard-chords-1.pdf")]),
+  version(CAPO, [file("capo-chords-1.pdf")]),
+  version(CLARINET, [file("clarinet-bb-1.pdf")]),
 ]);
 const anyFile = () => true;
+const TYPES = Object.entries(TYPE_LABELS).map(([id, label]) => ({ id: Number(id), label }));
 
-const STANDARD = { variant: "Standard", instrument: null };
-const CAPO = { variant: "Capo", instrument: "Guitar" };
-const PIANO_PART = { variant: "Standard", instrument: "Piano" };
-
-describe("sheet music types", () => {
-  it("are read from the files: congregational charts first, Standard leading, then parts", () => {
-    expect(availableTypes({ songs: [fullSong] }).map(typeLabel)).toEqual([
-      "Standard",
-      "Chords",
-      "Capo - Guitar",
-      "Standard - Piano",
+describe("default sheet music types", () => {
+  it("start as Standard, Standard (Chords) and Capo (Chords), each mapping the assignments made before types", () => {
+    expect(DEFAULT_SHEET_MUSIC_TYPES.map((type) => [type.label, legacyVariant(type.legacyKey)])).toEqual([
+      ["Standard", "Standard"],
+      ["Standard (Chords)", "Chords"],
+      ["Capo (Chords)", "Capo"],
     ]);
   });
 
-  it("have a stable key for forms", () => {
-    expect(typeKey(CAPO)).toBe("Capo|Guitar");
-    expect(typeKey(STANDARD)).toBe("Standard|");
+  it("describe their sources in words", () => {
+    expect(DEFAULT_SHEET_MUSIC_TYPES[0].sources.map(describeSource)).toEqual([
+      'Every "Standard" folder inside 01 - Congregational',
+      "03 - Ensemble & Classical",
+    ]);
+    expect(DEFAULT_SHEET_MUSIC_TYPES[2].sources.map(describeSource)).toEqual([
+      'Every "Chords › Capo" folder inside 01 - Congregational',
+    ]);
   });
 });
 
 describe("fileOfType", () => {
   it("finds the PDF of exactly the assigned type", () => {
-    expect(fileOfType(fullSong, PIANO_PART, anyFile)?.file.slug).toBe("standard-1-piano.pdf");
-    expect(fileOfType(fullSong, CAPO, anyFile)?.file.slug).toBe("capo-1-guitar.pdf");
+    expect(fileOfType(fullSong, CLARINET, anyFile)?.file.slug).toBe("clarinet-bb-1.pdf");
+    expect(fileOfType(fullSong, CAPO, anyFile)?.file.slug).toBe("capo-chords-1.pdf");
     expect(fileOfType(fullSong, STANDARD, anyFile)?.file.slug).toBe("standard-1.pdf");
   });
 
   it("never offers another type when the song lacks the assigned one", () => {
-    const standardOnly = song([version("Standard", [file("standard-1.pdf")])]);
+    const standardOnly = song([version(STANDARD, [file("standard-1.pdf")])]);
     expect(fileOfType(standardOnly, CAPO, anyFile)).toBeNull();
   });
 
   it("never offers a MuseScore file, even of the right type", () => {
-    const museScoreOnly = song([version("Standard", [file("standard-1.mscz", null, "musescore")])]);
+    const museScoreOnly = song([version(STANDARD, [file("standard-1.mscz", "musescore")])]);
     expect(fileOfType(museScoreOnly, STANDARD, anyFile)).toBeNull();
   });
 
@@ -194,10 +207,16 @@ describe("fileOfType", () => {
 
   it("prefers version 1 when there are several of the type", () => {
     const two = song([
-      { ...version("Standard", [file("standard-2.pdf")]), version: "2" },
-      version("Standard", [file("standard-1.pdf")]),
+      { ...version(STANDARD, [file("standard-2.pdf")]), version: "2" },
+      version(STANDARD, [file("standard-1.pdf")]),
     ]);
     expect(fileOfType(two, STANDARD, anyFile)?.file.slug).toBe("standard-1.pdf");
+  });
+
+  it("counts the songs that have a type", () => {
+    const standardOnly = song([version(STANDARD, [file("standard-1.pdf")])]);
+    expect(songCount([fullSong, standardOnly], CLARINET)).toBe(1);
+    expect(songCount([fullSong, standardOnly], STANDARD)).toBe(2);
   });
 });
 
@@ -252,31 +271,44 @@ describe("selectComingUp", () => {
 });
 
 describe("buildComingUp", () => {
-  const index: SheetMusicIndex = { songs: [fullSong] };
+  const index: SheetMusicIndex = { songs: [fullSong], types: TYPES };
   const services = [service("a", "2026-10-04T10:30:00-07:00", [{ number: "233", title: "Like a River Glorious", key: "Ab" }])];
 
-  it("links the assigned type on the song's file route", () => {
+  it("puts a song in the service PDF when it has the assigned type", () => {
     const [first] = buildComingUp(services, NOW, focusFor(["musician"]), { index, sheetType: CAPO });
-    expect(first.slots[0]?.sheetHref).toBe("/library/songs/like-a-river-glorious/sheet-music/capo-1-guitar.pdf");
+    expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);
   });
 
-  it("links nothing for someone with no assigned type - whatever their instruments", () => {
+  it("offers no service PDF to someone with no assigned type - whatever their instruments", () => {
     const pianist = focusFor(["musician"], { instruments: ["Piano"] });
     const [first] = buildComingUp(services, NOW, pianist, { index, sheetType: null });
-    expect(first.slots[0]?.sheetHref).toBeNull();
+    expect(first.packetHref).toBeNull();
   });
 
-  it("links nothing when the song lacks the assigned type, rather than another type", () => {
+  it("leaves a song out when it lacks the assigned type, rather than using another type", () => {
     const [first] = buildComingUp(services, NOW, focusFor(["musician"]), {
       index,
-      sheetType: { variant: "Standard", instrument: "Violin" },
+      sheetType: 99,
     });
-    expect(first.slots[0]?.sheetHref).toBeNull();
+    expect(first.packetSongs).toEqual([]);
   });
 
-  it("links a copyrighted song's music only with the members' sheet-music permission", () => {
+  it("includes a copyrighted song's music only with the members' sheet-music permission", () => {
     const withoutPermission = buildFocus({ roleKeys: ["musician"], permissions: new Set(), titles: [], instruments: [] });
     const [first] = buildComingUp(services, NOW, withoutPermission, { index, sheetType: STANDARD });
-    expect(first.slots[0]?.sheetHref).toBeNull();
+    expect(first.packetSongs).toEqual([]);
   });
+
+  it("links the whole service's PDF by date and time of day, counting the songs in it", () => {
+    const withTwo = [
+      service("a", "2026-10-04T10:30:00-07:00", [
+        { number: "233", title: "Like a River Glorious", key: "Ab" },
+        { number: null, title: "A Song Not In The Index", key: "C" },
+      ]),
+    ];
+    const [first] = buildComingUp(withTwo, NOW, focusFor(["musician"]), { index, sheetType: CAPO });
+    expect(first.packetHref).toBe("/dashboard/sheet-music/2026-10-04-am");
+    expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);
+  });
+
 });

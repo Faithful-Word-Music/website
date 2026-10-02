@@ -97,7 +97,7 @@ export function backLabel(entry: string): string {
     "/admin/invitations": labels.invitations,
     "/admin/users": labels.people,
     "/admin/roles": labels.roles,
-    "/admin/profile-options": labels.profileOptions,
+    "/admin/configuration": labels.configuration,
   };
   return named[path] ?? labels.generic;
 }

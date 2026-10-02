@@ -74,7 +74,7 @@ export async function GET(
 
   const { version, file } = found;
   const extension = file.format === "pdf" ? "pdf" : "mscz";
-  const fileName = `${song.title} - ${fileLabel(version, file)}.${extension}`;
+  const fileName = `${song.title} - ${fileLabel(version)}.${extension}`;
   const seconds = siteConfig.sheetMusic.revalidateSeconds;
 
   return new Response(body, {

@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANYWHERE,
+  classify,
   type DriveItem,
   fileLabel,
   findFile,
+  foldersOwned,
   formatFromName,
   matchIndexSong,
   parseDrivePath,
-  parseIndex,
+  readSheetMusic,
   rightsFromCell,
+  sourceCoverage,
   toPublicSheetMusic,
+  type TypeSources,
 } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { DEFAULT_SHEET_MUSIC_TYPES, legacyVariant } from "@/lib/sheet-music-type";
 
 const HYMNAL = "Soul-Stirring Songs and Hymns 1989";
 
@@ -74,6 +80,8 @@ const driveItems = drive([
   [`${SSSH}/Standard/MuseScore`, "121 - Like a River Glorious.mscz", "1drive-121-std-mscz"],
   [`${SSSH}/Chords/Standard/MuseScore`, "121 - Like a River Glorious.mscz", "1drive-121-chords"],
   [`${SSSH}/Chords/Capo/PDF`, "121 - Like a River Glorious.pdf", "1drive-121-capo"],
+  // The real clarinet layout: a key folder, then Hymnals, then the collection.
+  [`02 - Instrument Parts/Clarinet/Bb/Hymnals/${HYMNAL}/PDF`, "121 - Like a River Glorious.pdf", "1drive-121-clarinet"],
   [`${SSSH}/Chords/Standard/MuseScore`, "170 - Hallelujah, What a Saviour! (1).mscz", "1drive-170-v1"],
   [`${SSSH}/Chords/Standard/MuseScore`, "170 - Hallelujah, What a Saviour! (2).mscz", "1drive-170-v2"],
   [`${SSSH}/Standard/PDF`, "012 - Blessed Redeemer.pdf", "1drive-012"],
@@ -87,7 +95,9 @@ const driveItems = drive([
   ["01 - Congregational/Psalms/Chords/Standard/PDF", "Psalm 58.pdf", "1drive-ps58-old", "2026-01-01T00:00:00Z"],
   ["01 - Congregational/Psalms/Chords/Standard/PDF", "Psalm 58 (Stedfast Baptist Church).pdf", "1drive-ps58-new", "2026-09-29T00:00:00Z"],
   ["01 - Congregational/Other Songs/Chords/Standard/PDF", "A Life Remembered (IN PROGRESS).pdf", "1drive-draft"],
+  // No type has a piano source: this part is left out.
   ["02 - Instrument Parts/Piano/Classical/MuseScore", "Canon in D.mscz", "1drive-canon-piano"],
+  ["02 - Instrument Parts/Clarinet/Bb/Classical/PDF", "Canon in D.pdf", "1drive-canon-clarinet"],
   ["03 - Ensemble & Classical/Classical/PDF", "Canon in D.pdf", "1drive-canon"],
   ["90 - Reference/Hymnals", `${HYMNAL}.pdf`, "1drive-reference"],
   [`${SSSH}/Standard/PDF`, "121 - notes.txt", "1drive-text"],
@@ -100,15 +110,29 @@ driveItems.push({ id: "elsewhere", name: "121 - Like a River Glorious.pdf", mime
 const versions = [
   ["Song ID", "Variant", "Version", "Key(s)", "Capo Fret", "Notes"],
   ["SSSH1989-121", "Standard", "(1)", "F", "", "internal note"],
+  // An older name ("Capo") still reaches the type that took it over.
   ["SSSH1989-121", "Capo", "1", "D", "3", ""],
+  ["SSSH1989-121", "Clarinet (Bb)", "1", "G", "", ""],
   ["SSSH1989-999", "Standard", "(1)", "G", "", ""],
 ];
 
-const index = parseIndex({ songs, versions, drive: driveItems });
+/** The default types, plus a clarinet type pointing at its key folder. */
+const TYPES: TypeSources[] = [
+  ...DEFAULT_SHEET_MUSIC_TYPES.map((type, index) => ({
+    id: index + 1,
+    label: type.label,
+    legacyVariant: legacyVariant(type.legacyKey),
+    sources: type.sources,
+  })),
+  { id: 4, label: "Clarinet (Bb)", sources: [["02 - Instrument Parts", "Clarinet", "Bb"]] },
+];
+
+const sources = readSheetMusic({ songs, versions, drive: driveItems });
+const index = classify(sources, TYPES);
 const byId = (id: string) => index.songs.find((candidate) => candidate.id === id)!;
 const files = (id: string) =>
   byId(id).versions.flatMap((version) =>
-    version.files.map((file) => `${version.variant} ${version.version} ${file.format} ${file.instrument ?? "-"} ${file.slug} ${file.driveFileId}`),
+    version.files.map((file) => `${version.label} ${version.version} ${file.format} ${file.slug} ${file.driveFileId}`),
   );
 
 describe("rightsFromCell", () => {
@@ -136,125 +160,208 @@ describe("formatFromName", () => {
 describe("parseDrivePath", () => {
   const parse = (path: string, name: string) => parseDrivePath(path.split("/"), name, "id");
 
-  it("reads hymnal, variant, number, title and version", () => {
+  it("reads number, title, version and format from the name, and keeps the folders as they are", () => {
     expect(parse(`${SSSH}/Chords/Capo/PDF`, "121 - Like a River Glorious.pdf")).toMatchObject({
-      collection: HYMNAL, number: "121", title: "Like a River Glorious", variant: "Capo", version: "1", format: "pdf", instrument: "Guitar",
+      folders: ["01 - Congregational", "Hymnals", HYMNAL, "Chords", "Capo", "PDF"],
+      number: "121", title: "Like a River Glorious", version: "1", format: "pdf",
     });
     expect(parse(`${SSSH}/Chords/Standard/MuseScore`, "170 - Hallelujah, What a Saviour! (2).mscz")).toMatchObject({
-      number: "170", title: "Hallelujah, What a Saviour!", variant: "Chords", version: "2", format: "musescore", instrument: null,
+      number: "170", title: "Hallelujah, What a Saviour!", version: "2", format: "musescore",
     });
-    expect(parse("01 - Congregational/Hymnals/Bible Truth Hymns/Standard/MuseScore", "1 Come, Thou Almighty King.mscz")).toMatchObject({
-      collection: "Bible Truth Hymns", number: "1", title: "Come, Thou Almighty King", variant: "Standard",
-    });
+    expect(parse("Anywhere/At/All", "1 Come, Thou Almighty King.mscz")).toMatchObject({ number: "1", title: "Come, Thou Almighty King" });
   });
 
   it("reads unnumbered songs and drops notes in brackets", () => {
-    expect(parse("01 - Congregational/Psalms/Standard/PDF", "Psalm 19 7-10.pdf")).toMatchObject({
-      collection: "Psalms", number: null, title: "Psalm 19 7-10",
-    });
+    expect(parse("01 - Congregational/Psalms/Standard/PDF", "Psalm 19 7-10.pdf")).toMatchObject({ number: null, title: "Psalm 19 7-10" });
     expect(parse("01 - Congregational/Psalms/Standard/PDF", "Psalm 58 (Stedfast Baptist Church).pdf")).toMatchObject({
       title: "Psalm 58", version: "1",
     });
   });
 
-  it("reads instrument parts and the classical folder", () => {
-    expect(parse("02 - Instrument Parts/Piano/The Rejoice Hymnal/MuseScore", "Joyful, Joyful, We Adore Thee.mscz")).toMatchObject({
-      collection: "The Rejoice Hymnal", instrument: "Piano", variant: "Standard",
-    });
-    expect(parse("03 - Ensemble & Classical/Classical/PDF", "Canon in D.pdf")).toMatchObject({ collection: "Classical" });
-  });
-
-  it("ignores drafts, reference books, other file types and unknown layouts", () => {
+  it("ignores drafts and other file types", () => {
     expect(parse("01 - Congregational/Other Songs/Chords/Standard/PDF", "A Life Remembered (IN PROGRESS).pdf")).toBeNull();
-    expect(parse("90 - Reference/Hymnals", "The Rejoice Hymnal.pdf")).toBeNull();
     expect(parse(`${SSSH}/Standard/PDF`, "121 - notes.txt")).toBeNull();
-    expect(parse("Somewhere Else/PDF", "Song.pdf")).toBeNull();
-    expect(parse(SSSH, "121 - Like a River Glorious.pdf")).toBeNull();
   });
 });
 
-describe("parseIndex", () => {
+describe("readSheetMusic", () => {
   it("keeps only Songs rows with a real Song ID, and never copies notes", () => {
-    expect(index.songs.map((candidate) => candidate.id)).toEqual([
+    expect(sources.songs.map((candidate) => candidate.id)).toEqual([
       "SSSH1989-121", "SSSH1989-170", "SSSH1989-012", "SSSH1989-125", "SHR-020", "MH-211",
       "PS-054", "PS-058", "OS-049", "CL-001", "SSSH1989-X001",
     ]);
     expect(byId("SSSH1989-121")).toMatchObject({ composer: "James Mountain", lyricist: null, hymnNumber: "121", rights: "cleared" });
-    expect(JSON.stringify(index)).not.toMatch(/SECRET|internal note/);
+    expect(JSON.stringify(sources)).not.toMatch(/SECRET|internal note/);
   });
 
-  it("finds each song's files from the folders, Standard first and PDF first", () => {
+  it("finds a file's collection by folder name, at any depth", () => {
+    const clarinet = sources.songs.find((candidate) => candidate.id === "SSSH1989-121")!.files.find(
+      (file) => file.driveFileId === "1drive-121-clarinet",
+    );
+    expect(clarinet?.folders).toEqual(["02 - Instrument Parts", "Clarinet", "Bb", "Hymnals", HYMNAL, "PDF"]);
+  });
+
+  it("matches a file with no collection folder by a title only one song has", () => {
+    const loose = readSheetMusic({ songs, versions: [], drive: drive([["Loose", "Psalm 54.pdf", "loose-ps54"]]) });
+    expect(loose.songs.find((candidate) => candidate.id === "PS-054")!.files.map((file) => file.driveFileId)).toEqual(["loose-ps54"]);
+  });
+
+  it("lists every folder, with its sheet music files counted and collections marked", () => {
+    const folder = (path: string) => sources.folders.find((candidate) => candidate.path.join("/") === path);
+    expect(folder("02 - Instrument Parts/Clarinet/Bb")).toEqual({
+      path: ["02 - Instrument Parts", "Clarinet", "Bb"],
+      files: 2,
+      collection: false,
+    });
+    expect(folder(`${SSSH}`)).toMatchObject({ collection: true });
+  });
+
+  it("returns nothing for a Songs tab without its header", () => {
+    expect(readSheetMusic({ songs: [["x", "y"]], versions: [], drive: driveItems }).songs).toEqual([]);
+  });
+});
+
+describe("classify", () => {
+  it("sorts each song's files into the types, in the types' order, PDF first", () => {
     expect(files("SSSH1989-121")).toEqual([
-      "Standard 1 pdf - standard-1.pdf 1drive-121-std-pdf",
-      "Standard 1 musescore - standard-1.mscz 1drive-121-std-mscz",
-      "Chords 1 musescore - chords-1.mscz 1drive-121-chords",
-      "Capo 1 pdf Guitar capo-1-guitar.pdf 1drive-121-capo",
+      "Standard 1 pdf standard-1.pdf 1drive-121-std-pdf",
+      "Standard 1 musescore standard-1.mscz 1drive-121-std-mscz",
+      "Standard (Chords) 1 musescore standard-chords-1.mscz 1drive-121-chords",
+      "Capo (Chords) 1 pdf capo-chords-1.pdf 1drive-121-capo",
+      "Clarinet (Bb) 1 pdf clarinet-bb-1.pdf 1drive-121-clarinet",
     ]);
     expect(files("SSSH1989-170")).toEqual([
-      "Chords 1 musescore - chords-1.mscz 1drive-170-v1",
-      "Chords 2 musescore - chords-2.mscz 1drive-170-v2",
+      "Standard (Chords) 1 musescore standard-chords-1.mscz 1drive-170-v1",
+      "Standard (Chords) 2 musescore standard-chords-2.mscz 1drive-170-v2",
     ]);
+    expect(index.types).toEqual(TYPES.map(({ id, label }) => ({ id, label })));
   });
 
   it("matches by number within the file's own collection, not the church hymnal", () => {
-    expect(files("MH-211")).toEqual(["Capo 1 pdf Guitar capo-1-guitar.pdf 1drive-mh-211"]);
-    expect(files("SSSH1989-012")).toEqual(["Standard 1 pdf - standard-1.pdf 1drive-012"]);
+    expect(files("MH-211")).toEqual(["Capo (Chords) 1 pdf capo-chords-1.pdf 1drive-mh-211"]);
+    expect(files("SSSH1989-012")).toEqual(["Standard 1 pdf standard-1.pdf 1drive-012"]);
     expect(files("SHR-020")).toEqual([]);
   });
 
   it("matches unnumbered songs by title, and keeps the newest of two copies", () => {
-    expect(files("PS-054")).toEqual(["Standard 1 pdf - standard-1.pdf 1drive-ps54"]);
+    expect(files("PS-054")).toEqual(["Standard 1 pdf standard-1.pdf 1drive-ps54"]);
     // Bracketed notes in the Songs title are ignored too.
-    expect(files("SSSH1989-X001")).toEqual(["Standard 1 pdf - standard-1.pdf 1drive-x001"]);
+    expect(files("SSSH1989-X001")).toEqual(["Standard 1 pdf standard-1.pdf 1drive-x001"]);
     expect(files("PS-058")).toEqual([
-      "Standard 1 pdf - standard-1.pdf 1drive-ps58",
-      "Chords 1 pdf - chords-1.pdf 1drive-ps58-new",
+      "Standard 1 pdf standard-1.pdf 1drive-ps58",
+      "Standard (Chords) 1 pdf standard-chords-1.pdf 1drive-ps58-new",
     ]);
   });
 
-  it("reads instrument parts and the classical folder into their songs", () => {
+  it("takes everything inside a source, however deep, and leaves out files no source holds", () => {
     expect(files("CL-001")).toEqual([
-      "Standard 1 pdf - standard-1.pdf 1drive-canon",
-      "Standard 1 musescore Piano standard-1-piano.mscz 1drive-canon-piano",
+      "Standard 1 pdf standard-1.pdf 1drive-canon",
+      "Clarinet (Bb) 1 pdf clarinet-bb-1.pdf 1drive-canon-clarinet",
     ]);
-  });
-
-  it("leaves out drafts, reference books, misplaced files and files outside Sheet Music", () => {
     const all = JSON.stringify(index);
-    for (const id of ["1drive-draft", "1drive-reference", "1drive-text", "1drive-misplaced", "elsewhere", "1drive-no-songs-row"]) {
+    for (const id of ["1drive-canon-piano", "1drive-draft", "1drive-reference", "1drive-text", "1drive-misplaced", "elsewhere", "1drive-no-songs-row"]) {
       expect(all).not.toContain(id);
     }
     expect(byId("OS-049").versions).toEqual([]);
   });
 
-  it("takes a key or capo from the Versions tab, under either column name", () => {
-    const [standard, , capo] = byId("SSSH1989-121").versions;
-    expect(standard).toMatchObject({ keys: "F", capoFret: null });
-    expect(capo).toMatchObject({ keys: "D", capoFret: "3" });
-
-    const older = parseIndex({
-      songs,
-      versions: [["Song ID", "Variant", "Edition", "Key(s)", "Capo Fret"], ["SSSH1989-121", "Standard", "(1)", "Eb", ""]],
-      drive: driveItems,
-    });
-    expect(older.songs[0].versions[0].keys).toBe("Eb");
-    expect(parseIndex({ songs, versions: [], drive: driveItems }).songs[0].versions[0].keys).toBeNull();
+  it("gives a file to the most specific source, then to the type higher in the list", () => {
+    const everything: TypeSources = { id: 9, label: "Everything", sources: [["01 - Congregational"]] };
+    const wide = classify(sources, [everything, ...TYPES]);
+    // Deeper sources still win their files...
+    expect(wide.songs.find((candidate) => candidate.id === "MH-211")!.versions.map((version) => version.label)).toEqual(["Capo (Chords)"]);
+    // ...and on a tie the earlier type does.
+    const twin: TypeSources = { id: 8, label: "Twin", sources: [["02 - Instrument Parts", "Clarinet", "Bb"]] };
+    const tied = classify(sources, [twin, ...TYPES]);
+    expect(tied.songs.find((candidate) => candidate.id === "CL-001")!.versions.map((version) => version.label)).toEqual([
+      "Twin",
+      "Standard",
+    ]);
   });
 
-  it("returns nothing for a Songs tab without its header", () => {
-    expect(parseIndex({ songs: [["x", "y"]], versions: [], drive: driveItems }).songs).toEqual([]);
+  it("finds an \"every\" source's folder at any depth, and only inside its folder", () => {
+    const standard: TypeSources = { id: 1, label: "Standard", sources: [["01 - Congregational", ANYWHERE, "Standard"]] };
+    const found = (id: string) => classify(sources, [standard]).songs.find((candidate) => candidate.id === id)!.versions.length;
+    // Inside Hymnals/<hymnal>/ and straight inside Psalms/ alike...
+    expect(found("SSSH1989-012")).toBe(1);
+    expect(found("PS-054")).toBe(1);
+    // ...and Chords/Standard is a Standard folder too, when no type is more specific.
+    expect(found("SSSH1989-170")).toBe(2);
+    // Nothing outside 01 - Congregational.
+    expect(found("CL-001")).toBe(0);
+  });
+
+  it("takes a key or capo from the Versions tab by type name or older name, under either column name", () => {
+    const [standard, , capo, clarinet] = byId("SSSH1989-121").versions;
+    expect(standard).toMatchObject({ keys: "F", capoFret: null });
+    expect(capo).toMatchObject({ label: "Capo (Chords)", keys: "D", capoFret: "3" });
+    expect(clarinet).toMatchObject({ label: "Clarinet (Bb)", keys: "G" });
+
+    const older = classify(
+      readSheetMusic({
+        songs,
+        versions: [["Song ID", "Variant", "Edition", "Key(s)", "Capo Fret"], ["SSSH1989-121", "Standard", "(1)", "Eb", ""]],
+        drive: driveItems,
+      }),
+      TYPES,
+    );
+    expect(older.songs[0].versions[0].keys).toBe("Eb");
+    expect(classify(readSheetMusic({ songs, versions: [], drive: driveItems }), TYPES).songs[0].versions[0].keys).toBeNull();
+  });
+});
+
+describe("turning the starting types into plain folders", () => {
+  it("gives each folder only to the type that really gets its files", () => {
+    const [standard, chords] = TYPES;
+    // Every "Standard" folder includes Chords › Standard, which Standard (Chords) claims.
+    expect(foldersOwned(sources, TYPES, standard.sources[0])).toEqual([
+      ["01 - Congregational", "Hymnals", HYMNAL, "Standard"],
+      ["01 - Congregational", "Psalms", "Standard"],
+    ]);
+    expect(foldersOwned(sources, TYPES, chords.sources[0])).toEqual([
+      ["01 - Congregational", "Hymnals", HYMNAL, "Chords", "Standard"],
+      ["01 - Congregational", "Other Songs", "Chords", "Standard"],
+      ["01 - Congregational", "Psalms", "Chords", "Standard"],
+    ]);
+  });
+
+  it("sorts every file the same once the sources are plain folders", () => {
+    const plain = TYPES.map((type) => ({
+      ...type,
+      sources: type.sources.flatMap((source) =>
+        source.includes(ANYWHERE) ? foldersOwned(sources, TYPES, source) : [source],
+      ),
+    }));
+    expect(classify(sources, plain)).toEqual(index);
+  });
+});
+
+describe("sourceCoverage", () => {
+  it("names the folders a source stands for now, and the songs with a file in them", () => {
+    expect(sourceCoverage(sources, ["01 - Congregational", ANYWHERE, "Chords", "Capo"])).toEqual({
+      folders: [
+        ["01 - Congregational", "Hymnals", "Majesty Hymns", "Chords", "Capo"],
+        ["01 - Congregational", "Hymnals", HYMNAL, "Chords", "Capo"],
+      ],
+      songs: 2,
+    });
+    expect(sourceCoverage(sources, ["02 - Instrument Parts", "Clarinet", "Bb"])).toEqual({
+      folders: [["02 - Instrument Parts", "Clarinet", "Bb"]],
+      songs: 2,
+    });
+    expect(sourceCoverage(sources, ["Nowhere"])).toEqual({ folders: [], songs: 0 });
   });
 });
 
 describe("findFile and fileLabel", () => {
-  it("names downloads by variant and version", () => {
+  it("names downloads by type and version", () => {
     const hallelujah = byId("SSSH1989-170");
-    const second = findFile(hallelujah, "chords-2.mscz")!;
+    const second = findFile(hallelujah, "standard-chords-2.mscz")!;
     expect(second.file.driveFileId).toBe("1drive-170-v2");
-    expect(fileLabel(second.version, second.file)).toBe("Chords, Version 2");
+    expect(fileLabel(second.version)).toBe("Standard (Chords), Version 2");
 
-    const capo = findFile(byId("SSSH1989-121"), "capo-1-guitar.pdf")!;
-    expect(fileLabel(capo.version, capo.file)).toBe("Capo - Guitar");
+    const capo = findFile(byId("SSSH1989-121"), "capo-chords-1.pdf")!;
+    expect(fileLabel(capo.version)).toBe("Capo (Chords)");
     expect(findFile(hallelujah, "nope.pdf")).toBeNull();
   });
 });
@@ -293,7 +400,7 @@ describe("access and the public view", () => {
     const music = view("SSSH1989-121");
     expect(music.available).toBe(true);
     expect(music.copyright).toBe("not-copyrighted");
-    expect(music.versions[0]).toMatchObject({ variant: "Standard", version: "1", keys: "F" });
+    expect(music.versions[0]).toMatchObject({ label: "Standard", version: "1", keys: "F" });
     expect(music.versions[0].files[0].href).toBe("/library/songs/x/sheet-music/standard-1.pdf");
   });
 

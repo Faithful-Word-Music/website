@@ -1,9 +1,9 @@
 import Link from "next/link";
 
+import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
-import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
 import { formatCountdown, splitDateLabel } from "@/lib/service-time";
@@ -12,8 +12,8 @@ const copy = dashboardContent.comingUp;
 
 /**
  * The next services and their songs. Someone with an assigned sheet music
- * type gets a "Sheet Music" link under each song that has that type - and
- * no link at all under one that doesn't.
+ * type gets their sheet music for each service as one PDF, with how to print
+ * it - all of it or only some - in a dialog beside the button.
  */
 export function ComingUp({
   services,
@@ -69,7 +69,7 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
   const hasSongs = service.slots.length > 0;
 
   return (
-    <Card className="relative h-full overflow-hidden p-5 sm:p-6">
+    <Card className="relative flex h-full flex-col overflow-hidden p-5 sm:p-6">
       {flagged ? <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gold" /> : null}
 
       <p className="flex flex-wrap items-center gap-3">
@@ -97,6 +97,17 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
       </ol>
+
+      {service.packetHref ? (
+        // mt-auto: on a row of cards, the buttons line up along the bottom.
+        <div className="mt-auto pt-5">
+          <ServiceSheetMusic
+            href={service.packetHref}
+            songs={service.packetSongs}
+            label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
+          />
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -110,20 +121,6 @@ function SongRow({ song }: { song: ComingUpSong | null }) {
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
         {song ? <SongLink title={song.title} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
-        {song?.sheetHref ? (
-          <a
-            href={song.sheetHref}
-            target="_blank"
-            rel="noopener"
-            className={cn(
-              "mt-1 flex w-fit items-center gap-1 text-xs text-muted underline decoration-line underline-offset-4",
-              "transition-colors hover:text-ink hover:decoration-gold",
-            )}
-          >
-            {copy.sheet.label}
-            <span className="sr-only"> {copy.sheet.newTab}</span>
-          </a>
-        ) : null}
       </span>
       {song?.key ? (
         <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">

@@ -149,9 +149,8 @@ export const AUTH_SCHEMA = [
      PRIMARY KEY (clerk_env, clerk_user_id, title_id)
    )`,
   // The sheet music each person is given on their Dashboard, chosen for them
-  // by whoever looks after the sheet music (manage_sheet_music). A variant
-  // from the Drive folders (Standard, Chords, Capo...) and, for an
-  // instrument part or the capo chart, its instrument. One per person.
+  // by whoever looks after the sheet music (manage_sheet_music): one type
+  // per person (type_id, added below).
   `CREATE TABLE IF NOT EXISTS user_sheet_music (
      ${ENV},
      clerk_user_id text        NOT NULL,
@@ -161,6 +160,44 @@ export const AUTH_SCHEMA = [
      assigned_at   timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (clerk_env, clerk_user_id)
    )`,
+  // The sheet music types offered, named and ordered under Admin ->
+  // Configuration. legacy_key ("Capo|Guitar") marks the starting types, so
+  // assignments made before types existed can be moved onto them.
+  `CREATE TABLE IF NOT EXISTS sheet_music_types (
+     id         serial PRIMARY KEY,
+     ${ENV},
+     label      text        NOT NULL,
+     sort_order integer     NOT NULL DEFAULT 0,
+     legacy_key text,
+     created_at timestamptz NOT NULL DEFAULT now()
+   )`,
+  // An early shape (one variant + instrument per type) only ever existed in
+  // Development: drop its rows and columns so the defaults seed afresh.
+  `DO $$ BEGIN
+     IF EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'sheet_music_types' AND column_name = 'variant') THEN
+       DELETE FROM sheet_music_types;
+       DROP INDEX IF EXISTS sheet_music_types_files;
+       ALTER TABLE sheet_music_types DROP COLUMN variant, DROP COLUMN instrument;
+     END IF;
+   END $$`,
+  `ALTER TABLE sheet_music_types ADD COLUMN IF NOT EXISTS legacy_key text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sheet_music_types_label ON sheet_music_types (clerk_env, lower(label))`,
+  // Where a type's files are: folder names below "Sheet Music", with '*'
+  // standing for any collection folder. Everything inside belongs to the type.
+  `CREATE TABLE IF NOT EXISTS sheet_music_type_sources (
+     id         serial PRIMARY KEY,
+     ${ENV},
+     type_id    integer     NOT NULL REFERENCES sheet_music_types (id) ON DELETE CASCADE,
+     path       text[]      NOT NULL,
+     sort_order integer     NOT NULL DEFAULT 0,
+     created_at timestamptz NOT NULL DEFAULT now()
+   )`,
+  // Assignments point at a type; the variant/instrument columns are the
+  // older form, kept only to move those assignments over (see store.ts).
+  `ALTER TABLE user_sheet_music ADD COLUMN IF NOT EXISTS type_id integer
+     REFERENCES sheet_music_types (id) ON DELETE CASCADE`,
+  `ALTER TABLE user_sheet_music ALTER COLUMN variant DROP NOT NULL`,
 ];
 
 /** The administrator role row, which the bootstrap script needs before it can assign it. */

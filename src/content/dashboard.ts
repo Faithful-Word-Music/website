@@ -65,6 +65,11 @@ export const dashboardContent = {
     close: "Close",
   },
 
+  /** The row under Coming up: brush up, sheet music to finish, new sheet music. */
+  gettingReady: {
+    title: "Getting ready",
+  },
+
   brushUp: {
     title: "Songs to brush up on",
     lead: "Next two weeks, not sung for a while.",
@@ -83,9 +88,10 @@ export const dashboardContent = {
     gaps: {
       noEntry: "Not in the Sheet Music Index",
       noFiles: "No files in Drive",
-      noStandard: "No Standard score",
-      /** {charts} is replaced, e.g. "Standard, Chords". */
-      missingPdf: "No PDF for {charts}",
+      /** {type} is replaced with the first sheet music type, e.g. "Standard". */
+      noMainType: "No {type} sheet music",
+      /** {types} is replaced, e.g. "Standard, Capo (Chords)". */
+      missingPdf: "No PDF for {types}",
       rights: "Rights need review",
     },
     unavailable: "The Sheet Music Index could not be read just now.",
@@ -130,10 +136,38 @@ export const dashboardContent = {
     fullList: "Full song list",
     notPosted: "Songs not posted yet",
     pendingSong: "To be announced",
-    /** The link to a song's sheet music: only ever the type assigned to the person. */
-    sheet: {
-      label: "Sheet Music",
-      newTab: "(opens in a new tab)",
+    /** The whole service's sheet music as one PDF, to print in one go. */
+    packet: {
+      button: "Sheet music for this service",
+      /** {count} songs in it. */
+      count: ["{count} song · PDF", "{count} songs · PDF"],
+      newTab: "(PDF, opens in a new tab)",
+      /** The "i" beside it: a dialog on how to print all of it, or only some. */
+      help: {
+        toggle: "How to print",
+        title: "Printing sheet music",
+        intro: "You can print the whole service, or only the songs you need.",
+        close: "Close",
+        open: "Open the PDF",
+        whole: {
+          heading: "The whole service",
+          body: "Open the PDF and print it. Every song prints, in order.",
+        },
+        some: {
+          heading: "Only some songs",
+          steps: [
+            "Open the PDF and choose Print.",
+            "Change Pages from All to Custom (on some phones, Range).",
+            "Type the pages you want, like 3 or 1-2.",
+          ],
+          twoPages: "Some songs are two pages long. Count both: if the first song is pages 1-2, the second starts on page 3.",
+          inOrder: "In this PDF, in order",
+        },
+        one: {
+          heading: "Just one song?",
+          body: "You can also tap its title in the list to open its song page, and print it from there.",
+        },
+      },
     },
     none: "No services are scheduled yet.",
     unavailable: "The song list could not be loaded just now.",

@@ -8,7 +8,7 @@ import {
   setOverrideAction,
   setSheetMusicTypeAction,
   setTitlesAction,
-  setUserRoleAction,
+  setUserRolesAction,
 } from "@/app/admin/actions";
 import { ActionMessage, SelectField, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
@@ -36,7 +36,10 @@ function useAction() {
   return { pending, result, run };
 }
 
-/** Tick a role to give it, untick to take it away. Member is held by everyone and cannot be removed. */
+/**
+ * Tick a role to give it, untick to take it away, then save - nothing changes
+ * until Save roles is pressed. Member is held by everyone and cannot be removed.
+ */
 export function RoleEditor({
   userId,
   roles,
@@ -52,13 +55,23 @@ export function RoleEditor({
   canEditSelf: boolean;
 }) {
   const { pending, result, run } = useAction();
+  const [chosen, setChosen] = useState<string[]>(assigned);
+
+  const changes = roles
+    .filter((role) => role.key !== MEMBER_ROLE && chosen.includes(role.key) !== assigned.includes(role.key))
+    .map((role) => ({ roleKey: role.key, assigned: chosen.includes(role.key) }));
+  const editable = !isSelf || canEditSelf;
+
+  function toggle(key: string) {
+    setChosen((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  }
 
   return (
     <div className="space-y-3">
       <ul className="divide-y divide-line rounded-card border border-line">
         {roles.map((role) => {
           const isMember = role.key === MEMBER_ROLE;
-          const checked = isMember || assigned.includes(role.key);
+          const checked = isMember || chosen.includes(role.key);
           const locked = isMember || (isSelf && (!canEditSelf || role.key === ADMIN_ROLE));
           return (
             <li key={role.key}>
@@ -72,7 +85,7 @@ export function RoleEditor({
                   type="checkbox"
                   checked={checked}
                   disabled={locked || pending}
-                  onChange={() => run(() => setUserRoleAction(userId, role.key, !checked))}
+                  onChange={() => toggle(role.key)}
                   className="mt-1 h-4 w-4 accent-[var(--color-ink)]"
                 />
                 <span>
@@ -95,6 +108,11 @@ export function RoleEditor({
             ? "You can add roles to yourself, but not remove your own Administrator role."
             : "You cannot change your own roles. An administrator can."}
         </p>
+      ) : null}
+      {editable ? (
+        <Button type="button" disabled={pending || changes.length === 0} onClick={() => run(() => setUserRolesAction(userId, changes))}>
+          {pending ? "Saving…" : "Save roles"}
+        </Button>
       ) : null}
       <ActionMessage result={result} />
     </div>
@@ -213,17 +231,18 @@ export function SheetMusicTypeEditor({
   assigned,
 }: {
   userId: string;
+  /** The types offered, keyed by id, in their configured order. */
   types: Array<{ key: string; label: string }>;
-  assigned: { key: string; label: string } | null;
+  /** The key of the type they have, if any. */
+  assigned: string | null;
 }) {
   const ids = useId();
   const { pending, result, run } = useAction();
-  const [chosen, setChosen] = useState(assigned?.key ?? NO_SHEET_MUSIC);
+  const [chosen, setChosen] = useState(assigned ?? NO_SHEET_MUSIC);
 
-  const listed = assigned && !types.some((type) => type.key === assigned.key) ? [assigned, ...types] : types;
   const options = [
     { value: NO_SHEET_MUSIC, label: "None - no sheet music links" },
-    ...listed.map((type) => ({ value: type.key, label: type.label })),
+    ...types.map((type) => ({ value: type.key, label: type.label })),
   ];
 
   return (
@@ -231,8 +250,8 @@ export function SheetMusicTypeEditor({
       <SelectField id={`${ids}-type`} label="Sheet music type" value={chosen} options={options} onChange={setChosen} />
       <Button
         type="button"
-        disabled={pending || chosen === (assigned?.key ?? NO_SHEET_MUSIC)}
-        onClick={() => run(() => setSheetMusicTypeAction(userId, chosen === NO_SHEET_MUSIC ? null : chosen))}
+        disabled={pending || chosen === (assigned ?? NO_SHEET_MUSIC)}
+        onClick={() => run(() => setSheetMusicTypeAction(userId, chosen === NO_SHEET_MUSIC ? null : Number(chosen)))}
       >
         {pending ? "Saving…" : "Save sheet music"}
       </Button>
@@ -268,7 +287,7 @@ export function TitleEditor({
   return (
     <div className="space-y-3">
       {visible.length === 0 ? (
-        <p className="text-sm text-muted">There are no titles yet. Add some under Titles &amp; instruments.</p>
+        <p className="text-sm text-muted">There are no titles yet. Add some under Configuration.</p>
       ) : (
         <ul className="divide-y divide-line rounded-card border border-line">
           {visible.map((title) => {

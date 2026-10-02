@@ -49,9 +49,10 @@ export function ListCard({
       <Card className="flex h-full flex-col overflow-hidden">
         <header className="px-5 pb-3 pt-5">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 id={headingId} className="font-display text-xl text-ink">
+            {/* h3: every card sits under a section heading (Getting ready, People). */}
+            <h3 id={headingId} className="font-display text-xl text-ink">
               {title}
-            </h2>
+            </h3>
             {aside}
           </div>
           {lead ? <p className="mt-1 text-sm text-muted">{lead}</p> : null}

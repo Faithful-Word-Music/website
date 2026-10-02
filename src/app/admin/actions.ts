@@ -50,10 +50,18 @@ import {
   setSheetMusicType,
   setUserTitles,
   updateRole,
+  addSheetMusicSource,
+  addSheetMusicType,
+  deleteSheetMusicType,
+  listSheetMusicTypes,
+  moveSheetMusicType,
+  removeSheetMusicSource,
+  renameSheetMusicType,
   type OptionList,
 } from "@/lib/auth/store";
-import { getSheetMusicIndex } from "@/lib/sheet-music-index";
-import { availableTypes, typeKey, typeLabel } from "@/lib/sheet-music-type";
+import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
+import { getSheetMusicSources } from "@/lib/sheet-music-index";
+import { describeSource } from "@/lib/sheet-music-type";
 
 /**
  * Every change made from the admin area. Server actions are public POST
@@ -225,12 +233,33 @@ export async function revokeInvitationAction(invitationId: unknown): Promise<Act
 // People: roles, exceptions, titles, access
 // ---------------------------------------------------------------------------
 
-export async function setUserRoleAction(userId: unknown, roleKey: unknown, assigned: unknown): Promise<ActionResult> {
+/**
+ * Saves a batch of role changes ({ roleKey, assigned }) at once. Every change
+ * is checked before any is applied, so one refused change saves nothing.
+ */
+export async function setUserRolesAction(userId: unknown, changes: unknown): Promise<ActionResult> {
   return withPermission("manage_roles", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
-    if (!target.success || typeof roleKey !== "string" || typeof assigned !== "boolean") {
+    if (
+      !target.success ||
+      !Array.isArray(changes) ||
+      changes.length === 0 ||
+      changes.length > 50 ||
+      !changes.every(
+        (change) =>
+          typeof change === "object" &&
+          change !== null &&
+          typeof change.roleKey === "string" &&
+          typeof change.assigned === "boolean",
+      )
+    ) {
       return { ok: false, error: "Unknown person or role." };
     }
+    const requested = changes as Array<{ roleKey: string; assigned: boolean }>;
+    if (new Set(requested.map((change) => change.roleKey)).size !== requested.length) {
+      return { ok: false, error: "Unknown person or role." };
+    }
+
     // Your own roles: only an administrator may change them - they already
     // hold every permission, so no role can raise them further - and never
     // the Administrator role itself, so nobody can lock themselves out.
@@ -238,30 +267,38 @@ export async function setUserRoleAction(userId: unknown, roleKey: unknown, assig
       if (!isAdmin(viewer)) {
         return { ok: false, error: "You cannot change your own roles. Ask an administrator." };
       }
-      if (roleKey === ADMIN_ROLE) {
+      if (requested.some((change) => change.roleKey === ADMIN_ROLE)) {
         return { ok: false, error: "You cannot remove your own Administrator role. Ask another administrator." };
       }
-    }
-    const role = await getRole(viewer.env, roleKey);
-    if (!role) return { ok: false, error: "That role no longer exists." };
-    if (roleKey === ADMIN_ROLE && !isAdmin(viewer)) {
-      return { ok: false, error: "Only administrators can give or remove the Administrator role." };
-    }
-    const rolePermissions = role.permissions.filter(isPermission);
-    if (assigned && exceedsOwn(viewer, rolePermissions)) {
-      return { ok: false, error: "That role includes permissions you do not have yourself." };
     }
     if (await targetIsProtectedFrom(viewer, target.data)) {
       return { ok: false, error: "Only administrators can change an administrator's roles." };
     }
+    for (const change of requested) {
+      const role = await getRole(viewer.env, change.roleKey);
+      if (!role) return { ok: false, error: "That role no longer exists." };
+      if (change.roleKey === ADMIN_ROLE && !isAdmin(viewer)) {
+        return { ok: false, error: "Only administrators can give or remove the Administrator role." };
+      }
+      if (change.assigned && exceedsOwn(viewer, role.permissions.filter(isPermission))) {
+        return { ok: false, error: `${role.label} includes permissions you do not have yourself.` };
+      }
+    }
 
-    if (assigned) {
-      await assignRole(viewer.env, target.data, roleKey, viewer.userId);
-    } else if ((await removeRole(viewer.env, target.data, roleKey)) === "last-admin") {
-      return { ok: false, error: "This is the only administrator. Make someone else an administrator first." };
+    // Removing the last administrator is the one change that can still be
+    // refused, so it goes first - before anything else has been saved.
+    const ordered = [...requested].sort(
+      (a, b) => Number(b.roleKey === ADMIN_ROLE && !b.assigned) - Number(a.roleKey === ADMIN_ROLE && !a.assigned),
+    );
+    for (const change of ordered) {
+      if (change.assigned) {
+        await assignRole(viewer.env, target.data, change.roleKey, viewer.userId);
+      } else if ((await removeRole(viewer.env, target.data, change.roleKey)) === "last-admin") {
+        return { ok: false, error: "This is the only administrator. Make someone else an administrator first." };
+      }
     }
     revalidatePath(`/admin/users/${target.data}`);
-    return { ok: true, value: null, message: assigned ? `Added ${role.label}.` : `Removed ${role.label}.` };
+    return { ok: true, value: null, message: "Roles saved." };
   });
 }
 
@@ -319,30 +356,28 @@ export async function setTitlesAction(userId: unknown, titleIds: unknown, primar
 }
 
 /**
- * Chooses the one type of sheet music a person is given (a key such as
- * "Capo|Guitar"), or clears it (null). Only a type the Sheet Music Index
- * actually has can be chosen - checked here against the Index itself.
+ * Chooses the one type of sheet music a person is given (its id), or clears
+ * it (null). Only a type offered under Admin ->
+ * Configuration can be chosen - checked here against that list.
  */
-export async function setSheetMusicTypeAction(userId: unknown, key: unknown): Promise<ActionResult> {
+export async function setSheetMusicTypeAction(userId: unknown, typeId: unknown): Promise<ActionResult> {
   return withPermission("manage_sheet_music", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success) return { ok: false, error: "Unknown person." };
 
-    if (key === null) {
+    if (typeId === null) {
       await setSheetMusicType(viewer.env, target.data, null, viewer.userId);
       revalidatePath(`/admin/users/${target.data}`);
       return { ok: true, value: null, message: "Sheet music cleared. Their Dashboard shows no sheet music links." };
     }
 
-    if (typeof key !== "string" || key.length > 200) return { ok: false, error: "Unknown sheet music type." };
-    const index = await getSheetMusicIndex();
-    if (!index.ok) return { ok: false, error: "The Sheet Music Index could not be read. Please try again shortly." };
-    const type = availableTypes(index.index).find((candidate) => typeKey(candidate) === key);
+    const id = parseId(typeId);
+    const type = id ? (await listSheetMusicTypes(viewer.env)).find((candidate) => candidate.id === id) : undefined;
     if (!type) return { ok: false, error: "That sheet music type no longer exists." };
 
-    await setSheetMusicType(viewer.env, target.data, type, viewer.userId);
+    await setSheetMusicType(viewer.env, target.data, type.id, viewer.userId);
     revalidatePath(`/admin/users/${target.data}`);
-    return { ok: true, value: null, message: `Sheet music set to ${typeLabel(type)}.` };
+    return { ok: true, value: null, message: `Sheet music set to ${type.label}.` };
   });
 }
 
@@ -471,7 +506,7 @@ export async function addOptionAction(list: unknown, label: unknown): Promise<Ac
     if ((await addOption(viewer.env, which, parsed.data)) === "exists") {
       return { ok: false, error: "That is already on the list." };
     }
-    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/configuration");
     return { ok: true, value: null, message: `Added ${parsed.data}.` };
   });
 }
@@ -486,7 +521,7 @@ export async function renameOptionAction(list: unknown, id: unknown, label: unkn
     if ((await renameOption(viewer.env, which, optionId, parsed.data)) === "exists") {
       return { ok: false, error: "That name is already on the list." };
     }
-    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/configuration");
     return { ok: true, value: null, message: "Renamed." };
   });
 }
@@ -497,7 +532,7 @@ export async function archiveOptionAction(list: unknown, id: unknown, archived: 
     const optionId = parseId(id);
     if (!which || !optionId || typeof archived !== "boolean") return { ok: false, error: "Unknown item." };
     await setOptionArchived(viewer.env, which, optionId, archived);
-    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/configuration");
     return { ok: true, value: null, message: archived ? "Archived." : "Restored." };
   });
 }
@@ -509,7 +544,7 @@ export async function deleteOptionAction(list: unknown, id: unknown): Promise<Ac
     const optionId = parseId(id);
     if (!which || !optionId) return { ok: false, error: "Unknown item." };
     await deleteOption(viewer.env, which, optionId);
-    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/configuration");
     revalidatePath("/admin/users", "layout");
     return { ok: true, value: null, message: "Deleted." };
   });
@@ -521,7 +556,128 @@ export async function moveOptionAction(list: unknown, id: unknown, direction: un
     const optionId = parseId(id);
     if (!which || !optionId || (direction !== "up" && direction !== "down")) return { ok: false, error: "Unknown item." };
     await moveOption(viewer.env, which, optionId, direction);
-    revalidatePath("/admin/profile-options");
+    revalidatePath("/admin/configuration");
     return { ok: true, value: null };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sheet music types and their source folders
+// ---------------------------------------------------------------------------
+
+function revalidateSheetMusicTypes() {
+  revalidatePath("/admin/configuration");
+  revalidatePath("/admin/users", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/library/songs", "layout");
+}
+
+export async function addSheetMusicTypeAction(label: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const parsed = optionLabelSchema.safeParse(label);
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    if ((await addSheetMusicType(viewer.env, parsed.data)) === "exists") {
+      return { ok: false, error: "Another type already has that name." };
+    }
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null, message: `Added ${parsed.data}. Now add a source folder for it.` };
+  });
+}
+
+export async function renameSheetMusicTypeAction(id: unknown, label: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const typeId = parseId(id);
+    if (!typeId) return { ok: false, error: "Unknown type." };
+    const parsed = optionLabelSchema.safeParse(label);
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    if ((await renameSheetMusicType(viewer.env, typeId, parsed.data)) === "exists") {
+      return { ok: false, error: "Another type already has that name." };
+    }
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null, message: "Renamed." };
+  });
+}
+
+/** Deletes a type; anyone assigned it is left with no sheet music type. */
+export async function deleteSheetMusicTypeAction(id: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const typeId = parseId(id);
+    if (!typeId) return { ok: false, error: "Unknown type." };
+    await deleteSheetMusicType(viewer.env, typeId);
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null, message: "Deleted." };
+  });
+}
+
+export async function moveSheetMusicTypeAction(id: unknown, direction: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const typeId = parseId(id);
+    if (!typeId || (direction !== "up" && direction !== "down")) return { ok: false, error: "Unknown type." };
+    await moveSheetMusicType(viewer.env, typeId, direction);
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null };
+  });
+}
+
+/**
+ * A source folder as sent: folder names below "Sheet Music". Checked against
+ * Drive itself: the folder must be there, and must not be a PDF or MuseScore
+ * folder (a source always takes both).
+ */
+async function checkSourcePath(
+  value: unknown,
+): Promise<{ ok: true; path: string[]; coverage: SourceCoverage } | { ok: false; error: string }> {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > 20 ||
+    !value.every((segment) => typeof segment === "string" && segment.length > 0 && segment.length <= 200)
+  ) {
+    return { ok: false, error: "Please choose a folder." };
+  }
+  const path = value as string[];
+  if (path.includes(ANYWHERE)) return { ok: false, error: "Please choose a folder." };
+  if (FORMAT_FOLDERS.has(path[path.length - 1].toLowerCase())) {
+    return { ok: false, error: "Choose the folder above PDF and MuseScore; a source always takes both." };
+  }
+  const drive = await getSheetMusicSources();
+  if (!drive.ok) return { ok: false, error: "Google Drive could not be read just now. Please try again shortly." };
+  const coverage = sourceCoverage(drive.sources, path);
+  if (coverage.folders.length === 0) return { ok: false, error: "That folder is no longer in Drive." };
+  return { ok: true, path, coverage };
+}
+
+type SourceCoverage = ReturnType<typeof sourceCoverage>;
+
+/** What a source would cover, for the picker's preview. Changes nothing. */
+export async function previewSheetMusicSourceAction(path: unknown): Promise<ActionResult<SourceCoverage>> {
+  return withPermission("manage_sheet_music", async () => {
+    const checked = await checkSourcePath(path);
+    if (!checked.ok) return checked;
+    return { ok: true, value: checked.coverage };
+  });
+}
+
+export async function addSheetMusicSourceAction(typeId: unknown, path: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const id = parseId(typeId);
+    if (!id) return { ok: false, error: "Unknown type." };
+    const checked = await checkSourcePath(path);
+    if (!checked.ok) return checked;
+    const result = await addSheetMusicSource(viewer.env, id, checked.path);
+    if (result === "missing") return { ok: false, error: "That type no longer exists." };
+    if (result === "exists") return { ok: false, error: "This type already has that source." };
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null, message: `Folder added: ${describeSource(checked.path)}.` };
+  });
+}
+
+export async function removeSheetMusicSourceAction(sourceId: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const id = parseId(sourceId);
+    if (!id) return { ok: false, error: "Unknown source." };
+    await removeSheetMusicSource(viewer.env, id);
+    revalidateSheetMusicTypes();
+    return { ok: true, value: null, message: "Folder removed." };
   });
 }

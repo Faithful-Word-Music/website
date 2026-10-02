@@ -8,24 +8,25 @@ import { songKey } from "@/lib/song-list";
  * ---------------------------------------------------------------------------
  * WHERE EACH PIECE COMES FROM
  * ---------------------------------------------------------------------------
- *   The Drive folders   the files. A file's folder and name say everything:
- *                       collection, Standard / Chords / Capo, hymn number,
- *                       title and version. Dropping a file in is all it takes.
+ *   The Drive folders   the files. Nothing about their layout is assumed:
+ *                       what a file is comes only from the sheet music
+ *                       types' source folders (Admin -> Configuration).
  *   Songs tab           one row per song: details, and "Copyrighted?", which
  *                       decides whether its files may be shared.
- *   Versions tab        optional: a key or capo fret for one version. Called
- *                       "Editions" in older copies; either name works.
+ *   Versions tab        optional: a key or capo fret for one version of one
+ *                       type. Called "Editions" in older copies.
  *
- * The folder layout, below "Sheet Music/":
+ * Reading happens in two steps:
  *
- *   01 - Congregational/[Hymnals/]<Collection>/Standard/<PDF|MuseScore>/
- *   01 - Congregational/[Hymnals/]<Collection>/Chords/Standard/<PDF|MuseScore>/
- *   01 - Congregational/[Hymnals/]<Collection>/Chords/Capo/<PDF|MuseScore>/   (guitar)
- *   02 - Instrument Parts/<Instrument>/<Collection>/<PDF|MuseScore>/
- *   03 - Ensemble & Classical/<Collection>/<PDF|MuseScore>/
- *   90 - Reference/...                     never used (complete hymnals)
+ *   readSheetMusic()  (cached)  every file, joined to its song, with its
+ *                               folder path - not yet sorted into types.
+ *   classify()  (per request)   each file given to the type whose source
+ *                               folder holds it; files no source holds
+ *                               are left out.
  *
- * and the file names:
+ * A file's song: the hymn number and title come from its name, and the
+ * collection from the nearest folder above it named like a Collection on
+ * the Songs tab - wherever that folder sits.
  *
  *   "121 - Like a River Glorious.pdf"      hymn 121 (also "121 Title", "014 - Title")
  *   "Psalm 54.mscz"                        no number: matched by title
@@ -48,8 +49,7 @@ export type SheetFormat = "pdf" | "musescore";
 
 export interface SheetFile {
   format: SheetFormat;
-  instrument: string | null;
-  /** Unique within its song, e.g. "standard-1.pdf" or "capo-2-guitar.mscz". */
+  /** Unique within its song, e.g. "standard-1.pdf" or "clarinet-bb-2.mscz". */
   slug: string;
   /** SERVER ONLY. Never include in anything sent to the browser. */
   driveFileId: string;
@@ -57,9 +57,11 @@ export interface SheetFile {
   modifiedTime?: string;
 }
 
-/** One chart of a song: a variant (Standard, Chords, Capo) in one version. */
+/** One version of a song's sheet music of one type. */
 export interface SongVersion {
-  variant: string;
+  typeId: number;
+  /** The type's name: "Standard", "Capo (Chords)", "Clarinet (Bb)". */
+  label: string;
   /** "1", "2"... - from " (2)" at the end of a file name. */
   version: string;
   keys: string | null;
@@ -68,7 +70,8 @@ export interface SongVersion {
   files: SheetFile[];
 }
 
-export interface IndexSong {
+/** A song's row on the Songs tab. */
+export interface SongDetails {
   id: string;
   title: string;
   composer: string | null;
@@ -81,11 +84,18 @@ export interface IndexSong {
   occasion: string | null;
   source: string | null;
   rights: Rights;
+}
+
+export interface IndexSong extends SongDetails {
+  /** In the order of the types, then by version. */
   versions: SongVersion[];
 }
 
+/** The Index with every file sorted into its type. */
 export interface SheetMusicIndex {
   songs: IndexSong[];
+  /** The types, in their configured order. */
+  types: Array<{ id: number; label: string }>;
 }
 
 /** A file or folder as Drive lists it. */
@@ -99,6 +109,12 @@ export interface DriveItem {
 
 /** The folder everything lives under; paths are read from just below it. */
 export const ROOT_FOLDER = "Sheet Music";
+
+/** In a source, splits "inside this folder" from "every folder named this": see splitSource. */
+export const ANYWHERE = "**";
+
+/** Folders that only split a source's files by format; a source always takes both. */
+export const FORMAT_FOLDERS = new Set(["pdf", "musescore"]);
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
@@ -162,23 +178,21 @@ export function formatFromName(name: string): SheetFormat | null {
 export const FILE_EXTENSIONS: Record<SheetFormat, string> = { pdf: "pdf", musescore: "mscz" };
 
 /* ------------------------------------------------------------------------ */
-/* Reading a file's place in the folders                                    */
+/* Reading a file's name                                                    */
 /* ------------------------------------------------------------------------ */
 
-export interface DriveSheet {
-  collection: string;
+/** A sheet music file in Drive, joined to nothing yet. */
+export interface DriveFile {
+  /** The folder names between "Sheet Music" and the file. */
+  folders: string[];
   /** Hymn number as written, e.g. "014"; null for songs without one. */
   number: string | null;
   title: string;
-  variant: string;
   version: string;
   format: SheetFormat;
-  instrument: string | null;
   driveFileId: string;
   modifiedTime: string;
 }
-
-const lower = (segments: string[]) => segments.map((segment) => segment.toLowerCase());
 
 /** "(2)", "(Stedfast Baptist Church)", "(Christmas Caroling)" and the space before. */
 const BRACKETED = /\s*\(([^()]*)\)/g;
@@ -189,47 +203,17 @@ function titleKey(title: string): string {
 }
 
 /**
- * What a file is, from its folders (below "Sheet Music/") and its name.
- * null for anything the website should not use: other file types, drafts,
- * reference material, and folders that follow no known layout.
+ * What a file is, from its name: number, title, version and format. null
+ * for anything the website should not use - other file types and drafts.
  */
 export function parseDrivePath(
   folders: string[],
   name: string,
   driveFileId: string,
   modifiedTime = "",
-): DriveSheet | null {
+): DriveFile | null {
   const format = formatFromName(name);
   if (!format || /in progress/i.test(name)) return null;
-
-  const [category = "", ...rest] = folders;
-  let collection: string | undefined;
-  /** The folders below the collection: variant and format. */
-  let below: string[] = [];
-  let variant = "Standard";
-  let instrument: string | null = null;
-
-  if (/congregational/i.test(category)) {
-    const inside = rest[0]?.toLowerCase() === "hymnals" ? rest.slice(1) : rest;
-    collection = inside[0];
-    below = lower(inside.slice(1));
-    if (below.includes("capo")) {
-      variant = "Capo";
-      instrument = "Guitar";
-    } else if (below.includes("chords")) {
-      variant = "Chords";
-    }
-  } else if (/instrument parts/i.test(category)) {
-    instrument = rest[0] ?? null;
-    collection = rest[1];
-    below = rest.slice(2);
-  } else if (/ensemble|classical/i.test(category)) {
-    collection = rest[0];
-    below = rest.slice(1);
-  }
-  // A collection folder always has at least a format folder inside it, so a
-  // file sitting directly in one is not in the expected place.
-  if (!collection || below.length === 0) return null;
 
   let base = name.replace(/\.[^.]+$/, "");
   let version = "1";
@@ -242,48 +226,81 @@ export function parseDrivePath(
   const title = (numbered ? numbered[2] : base).trim();
   if (!title) return null;
 
-  return {
-    collection,
-    number: numbered ? numbered[1] : null,
-    title,
-    variant,
-    version,
-    format,
-    instrument,
-    driveFileId,
-    modifiedTime,
-  };
+  return { folders, number: numbered ? numbered[1] : null, title, version, format, driveFileId, modifiedTime };
 }
 
-/**
- * Every usable file in the listing, with its folder path worked out from
- * `parents`. Only what sits inside the "Sheet Music" folder is considered.
- */
-export function sheetsFromDrive(items: DriveItem[]): DriveSheet[] {
-  const byId = new Map(items.map((item) => [item.id, item]));
-  const sheets: DriveSheet[] = [];
+/** The folder names between "Sheet Music" and the item, or null when it is not inside it. */
+function foldersAbove(item: DriveItem, byId: Map<string, DriveItem>): string[] | null {
+  const folders: string[] = [];
+  let parent = item.parents?.[0] ? byId.get(item.parents[0]) : undefined;
+  for (let depth = 0; parent && depth < 20; depth += 1) {
+    if (parent.name === ROOT_FOLDER) return folders;
+    folders.unshift(parent.name);
+    parent = parent.parents?.[0] ? byId.get(parent.parents[0]) : undefined;
+  }
+  return null;
+}
 
+/** Every usable file inside the "Sheet Music" folder, with its folder path. */
+export function sheetsFromDrive(items: DriveItem[]): DriveFile[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const sheets: DriveFile[] = [];
   for (const item of items) {
     if (item.mimeType === FOLDER_MIME) continue;
-
-    const folders: string[] = [];
-    let parent = item.parents?.[0] ? byId.get(item.parents[0]) : undefined;
-    let insideRoot = false;
-    for (let depth = 0; parent && depth < 20; depth += 1) {
-      if (parent.name === ROOT_FOLDER) {
-        insideRoot = true;
-        break;
-      }
-      folders.unshift(parent.name);
-      parent = parent.parents?.[0] ? byId.get(parent.parents[0]) : undefined;
-    }
-    if (!insideRoot) continue;
-
+    const folders = foldersAbove(item, byId);
+    if (!folders) continue;
     const sheet = parseDrivePath(folders, item.name, item.id, item.modifiedTime);
     if (sheet) sheets.push(sheet);
   }
-
   return sheets;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Source folders                                                           */
+/* ------------------------------------------------------------------------ */
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * A source, as stored: folder names below "Sheet Music". Either
+ *   ["03 - Ensemble & Classical"]                       everything in this folder, or
+ *   ["01 - Congregational", ANYWHERE, "Chords", "Capo"]  every "Chords › Capo" folder
+ *                                                        anywhere inside 01 - Congregational.
+ */
+export function splitSource(source: readonly string[]): { inside: string[]; every: string[] | null } {
+  const at = source.indexOf(ANYWHERE);
+  return at === -1
+    ? { inside: [...source], every: null }
+    : { inside: source.slice(0, at), every: source.slice(at + 1) };
+}
+
+const startsWith = (path: readonly string[], prefix: readonly string[], at = 0) =>
+  prefix.length + at <= path.length && prefix.every((segment, index) => same(segment, path[at + index]));
+
+/**
+ * How closely a source holds a path - the number of folder names it
+ * matches, so the more specific source wins - or 0 when it does not hold it
+ * at all. Everything deeper than the matched folder is inside it.
+ */
+export function sourceMatch(path: readonly string[], source: readonly string[]): number {
+  const { inside, every } = splitSource(source);
+  if (!startsWith(path, inside)) return 0;
+  if (!every) return inside.length;
+  if (every.length === 0) return 0;
+  for (let at = inside.length; at + every.length <= path.length; at += 1) {
+    if (startsWith(path, every, at)) return inside.length + every.length;
+  }
+  return 0;
+}
+
+/** A folder in "Sheet Music", for browsing to a source. */
+export interface DriveFolder {
+  /** Folder names below "Sheet Music", ending with this one. */
+  path: string[];
+  /** Sheet music files anywhere inside it. */
+  files: number;
+  /** Named like a Collection on the Songs tab. */
+  collection: boolean;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -296,6 +313,23 @@ export interface IndexSources {
   /** The optional Versions (or older "Editions") tab; may be empty. */
   versions: string[][];
   drive: DriveItem[];
+}
+
+/** A key or capo fret from the Versions tab, for one version of one type. */
+export interface VersionNote {
+  songId: string;
+  /** As written: a type's name ("Capo (Chords)") or an older name ("Capo"). */
+  variant: string;
+  version: string;
+  keys: string | null;
+  capoFret: string | null;
+}
+
+/** Everything read from Google, before any file is sorted into a type. Cached. */
+export interface SheetMusicSources {
+  songs: Array<SongDetails & { files: DriveFile[] }>;
+  notes: VersionNote[];
+  folders: DriveFolder[];
 }
 
 /** Hymn numbers compare as numbers when they are: "012" is 12. */
@@ -312,23 +346,8 @@ function slugPart(text: string): string {
   return songKey(text).replace(/ /g, "-");
 }
 
-const VARIANT_ORDER = ["standard", "chords", "capo"];
-
-function variantRank(variant: string): number {
-  const rank = VARIANT_ORDER.indexOf(variant.toLowerCase());
-  return rank === -1 ? VARIANT_ORDER.length : rank;
-}
-
-function compareVersions(a: SongVersion, b: SongVersion): number {
-  return (
-    variantRank(a.variant) - variantRank(b.variant) ||
-    a.variant.localeCompare(b.variant) ||
-    a.version.localeCompare(b.version, undefined, { numeric: true })
-  );
-}
-
-function parseSongs(grid: string[][]): IndexSong[] {
-  const songs = new Map<string, IndexSong>();
+function parseSongs(grid: string[][]): SongDetails[] {
+  const songs = new Map<string, SongDetails>();
 
   for (const row of readTable(grid, [["song id"], ["title"]])) {
     const id = row["song id"];
@@ -348,106 +367,175 @@ function parseSongs(grid: string[][]): IndexSong[] {
       occasion: row["occasion"],
       source: row["source / organization"],
       rights: rightsFromCell(row["copyrighted?"]),
-      versions: [],
     });
   }
 
   return [...songs.values()];
 }
 
-/**
- * The Songs tab, with each song's files from Drive and any key or capo
- * from the Versions tab.
- *
- * A file joins its song by collection + hymn number, or - for songs without
- * a number - by collection + title, when exactly one song has that title.
- * A file that matches no song is left out: with no Songs row there is no
- * rights decision, so it could never be shared anyway.
- */
-export function parseIndex(sources: IndexSources): SheetMusicIndex {
-  const songs = parseSongs(sources.songs);
+/** Whether a folder name is a Collection on the Songs tab. */
+export function collectionNames(sources: Pick<SheetMusicSources, "songs">): (name: string) => boolean {
+  const names = new Set(sources.songs.flatMap((song) => (song.collection ? [song.collection.toLowerCase()] : [])));
+  return (name) => names.has(name.toLowerCase());
+}
 
-  const byNumber = new Map<string, IndexSong>();
-  const byTitle = new Map<string, IndexSong[]>();
+/**
+ * The Songs tab, with each song's files from Drive, and the Versions tab -
+ * before anything is sorted into types.
+ *
+ * A file joins its song by collection + hymn number, or by collection +
+ * title when exactly one song there has that title. Its collection is the
+ * nearest folder above it named like a Collection on the Songs tab; a file
+ * under no such folder is matched by title alone, again only when exactly
+ * one song has it. A file that matches no song is left out: with no Songs
+ * row there is no rights decision, so it could never be shared anyway.
+ */
+export function readSheetMusic(sources: IndexSources): SheetMusicSources {
+  const songs = parseSongs(sources.songs).map((song) => ({ ...song, files: [] as DriveFile[] }));
+  const isCollection = collectionNames({ songs });
+
+  const byNumber = new Map<string, (typeof songs)[number]>();
+  const byTitle = new Map<string, Array<(typeof songs)[number]>>();
+  const add = (key: string, song: (typeof songs)[number]) => byTitle.set(key, [...(byTitle.get(key) ?? []), song]);
   for (const song of songs) {
     const collection = song.collection?.toLowerCase() ?? "";
     if (song.hymnNumber) byNumber.set(`${collection}|${normalizeNumber(song.hymnNumber)}`, song);
-    const key = `${collection}|${titleKey(song.title)}`;
-    byTitle.set(key, [...(byTitle.get(key) ?? []), song]);
+    add(`${collection}|${titleKey(song.title)}`, song);
+    add(`*|${titleKey(song.title)}`, song);
   }
 
-  const songFor = (sheet: DriveSheet): IndexSong | null => {
-    const collection = sheet.collection.toLowerCase();
-    if (sheet.number) {
-      const found = byNumber.get(`${collection}|${normalizeNumber(sheet.number)}`);
-      if (found) return found;
+  const sheets = sheetsFromDrive(sources.drive);
+  for (const sheet of sheets) {
+    const collection = sheet.folders.findLast(isCollection)?.toLowerCase();
+    let song = collection && sheet.number ? byNumber.get(`${collection}|${normalizeNumber(sheet.number)}`) : undefined;
+    if (!song) {
+      const titled = byTitle.get(`${collection ?? "*"}|${titleKey(sheet.title)}`) ?? [];
+      if (titled.length === 1) song = titled[0];
     }
-    const titled = byTitle.get(`${collection}|${titleKey(sheet.title)}`) ?? [];
-    return titled.length === 1 ? titled[0] : null;
-  };
-
-  // One file per song + variant + version + format + instrument. When a file
-  // has been copied in twice, the most recently changed copy wins.
-  const chosen = new Map<string, { song: IndexSong; sheet: DriveSheet }>();
-  for (const sheet of sheetsFromDrive(sources.drive)) {
-    const song = songFor(sheet);
-    if (!song) continue;
-    const key = [song.id, sheet.variant, sheet.version, sheet.format, sheet.instrument ?? ""]
-      .join("|")
-      .toLowerCase();
-    const current = chosen.get(key);
-    if (!current || sheet.modifiedTime > current.sheet.modifiedTime) chosen.set(key, { song, sheet });
+    song?.files.push(sheet);
   }
 
-  for (const { song, sheet } of chosen.values()) {
-    let version = song.versions.find(
-      (candidate) => candidate.variant === sheet.variant && candidate.version === sheet.version,
-    );
-    if (!version) {
-      version = { variant: sheet.variant, version: sheet.version, keys: null, capoFret: null, files: [] };
-      song.versions.push(version);
-    }
-    version.files.push({
-      format: sheet.format,
-      instrument: sheet.instrument,
-      slug: "",
-      driveFileId: sheet.driveFileId,
-      modifiedTime: sheet.modifiedTime || undefined,
+  const notes: VersionNote[] = [];
+  for (const row of readTable(sources.versions, [["song id"], ["variant"], ["version", "edition"]])) {
+    const number = row["version"] ?? row["edition"];
+    if (!row["song id"] || !row["variant"] || !number) continue;
+    notes.push({
+      songId: row["song id"],
+      variant: row["variant"],
+      version: versionNumber(number),
+      keys: row["key(s)"],
+      capoFret: row["capo fret"],
     });
   }
 
-  // Optional extras: a key or capo fret for a version that has files.
-  const songsById = new Map(songs.map((song) => [song.id, song]));
-  for (const row of readTable(sources.versions, [["song id"], ["variant"], ["version", "edition"]])) {
-    const song = row["song id"] ? songsById.get(row["song id"]) : undefined;
-    const variant = row["variant"]?.toLowerCase();
-    const number = row["version"] ?? row["edition"];
-    if (!song || !variant || !number) continue;
+  return { songs, notes, folders: driveFolders(sources.drive, sheets, isCollection) };
+}
 
-    const version = song.versions.find(
-      (candidate) =>
-        candidate.variant.toLowerCase() === variant && candidate.version === versionNumber(number),
-    );
-    if (!version) continue;
-    version.keys ??= row["key(s)"];
-    version.capoFret ??= row["capo fret"];
+/** Every folder in "Sheet Music", with how many sheet music files are inside it. */
+function driveFolders(items: DriveItem[], sheets: DriveFile[], isCollection: (name: string) => boolean): DriveFolder[] {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const counts = new Map<string, number>();
+  const key = (path: readonly string[]) => path.join("/").toLowerCase();
+  for (const sheet of sheets) {
+    for (let depth = 1; depth <= sheet.folders.length; depth += 1) {
+      const prefix = key(sheet.folders.slice(0, depth));
+      counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+    }
   }
 
-  for (const song of songs) {
-    song.versions.sort(compareVersions);
+  const folders: DriveFolder[] = [];
+  for (const item of items) {
+    if (item.mimeType !== FOLDER_MIME) continue;
+    const above = foldersAbove(item, byId);
+    if (!above) continue;
+    const path = [...above, item.name];
+    folders.push({ path, files: counts.get(key(path)) ?? 0, collection: isCollection(item.name) });
+  }
+  return folders.sort((a, b) => key(a.path).localeCompare(key(b.path)));
+}
+
+/** A sheet music type as classify() needs it. */
+export interface TypeSources {
+  id: number;
+  label: string;
+  /** An older name the Versions tab may use ("Capo"); see sheet-music-type.ts. */
+  legacyVariant?: string | null;
+  /** Each source, as splitSource() reads it. */
+  sources: string[][];
+}
+
+/**
+ * The type a file belongs to: the one whose source holds it most closely
+ * (see sourceMatch), the type higher in the list on a tie, or null when no
+ * source holds it.
+ */
+export function typeForFile(folders: readonly string[], types: readonly TypeSources[]): TypeSources | null {
+  let best: { type: TypeSources; score: number } | null = null;
+  for (const type of types) {
+    for (const source of type.sources) {
+      const score = sourceMatch(folders, source);
+      if (score > 0 && (!best || score > best.score)) best = { type, score };
+    }
+  }
+  return best?.type ?? null;
+}
+
+/**
+ * Every song's files sorted into the types, in the types' order. Files no
+ * source holds are left out. One file per type + version + format: when a
+ * file has been copied in twice, the most recently changed copy wins.
+ */
+export function classify(sources: SheetMusicSources, types: readonly TypeSources[]): SheetMusicIndex {
+  const order = new Map(types.map((type, index) => [type.id, index]));
+
+  const songs = sources.songs.map(({ files, ...details }): IndexSong => {
+    const chosen = new Map<string, { type: TypeSources; file: DriveFile }>();
+    for (const file of files) {
+      const type = typeForFile(file.folders, types);
+      if (!type) continue;
+      const key = `${type.id}|${file.version}|${file.format}`;
+      const current = chosen.get(key);
+      if (!current || file.modifiedTime > current.file.modifiedTime) chosen.set(key, { type, file });
+    }
+
+    const versions: SongVersion[] = [];
+    for (const { type, file } of chosen.values()) {
+      let version = versions.find((candidate) => candidate.typeId === type.id && candidate.version === file.version);
+      if (!version) {
+        const note = sources.notes.find(
+          (candidate) =>
+            candidate.songId === details.id &&
+            candidate.version === file.version &&
+            (same(candidate.variant, type.label) || (!!type.legacyVariant && same(candidate.variant, type.legacyVariant))),
+        );
+        version = {
+          typeId: type.id,
+          label: type.label,
+          version: file.version,
+          keys: note?.keys ?? null,
+          capoFret: note?.capoFret ?? null,
+          files: [],
+        };
+        versions.push(version);
+      }
+      version.files.push({
+        format: file.format,
+        slug: "",
+        driveFileId: file.driveFileId,
+        modifiedTime: file.modifiedTime || undefined,
+      });
+    }
+
+    versions.sort(
+      (a, b) =>
+        (order.get(a.typeId) ?? 0) - (order.get(b.typeId) ?? 0) ||
+        a.version.localeCompare(b.version, undefined, { numeric: true }),
+    );
     const taken = new Set<string>();
-
-    for (const version of song.versions) {
-      version.files.sort(
-        (a, b) =>
-          (a.format === b.format ? 0 : a.format === "pdf" ? -1 : 1) ||
-          (a.instrument ?? "").localeCompare(b.instrument ?? ""),
-      );
-
+    for (const version of versions) {
+      version.files.sort((a, b) => (a.format === b.format ? 0 : a.format === "pdf" ? -1 : 1));
       for (const file of version.files) {
-        const base = [slugPart(version.variant), version.version, file.instrument && slugPart(file.instrument)]
-          .filter(Boolean)
-          .join("-");
+        const base = `${slugPart(version.label) || "type"}-${version.version}`;
         const extension = FILE_EXTENSIONS[file.format];
         let slug = `${base}.${extension}`;
         for (let copy = 2; taken.has(slug); copy += 1) slug = `${base}-${copy}.${extension}`;
@@ -455,9 +543,45 @@ export function parseIndex(sources: IndexSources): SheetMusicIndex {
         file.slug = slug;
       }
     }
-  }
+    return { ...details, versions };
+  });
 
-  return { songs };
+  return { songs, types: types.map(({ id, label }) => ({ id, label })) };
+}
+
+/**
+ * The folders an "every <name> folder" source stands for whose files really
+ * go to its type - leaving out any a more specific source of another type
+ * claims (every "Standard" folder includes Chords › Standard, which belongs
+ * to Standard (Chords)). For turning such a source into plain folders.
+ */
+export function foldersOwned(sources: SheetMusicSources, types: readonly TypeSources[], source: readonly string[]): string[][] {
+  return sourceCoverage(sources, source).folders.filter((folder) => {
+    const own = sourceMatch(folder, source);
+    return !types.some((type) =>
+      type.sources.some((other) => other !== source && sourceMatch(folder, other) > own),
+    );
+  });
+}
+
+/**
+ * What a source covers right now: the folders it stands for, and how many
+ * songs have a file inside them. For the source picker's preview.
+ */
+export function sourceCoverage(sources: SheetMusicSources, source: readonly string[]): { folders: string[][]; songs: number } {
+  const { inside, every } = splitSource(source);
+  const folders = sources.folders
+    .filter((folder) =>
+      every
+        ? every.length > 0 &&
+          folder.path.length >= inside.length + every.length &&
+          startsWith(folder.path, inside) &&
+          startsWith(folder.path, every, folder.path.length - every.length)
+        : folder.path.length === inside.length && startsWith(folder.path, inside),
+    )
+    .map((folder) => folder.path);
+  const songs = sources.songs.filter((song) => song.files.some((file) => sourceMatch(file.folders, source) > 0));
+  return { folders, songs: songs.length };
 }
 
 /**
@@ -506,10 +630,9 @@ export function findFile(song: IndexSong, slug: string): { version: SongVersion;
   return null;
 }
 
-/** "Standard", "Capo, Version 2 - Guitar": how a file is named when saved. */
-export function fileLabel(version: SongVersion, file: SheetFile): string {
-  const name = version.version === "1" ? version.variant : `${version.variant}, Version ${version.version}`;
-  return file.instrument ? `${name} - ${file.instrument}` : name;
+/** "Standard", "Clarinet (Bb), Version 2": how a file is named when saved. */
+export function fileLabel(version: SongVersion): string {
+  return version.version === "1" ? version.label : `${version.label}, Version ${version.version}`;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -518,7 +641,6 @@ export function fileLabel(version: SongVersion, file: SheetFile): string {
 
 export interface PublicSheetFile {
   format: SheetFormat;
-  instrument: string | null;
   /** Where to get it, or null when the public may not. */
   href: string | null;
   /**
@@ -530,7 +652,8 @@ export interface PublicSheetFile {
 }
 
 export interface PublicVersion {
-  variant: string;
+  /** The type's name. */
+  label: string;
   version: string;
   keys: string | null;
   capoFret: string | null;
@@ -573,7 +696,7 @@ export function toPublicSheetMusic(
     .filter((version) => version.files.length > 0)
     .map(
       (version): PublicVersion => ({
-        variant: version.variant,
+        label: version.label,
         version: version.version,
         keys: version.keys,
         capoFret: version.capoFret,
@@ -581,7 +704,6 @@ export function toPublicSheetMusic(
           const open = mayOpen(file);
           return {
             format: file.format,
-            instrument: file.instrument,
             href: open ? hrefFor(file) : null,
             membersHref: !open && membersMayOpen(file) ? hrefFor(file) : null,
           };

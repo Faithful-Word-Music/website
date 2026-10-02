@@ -22,8 +22,6 @@ import {
   resolvePermissions,
 } from "@/lib/auth/permissions";
 import { audienceFor, toProfileRecord, visibleProfile } from "@/lib/auth/profile-visibility";
-import { getSheetMusicIndex } from "@/lib/sheet-music-index";
-import { availableTypes, typeKey, typeLabel } from "@/lib/sheet-music-type";
 import { requireAnyPermission } from "@/lib/auth/session";
 import {
   getProfile,
@@ -33,6 +31,7 @@ import {
   listOptions,
   listOverrides,
   listRoles,
+  listSheetMusicTypes,
   loadAuthorization,
 } from "@/lib/auth/store";
 
@@ -65,7 +64,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
   const isSelf = person.id === viewer.userId;
 
   const managesSheetMusic = viewer.can("manage_sheet_music");
-  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, sheetType, sheetIndex] =
+  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, sheetType, sheetTypes] =
     await Promise.all([
       loadAuthorization(viewer.env, person.id),
       listOverrides(viewer.env, person.id),
@@ -75,9 +74,8 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
       getUserTitles(viewer.env, person.id),
       listOptions(viewer.env, "titles"),
       getSheetMusicType(viewer.env, person.id),
-      managesSheetMusic ? getSheetMusicIndex() : null,
+      managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
     ]);
-  const sheetTypes = sheetIndex?.ok ? availableTypes(sheetIndex.index) : null;
   const effective = resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
   const roleLabels = roles
     .filter((role) => authorization.roleKeys.includes(role.key) || role.key === MEMBER_ROLE)
@@ -127,12 +125,10 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
             {sheetTypes ? (
               <SheetMusicTypeEditor
                 userId={person.id}
-                types={sheetTypes.map((type) => ({ key: typeKey(type), label: typeLabel(type) }))}
-                assigned={sheetType ? { key: typeKey(sheetType), label: typeLabel(sheetType) } : null}
+                types={sheetTypes.map((type) => ({ key: String(type.id), label: type.label }))}
+                assigned={sheetType === null ? null : String(sheetType)}
               />
-            ) : (
-              <p className="text-sm text-muted">The Sheet Music Index could not be read just now, so types cannot be chosen.</p>
-            )}
+            ) : null}
           </Section>
         ) : null}
 

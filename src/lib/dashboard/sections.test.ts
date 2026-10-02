@@ -19,12 +19,19 @@ function focusFor(roleKeys: string[]): DashboardFocus {
   return buildFocus({ roleKeys, permissions: resolvePermissions(roleKeys, rolePermissions), titles: [], instruments: [] });
 }
 
-function file(slug: string, instrument: string | null = null, format: SheetFile["format"] = "pdf"): SheetFile {
-  return { format, instrument, slug, driveFileId: `drive-${slug}` };
+const TYPES = [
+  { id: 1, label: "Standard" },
+  { id: 2, label: "Standard (Chords)" },
+  { id: 3, label: "Capo (Chords)" },
+];
+const [STANDARD, CHORDS, CAPO] = TYPES;
+
+function file(slug: string, format: SheetFile["format"] = "pdf"): SheetFile {
+  return { format, slug, driveFileId: `drive-${slug}` };
 }
 
-function version(variant: string, files: SheetFile[]): SongVersion {
-  return { variant, version: "1", keys: null, capoFret: null, files };
+function version(type: { id: number; label: string }, files: SheetFile[]): SongVersion {
+  return { typeId: type.id, label: type.label, version: "1", keys: null, capoFret: null, files };
 }
 
 function song(versions: SongVersion[], rights: IndexSong["rights"] = "cleared"): IndexSong {
@@ -55,32 +62,36 @@ function dated(startsAt: string, titles: Array<[string, string | null]>): DatedS
 }
 
 describe("sheet-music gaps", () => {
-  it("finds nothing wrong when every chart has a PDF and the rights are settled", () => {
+  it("finds nothing wrong when every type has a PDF and the rights are settled", () => {
     const complete = song([
-      version("Standard", [file("standard-1.pdf")]),
-      version("Capo", [file("capo-1-guitar.pdf", "Guitar")]),
+      version(STANDARD, [file("standard-1.pdf")]),
+      version(CAPO, [file("capo-chords-1.pdf")]),
     ]);
-    expect(gapsFor(complete)).toEqual([]);
+    expect(gapsFor(complete, STANDARD)).toEqual([]);
   });
 
-  it("flags charts with MuseScore but no PDF, even when other PDFs exist", () => {
+  it("flags sheet music with MuseScore but no PDF, even when other PDFs exist", () => {
     const partial = song([
-      version("Standard", [file("standard-1.mscz", null, "musescore")]),
-      version("Chords", [file("chords-1.mscz", null, "musescore")]),
-      version("Capo", [file("capo-1-guitar.pdf", "Guitar")]),
+      version(STANDARD, [file("standard-1.mscz", "musescore")]),
+      version(CHORDS, [file("standard-chords-1.mscz", "musescore")]),
+      version(CAPO, [file("capo-chords-1.pdf")]),
     ]);
-    expect(gapsFor(partial)).toEqual([{ kind: "missing-pdf", charts: ["Standard", "Chords"] }]);
+    expect(gapsFor(partial, STANDARD)).toEqual([{ kind: "missing-pdf", types: ["Standard", "Standard (Chords)"] }]);
   });
 
-  it("flags a missing Index entry, missing files, a missing Standard score and unsettled rights", () => {
-    expect(gapsFor(null)).toEqual([{ kind: "no-entry" }]);
-    expect(gapsFor(song([]))).toEqual([{ kind: "no-files" }]);
-    expect(gapsFor(song([version("Capo", [file("capo-1-guitar.pdf", "Guitar")])]))).toEqual([{ kind: "no-standard" }]);
-    expect(gapsFor(song([version("Standard", [file("standard-1.pdf")])], "needs-review"))).toEqual([{ kind: "rights" }]);
+  it("flags a missing Index entry, missing files, a missing first type and unsettled rights", () => {
+    expect(gapsFor(null, STANDARD)).toEqual([{ kind: "no-entry" }]);
+    expect(gapsFor(song([]), STANDARD)).toEqual([{ kind: "no-files" }]);
+    expect(gapsFor(song([version(CAPO, [file("capo-chords-1.pdf")])]), STANDARD)).toEqual([
+      { kind: "no-main-type", type: "Standard" },
+    ]);
+    expect(gapsFor(song([version(STANDARD, [file("standard-1.pdf")])], "needs-review"), STANDARD)).toEqual([
+      { kind: "rights" },
+    ]);
   });
 
   it("looks only at the next three services, however far ahead the month is planned", () => {
-    const index: SheetMusicIndex = { songs: [] };
+    const index: SheetMusicIndex = { songs: [], types: TYPES };
     const services = ["10-04", "10-05", "10-07", "10-11", "10-14"].map((day, position) =>
       dated(`2026-${day}T10:30:00-07:00`, [[`Song ${position + 1}`, null]]),
     );
@@ -92,7 +103,7 @@ describe("sheet-music gaps", () => {
   });
 
   it("lists each upcoming song once, from the first service it is in", () => {
-    const index: SheetMusicIndex = { songs: [song([version("Standard", [file("standard-1.pdf")])])] };
+    const index: SheetMusicIndex = { songs: [song([version(STANDARD, [file("standard-1.pdf")])])], types: TYPES };
     const gaps = findSheetGaps(
       [
         dated("2026-10-11T10:30:00-07:00", [
@@ -163,7 +174,7 @@ describe("quarterGlance", () => {
 describe("newSheetMusic", () => {
   const recent = { ...file("standard-1.pdf"), modifiedTime: "2026-09-28T12:00:00Z" };
   const old = { ...file("standard-1.pdf"), modifiedTime: "2026-06-01T12:00:00Z" };
-  const indexWith = (target: SheetFile): SheetMusicIndex => ({ songs: [song([version("Standard", [target])])] });
+  const indexWith = (target: SheetFile): SheetMusicIndex => ({ songs: [song([version(STANDARD, [target])])], types: TYPES });
   const songs = [{ title: "Like a River Glorious", number: "233" }];
 
   it("lists songs whose files changed in the last two weeks", () => {

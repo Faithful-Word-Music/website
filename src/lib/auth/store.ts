@@ -3,9 +3,16 @@ import "server-only";
 import type { NeonQueryFunction } from "@neondatabase/serverless";
 
 import { getSql } from "@/lib/db";
-import type { SheetMusicType } from "@/lib/sheet-music-type";
+import { ANYWHERE } from "@/lib/sheet-music";
+import {
+  DEFAULT_SHEET_MUSIC_TYPES,
+  defaultTypes,
+  legacyVariant,
+  type ConfiguredType,
+  type StoredSource,
+} from "@/lib/sheet-music-type";
 
-import type { ClerkEnv } from "./clerk-env";
+import { currentClerkConfig, type ClerkEnv } from "./clerk-env";
 import { ADMIN_ROLE, DEFAULT_ROLES, type OverrideEffect, type PermissionOverride } from "./permissions";
 import {
   DEFAULT_INSTRUMENTS,
@@ -88,6 +95,62 @@ async function seedDefaults(sql: Sql, env: ClerkEnv): Promise<void> {
       [env, labels],
     );
   }
+  await seedSheetMusicTypes(sql, env);
+}
+
+/**
+ * The starting sheet music types, with their sources, when there are none;
+ * then any assignment still in the older variant + instrument form is moved
+ * onto the starting type it meant ("Capo|Guitar" -> Capo (Chords)).
+ */
+async function seedSheetMusicTypes(sql: Sql, env: ClerkEnv): Promise<void> {
+  const [{ count }] = (await sql.query(`SELECT count(*)::int AS count FROM sheet_music_types WHERE clerk_env = $1`, [
+    env,
+  ])) as Array<{ count: number }>;
+  if (count === 0) {
+    for (const [index, type] of DEFAULT_SHEET_MUSIC_TYPES.entries()) {
+      const [row] = (await sql.query(
+        `INSERT INTO sheet_music_types (clerk_env, label, sort_order, legacy_key) VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING RETURNING id`,
+        [env, type.label, index + 1, type.legacyKey],
+      )) as Array<{ id: number }>;
+      if (!row) continue;
+      for (const [order, path] of type.sources.entries()) {
+        await sql.query(
+          `INSERT INTO sheet_music_type_sources (clerk_env, type_id, path, sort_order) VALUES ($1, $2, $3::text[], $4)`,
+          [env, row.id, path, order + 1],
+        );
+      }
+    }
+  }
+  // A brief earlier form of source ('*' for one collection folder) only ever
+  // existed in Development: replace those with the starting types' sources.
+  const replaced = (await sql.query(
+    `DELETE FROM sheet_music_type_sources WHERE clerk_env = $1 AND '*' = ANY(path) RETURNING id`,
+    [env],
+  )) as unknown[];
+  if (replaced.length > 0) {
+    for (const type of DEFAULT_SHEET_MUSIC_TYPES) {
+      for (const [order, path] of type.sources.entries()) {
+        await sql.query(
+          `INSERT INTO sheet_music_type_sources (clerk_env, type_id, path, sort_order)
+           SELECT $1, t.id, $3::text[], $4 FROM sheet_music_types t
+            WHERE t.clerk_env = $1 AND t.legacy_key = $2
+              AND NOT EXISTS (SELECT 1 FROM sheet_music_type_sources s
+                               WHERE s.clerk_env = $1 AND s.type_id = t.id
+                                 AND lower(array_to_string(s.path, '/')) = lower(array_to_string($3::text[], '/')))`,
+          [env, type.legacyKey, path, order + 1],
+        );
+      }
+    }
+  }
+  await sql.query(
+    `UPDATE user_sheet_music u SET type_id = t.id
+       FROM sheet_music_types t
+      WHERE u.clerk_env = $1 AND t.clerk_env = $1 AND u.type_id IS NULL AND u.variant IS NOT NULL
+        AND lower(t.legacy_key) = lower(u.variant || '|' || coalesce(u.instrument, ''))`,
+    [env],
+  );
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -661,21 +724,21 @@ export async function getUserInstruments(env: ClerkEnv, userId: string): Promise
 // Assigned sheet music
 // ---------------------------------------------------------------------------
 
-/** The sheet music type assigned to each person. Anyone without one is absent from the map. */
-export async function sheetMusicTypesForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, SheetMusicType>> {
-  const result = new Map<string, SheetMusicType>();
+/** The sheet music type (its id) assigned to each person. Anyone without one is absent from the map. */
+export async function sheetMusicTypesForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
   if (userIds.length === 0) return result;
   const sql = await db(env);
   const rows = (await sql.query(
-    `SELECT clerk_user_id, variant, instrument FROM user_sheet_music
-      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[])`,
+    `SELECT clerk_user_id, type_id FROM user_sheet_music
+      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[]) AND type_id IS NOT NULL`,
     [env, userIds],
-  )) as Array<{ clerk_user_id: string; variant: string; instrument: string | null }>;
-  for (const row of rows) result.set(row.clerk_user_id, { variant: row.variant, instrument: row.instrument });
+  )) as Array<{ clerk_user_id: string; type_id: number }>;
+  for (const row of rows) result.set(row.clerk_user_id, row.type_id);
   return result;
 }
 
-export async function getSheetMusicType(env: ClerkEnv, userId: string): Promise<SheetMusicType | null> {
+export async function getSheetMusicType(env: ClerkEnv, userId: string): Promise<number | null> {
   return (await sheetMusicTypesForUsers(env, [userId])).get(userId) ?? null;
 }
 
@@ -683,22 +746,191 @@ export async function getSheetMusicType(env: ClerkEnv, userId: string): Promise<
 export async function setSheetMusicType(
   env: ClerkEnv,
   userId: string,
-  type: SheetMusicType | null,
+  typeId: number | null,
   assignedBy: string,
 ): Promise<void> {
   const sql = await db(env);
-  if (!type) {
+  if (typeId === null) {
     await sql.query(`DELETE FROM user_sheet_music WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]);
     return;
   }
   await sql.query(
-    `INSERT INTO user_sheet_music (clerk_env, clerk_user_id, variant, instrument, assigned_by)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO user_sheet_music (clerk_env, clerk_user_id, type_id, variant, instrument, assigned_by)
+     VALUES ($1, $2, $3, NULL, NULL, $4)
      ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
-       variant = EXCLUDED.variant, instrument = EXCLUDED.instrument,
+       type_id = EXCLUDED.type_id, variant = NULL, instrument = NULL,
        assigned_by = EXCLUDED.assigned_by, assigned_at = now()`,
-    [env, userId, type.variant, type.instrument, assignedBy],
+    [env, userId, typeId, assignedBy],
   );
+}
+
+// ---------------------------------------------------------------------------
+// Sheet music types and their sources (Admin -> Configuration)
+// ---------------------------------------------------------------------------
+
+export interface SheetMusicTypeItem extends ConfiguredType {
+  /** The sources with their ids, in order; `sources` holds the same paths. */
+  storedSources: StoredSource[];
+  /** How many people are assigned it. */
+  usage: number;
+}
+
+/** The types, in order, each with its sources and how many people have it. */
+export async function listSheetMusicTypes(env: ClerkEnv): Promise<SheetMusicTypeItem[]> {
+  const sql = await db(env);
+  const [types, sources] = (await Promise.all([
+    sql.query(
+      `SELECT t.id, t.label, t.legacy_key,
+              (SELECT count(*) FROM user_sheet_music u WHERE u.clerk_env = t.clerk_env AND u.type_id = t.id)::int AS usage
+         FROM sheet_music_types t WHERE t.clerk_env = $1 ORDER BY t.sort_order, t.label`,
+      [env],
+    ),
+    sql.query(`SELECT id, type_id, path FROM sheet_music_type_sources WHERE clerk_env = $1 ORDER BY sort_order, id`, [
+      env,
+    ]),
+  ])) as [
+    Array<{ id: number; label: string; legacy_key: string | null; usage: number }>,
+    Array<{ id: number; type_id: number; path: string[] }>,
+  ];
+  return types.map((type) => {
+    const own = sources.filter((source) => source.type_id === type.id).map(({ id, path }) => ({ id, path }));
+    return {
+      id: type.id,
+      label: type.label,
+      legacyKey: type.legacy_key,
+      legacyVariant: legacyVariant(type.legacy_key),
+      sources: own.map((source) => source.path),
+      storedSources: own,
+      usage: type.usage,
+    };
+  });
+}
+
+/**
+ * The types for the public pages, which must never fail over them: the
+ * defaults when accounts are not set up here or the list cannot be read.
+ */
+export async function sheetMusicTypesForSite(): Promise<ConfiguredType[]> {
+  const config = currentClerkConfig();
+  if (config.status !== "ready") return defaultTypes();
+  try {
+    return await listSheetMusicTypes(config.env);
+  } catch (error) {
+    console.error(
+      "[sheet-music] Could not read the sheet music types; using the defaults:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return defaultTypes();
+  }
+}
+
+export async function addSheetMusicType(env: ClerkEnv, label: string): Promise<"added" | "exists"> {
+  const sql = await db(env);
+  try {
+    await sql.query(
+      `INSERT INTO sheet_music_types (clerk_env, label, sort_order)
+       VALUES ($1, $2, COALESCE((SELECT max(sort_order) + 1 FROM sheet_music_types WHERE clerk_env = $1), 1))`,
+      [env, label],
+    );
+    return "added";
+  } catch (error) {
+    if (isUniqueViolation(error)) return "exists";
+    throw error;
+  }
+}
+
+export async function renameSheetMusicType(env: ClerkEnv, id: number, label: string): Promise<"renamed" | "exists"> {
+  const sql = await db(env);
+  try {
+    await sql.query(`UPDATE sheet_music_types SET label = $3 WHERE clerk_env = $1 AND id = $2`, [env, id, label]);
+    return "renamed";
+  } catch (error) {
+    if (isUniqueViolation(error)) return "exists";
+    throw error;
+  }
+}
+
+/**
+ * Deletes a type, its sources, and the assignments of it - those people get
+ * no sheet music links until given another type (all by cascade).
+ */
+export async function deleteSheetMusicType(env: ClerkEnv, id: number): Promise<void> {
+  const sql = await db(env);
+  await sql.query(`DELETE FROM sheet_music_types WHERE clerk_env = $1 AND id = $2`, [env, id]);
+}
+
+/** Swaps a type with its neighbour in the list. */
+export async function moveSheetMusicType(env: ClerkEnv, id: number, direction: "up" | "down"): Promise<void> {
+  const items = await listSheetMusicTypes(env);
+  const index = items.findIndex((item) => item.id === id);
+  const otherIndex = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || !items[otherIndex]) return;
+  const order = items.map((item) => item.id);
+  [order[index], order[otherIndex]] = [order[otherIndex], order[index]];
+  const sql = await db(env);
+  await sql.query(
+    `UPDATE sheet_music_types t SET sort_order = x.ord
+       FROM unnest($2::int[]) WITH ORDINALITY AS x(id, ord)
+      WHERE t.clerk_env = $1 AND t.id = x.id`,
+    [env, order],
+  );
+}
+
+/** Adds a source folder to a type: "missing" when the type no longer exists, "exists" when it already has it. */
+export async function addSheetMusicSource(
+  env: ClerkEnv,
+  typeId: number,
+  path: string[],
+): Promise<"added" | "exists" | "missing"> {
+  const sql = await db(env);
+  const types = (await sql.query(`SELECT 1 FROM sheet_music_types WHERE clerk_env = $1 AND id = $2`, [
+    env,
+    typeId,
+  ])) as unknown[];
+  if (types.length === 0) return "missing";
+  const existing = (await sql.query(
+    `SELECT 1 FROM sheet_music_type_sources
+      WHERE clerk_env = $1 AND type_id = $2 AND lower(array_to_string(path, '/')) = lower($3)`,
+    [env, typeId, path.join("/")],
+  )) as unknown[];
+  if (existing.length > 0) return "exists";
+  await sql.query(
+    `INSERT INTO sheet_music_type_sources (clerk_env, type_id, path, sort_order)
+     VALUES ($1, $2, $3::text[],
+             COALESCE((SELECT max(sort_order) + 1 FROM sheet_music_type_sources WHERE clerk_env = $1 AND type_id = $2), 1))`,
+    [env, typeId, path],
+  );
+  return "added";
+}
+
+export async function removeSheetMusicSource(env: ClerkEnv, sourceId: number): Promise<void> {
+  const sql = await db(env);
+  await sql.query(`DELETE FROM sheet_music_type_sources WHERE clerk_env = $1 AND id = $2`, [env, sourceId]);
+}
+
+/**
+ * Every source is a plain folder. The starting types are seeded with
+ * "every <name> folder inside <folder>" sources (the folders are only known
+ * once Drive is read); this swaps each for the folders it stands for, so
+ * they look and work exactly like any other type's. Returns whether anything
+ * changed.
+ */
+export async function expandSheetMusicSources(
+  env: ClerkEnv,
+  foldersFor: (source: string[]) => string[][],
+): Promise<boolean> {
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT id, type_id, path FROM sheet_music_type_sources WHERE clerk_env = $1 AND $2 = ANY(path) ORDER BY sort_order, id`,
+    [env, ANYWHERE],
+  )) as Array<{ id: number; type_id: number; path: string[] }>;
+  for (const row of rows) {
+    for (const folder of foldersFor(row.path)) {
+      await addSheetMusicSource(env, row.type_id, folder);
+    }
+    await removeSheetMusicSource(env, row.id);
+  }
+  return rows.length > 0;
 }
 
 /** How many instruments each person lists. Anyone listing none is absent from the map. */

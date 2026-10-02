@@ -66,10 +66,10 @@ function gapLabel(gap: SheetGap): string {
       return gaps.noEntry;
     case "no-files":
       return gaps.noFiles;
-    case "no-standard":
-      return gaps.noStandard;
+    case "no-main-type":
+      return gaps.noMainType.replace("{type}", gap.type);
     case "missing-pdf":
-      return gaps.missingPdf.replace("{charts}", gap.charts.join(", "));
+      return gaps.missingPdf.replace("{types}", gap.types.join(", "));
     case "rights":
       return gaps.rights;
   }

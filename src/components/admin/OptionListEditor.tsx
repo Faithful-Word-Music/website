@@ -255,7 +255,7 @@ export function OptionListEditor({
  * A row action: an icon, with its word beside it from sm up when `text` is
  * given. 40px square on phones, so it stays easy to tap.
  */
-function IconButton({
+export function IconButton({
   label,
   text,
   disabled,
@@ -298,7 +298,7 @@ const iconProps = {
   strokeLinejoin: "round",
 } as const;
 
-function ArrowIcon({ direction }: { direction: "up" | "down" }) {
+export function ArrowIcon({ direction }: { direction: "up" | "down" }) {
   return (
     <svg {...iconProps} className={direction === "down" ? "rotate-180" : undefined}>
       <path d="M8 13V3M4 7l4-4 4 4" />
@@ -306,7 +306,7 @@ function ArrowIcon({ direction }: { direction: "up" | "down" }) {
   );
 }
 
-function PencilIcon() {
+export function PencilIcon() {
   return (
     <svg {...iconProps}>
       <path d="M10.5 2.5l3 3L6 13H3v-3l7.5-7.5z" />

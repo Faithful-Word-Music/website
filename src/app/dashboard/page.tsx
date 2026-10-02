@@ -173,7 +173,7 @@ export default async function DashboardPage() {
           everyone (sections they don't get are simply absent):
             1. Needs your attention   - things to do
             2. Coming up              - this week's services
-            3. Brush up / to finish   - preparing for those services
+            3. Getting ready          - brush up, sheet music to finish
             4. New sheet music        - what changed
             5. People, the quarter    - the wider picture
         */}
@@ -182,13 +182,20 @@ export default async function DashboardPage() {
         <ComingUp services={comingUp} unavailable={!music.services} now={now} className="mt-10" />
 
         {hasSideSections ? (
-          // The same grid as Coming up, so these cards line up under its
-          // service cards; each shows five rows and keeps the rest inside.
-          <DashboardGrid className="mt-12">
-            {brushUp.length > 0 ? <BrushUp songs={brushUp} recordsBegan={recordsBegan} /> : null}
-            {gaps && gaps.length > 0 ? <SheetGaps songs={gaps} /> : null}
-            {recentSheets.length > 0 ? <NewSheetMusic songs={recentSheets} now={now} /> : null}
-          </DashboardGrid>
+          // Its own heading, so it reads as a section of its own rather than
+          // more of Coming up. The same grid as Coming up, so these cards
+          // line up under its service cards; each shows five rows and keeps
+          // the rest inside.
+          <section aria-labelledby="dashboard-getting-ready" className="mt-14">
+            <h2 id="dashboard-getting-ready" className="font-display text-2xl text-ink">
+              {copy.gettingReady.title}
+            </h2>
+            <DashboardGrid className="mt-4">
+              {brushUp.length > 0 ? <BrushUp songs={brushUp} recordsBegan={recordsBegan} /> : null}
+              {gaps && gaps.length > 0 ? <SheetGaps songs={gaps} /> : null}
+              {recentSheets.length > 0 ? <NewSheetMusic songs={recentSheets} now={now} /> : null}
+            </DashboardGrid>
+          </section>
         ) : null}
 
         {focus.managesSheetMusic && !music.index ? (

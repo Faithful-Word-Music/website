@@ -200,7 +200,7 @@ export const songListContent = {
       downloadMuseScore: "Download MuseScore",
       /** Format names, for files listed but not available. */
       formats: { pdf: "PDF", musescore: "MuseScore" },
-      /** A second or third chart of the same variant. {version} is replaced at render time. */
+      /** A second or third version of the same type. {version} is replaced at render time. */
       version: "Version {version}",
       /** {fret} is replaced at render time. */
       capo: "Capo {fret}",

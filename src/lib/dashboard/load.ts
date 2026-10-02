@@ -3,11 +3,16 @@ import "server-only";
 import { siteConfig } from "@/config/site";
 import { listAccounts, listInvitations } from "@/lib/auth/clerk";
 import type { Viewer } from "@/lib/auth/session";
-import { instrumentCountsForUsers, rolesForUsers, sheetMusicTypesForUsers, titlesForUsers } from "@/lib/auth/store";
+import {
+  instrumentCountsForUsers,
+  listSheetMusicTypes,
+  rolesForUsers,
+  sheetMusicTypesForUsers,
+  titlesForUsers,
+} from "@/lib/auth/store";
 import { getSongList } from "@/lib/google-sheets";
 import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
-import { typeLabel } from "@/lib/sheet-music-type";
 import { getReportInputs } from "@/lib/song-archive";
 import type { DatedService, Service } from "@/types/song-list";
 
@@ -48,11 +53,12 @@ export async function loadPeople(viewer: Viewer): Promise<{ people: Person[]; in
     const accounts = await listAccounts({ limit: 500, offset: 0 });
     if (!accounts.ok) return null;
     const ids = accounts.value.accounts.map((account) => account.id);
-    const [roles, titles, instrumentCounts, sheetTypes] = await Promise.all([
+    const [roles, titles, instrumentCounts, sheetTypes, offered] = await Promise.all([
       rolesForUsers(viewer.env, ids),
       titlesForUsers(viewer.env, ids),
       instrumentCountsForUsers(viewer.env, ids),
       sheetMusicTypesForUsers(viewer.env, ids),
+      listSheetMusicTypes(viewer.env),
     ]);
     return {
       people: accounts.value.accounts.map((account) => {
@@ -62,7 +68,7 @@ export async function loadPeople(viewer: Viewer): Promise<{ people: Person[]; in
           name: account.fullName,
           title: titles.get(account.id)?.[0]?.label ?? null,
           roleKeys: roles.get(account.id) ?? [],
-          sheetMusic: sheetType ? typeLabel(sheetType) : null,
+          sheetMusic: offered.find((type) => type.id === sheetType)?.label ?? null,
         };
       }),
       instrumentCounts,

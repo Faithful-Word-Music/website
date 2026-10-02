@@ -59,7 +59,7 @@ export function AboutSong({ music, className = "mt-12" }: { music: PublicSheetMu
   );
 }
 
-/** One line of the list: a version, for one instrument. */
+/** One line of the list: one version of one type. */
 interface Row {
   key: string;
   label: string;
@@ -68,39 +68,35 @@ interface Row {
 }
 
 /**
- * Each version, split by instrument, labelled so the list reads plainly:
- * "Standard", "Capo · Version 2 · Guitar", "Standard · Piano". The version
- * number is mentioned only when a variant has more than one.
+ * Each version, named by its type so the list reads plainly: "Standard",
+ * "Capo (Chords) · Version 2", "Clarinet (Bb)". The version number is
+ * mentioned only when a type has more than one.
  */
 function toRows(versions: PublicVersion[]): Row[] {
-  const perVariant = new Map<string, number>();
+  const perType = new Map<string, number>();
   for (const version of versions) {
-    perVariant.set(version.variant, (perVariant.get(version.variant) ?? 0) + 1);
+    perType.set(version.label, (perType.get(version.label) ?? 0) + 1);
   }
 
-  return versions.flatMap((version) => {
-    const instruments = [...new Set(version.files.map((file) => file.instrument))];
-    return instruments.map((instrument): Row => {
-      const parts = [version.variant];
-      if ((perVariant.get(version.variant) ?? 0) > 1) {
-        parts.push(copy.version.replace("{version}", version.version));
-      }
-      if (instrument) parts.push(instrument);
+  return versions.map((version): Row => {
+    const parts = [version.label];
+    if ((perType.get(version.label) ?? 0) > 1) {
+      parts.push(copy.version.replace("{version}", version.version));
+    }
 
-      const detail = [
-        version.keys && copy.key.replace("{key}", version.keys),
-        version.capoFret && copy.capo.replace("{fret}", version.capoFret),
-      ]
-        .filter(Boolean)
-        .join(" · ");
+    const detail = [
+      version.keys && copy.key.replace("{key}", version.keys),
+      version.capoFret && copy.capo.replace("{fret}", version.capoFret),
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
-      return {
-        key: `${version.variant}|${version.version}|${instrument ?? ""}`,
-        label: parts.join(" · "),
-        detail: detail || null,
-        files: version.files.filter((file) => file.instrument === instrument),
-      };
-    });
+    return {
+      key: `${version.label}|${version.version}`,
+      label: parts.join(" · "),
+      detail: detail || null,
+      files: version.files,
+    };
   });
 }
 

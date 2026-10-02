@@ -4,7 +4,14 @@ import { unstable_cache } from "next/cache";
 
 import { siteConfig } from "@/config/site";
 import { getGoogleAccessToken, isGoogleConfigured } from "@/lib/google-auth";
-import { type DriveItem, parseIndex, type SheetMusicIndex } from "@/lib/sheet-music";
+import { sheetMusicTypesForSite } from "@/lib/auth/store";
+import {
+  classify,
+  type DriveItem,
+  readSheetMusic,
+  type SheetMusicIndex,
+  type SheetMusicSources,
+} from "@/lib/sheet-music";
 
 /**
  * Reading the private Sheet Music Index and the private Drive folders, and
@@ -39,6 +46,10 @@ export type SheetMusicErrorReason =
 
 export type SheetMusicResult =
   | { ok: true; index: SheetMusicIndex }
+  | { ok: false; reason: SheetMusicErrorReason };
+
+export type SheetMusicSourcesResult =
+  | { ok: true; sources: SheetMusicSources }
   | { ok: false; reason: SheetMusicErrorReason };
 
 async function authorizedFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -127,33 +138,33 @@ async function listDrive(): Promise<DriveItem[]> {
   return items;
 }
 
-async function fetchIndex(): Promise<SheetMusicIndex> {
+async function fetchSources(): Promise<SheetMusicSources> {
   const [tabs, drive] = await Promise.all([fetchTabs(), listDrive()]);
-  const index = parseIndex({ songs: tabs.songs, versions: tabs.versions, drive });
-  if (index.songs.length === 0) throw new Error("The Index has no readable Songs rows");
-  return index;
+  const sources = readSheetMusic({ songs: tabs.songs, versions: tabs.versions, drive });
+  if (sources.songs.length === 0) throw new Error("The Index has no readable Songs rows");
+  return sources;
 }
 
 /** Failures are not cached, so a fixed sheet or key is picked up on the next visit. */
-const getCachedIndex = unstable_cache(fetchIndex, ["sheet-music-index"], {
+const getCachedSources = unstable_cache(fetchSources, ["sheet-music-sources"], {
   tags: [SHEET_MUSIC_TAG],
   revalidate: siteConfig.sheetMusic.revalidateSeconds,
 });
 
 /**
- * The Sheet Music Index, parsed and joined.
+ * Everything read from the Index and Drive, before files are sorted into
+ * types - for Admin -> Configuration, which browses the folders.
  *
  * Never throws: when the service account is not set up yet, or Google is
- * unreachable, callers get a reason and the song pages simply leave the
- * sheet-music section out.
+ * unreachable, callers get a reason instead.
  */
-export async function getSheetMusicIndex(): Promise<SheetMusicResult> {
+export async function getSheetMusicSources(): Promise<SheetMusicSourcesResult> {
   if (!isGoogleConfigured()) {
     return { ok: false, reason: "not-configured" };
   }
 
   try {
-    return { ok: true, index: await getCachedIndex() };
+    return { ok: true, sources: await getCachedSources() };
   } catch (error) {
     console.error(
       "[sheet-music] Could not load the Sheet Music Index:",
@@ -161,6 +172,22 @@ export async function getSheetMusicIndex(): Promise<SheetMusicResult> {
     );
     return { ok: false, reason: "unavailable" };
   }
+}
+
+/**
+ * The Sheet Music Index, with every file sorted into the sheet music types
+ * set up under Admin -> Configuration (the defaults when they cannot be
+ * read). The Google read is cached; the sorting is redone on each call, so
+ * a change to the types shows at once.
+ *
+ * Never throws: when the service account is not set up yet, or Google is
+ * unreachable, callers get a reason and the song pages simply leave the
+ * sheet-music section out.
+ */
+export async function getSheetMusicIndex(): Promise<SheetMusicResult> {
+  const [sources, types] = await Promise.all([getSheetMusicSources(), sheetMusicTypesForSite()]);
+  if (!sources.ok) return sources;
+  return { ok: true, index: classify(sources.sources, types) };
 }
 
 /**

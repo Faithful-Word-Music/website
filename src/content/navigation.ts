@@ -31,7 +31,7 @@ export const navigationContent = {
     invitations: "Back to invitations",
     people: "Back to people",
     roles: "Back to roles",
-    profileOptions: "Back to titles & instruments",
+    configuration: "Back to configuration",
     generic: "Back",
   },
 } as const;

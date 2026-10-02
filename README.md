@@ -316,16 +316,16 @@ Google Drive (private) ──────┘   (read-only)             └─> /
                                                              after canAccessFile() says yes
 ```
 
-- **The Drive folders are the file index.** The server lists everything shared with the service account, in about 5 requests at most every 10 seconds, and only when someone visits (never per page view), and reads each file's folder and name. Adding sheet music means dropping a file into the right folder. Nobody types file IDs anywhere.
+- **The Drive folders are the file index.** The server lists everything shared with the service account, in about 5 requests at most every 10 seconds, and only when someone visits (never per page view), and reads each file's folder and name. Adding sheet music means dropping a file into a folder one of the sheet music types uses. Nobody types file IDs anywhere.
+- **Which type a file is** comes only from the types' **source folders**, set under Admin → Configuration (see "Sheet music types" below). No folder layout is assumed. The defaults point at today's layout:
 
   ```
-  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Standard/<PDF|MuseScore>/
-  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Chords/Standard/<PDF|MuseScore>/
-  Sheet Music/01 - Congregational/[Hymnals/]<Collection>/Chords/Capo/<PDF|MuseScore>/   → Capo, Guitar
-  Sheet Music/02 - Instrument Parts/<Instrument>/<Collection>/<PDF|MuseScore>/
-  Sheet Music/03 - Ensemble & Classical/<Collection>/<PDF|MuseScore>/
-  Sheet Music/90 - Reference/…   → never used (complete hymnals stay private)
+  Standard            each hymnal's (and Psalms', Other Songs') Standard folder,   and 03 - Ensemble & Classical
+  Standard (Chords)   each Chords › Standard folder in 01 - Congregational
+  Capo (Chords)       each Chords › Capo folder in 01 - Congregational
   ```
+
+  Anything no source holds (`90 - Reference/…`, say) never appears. A file's **collection** is the nearest folder above it named like a Collection on the Songs tab, at any depth.
 
   Filenames work like this:
   - **Numbered:** `121 - Like a River Glorious.pdf`. `121 Title` and `014 - Title` also work.
@@ -334,11 +334,11 @@ Google Drive (private) ──────┘   (read-only)             └─> /
   - **Notes:** other bracketed notes such as `(Stedfast Baptist Church)` are ignored.
   - **Drafts:** anything containing `IN PROGRESS` is skipped.
   - **Duplicates:** when the same file exists twice, the most recently changed copy wins.
-  - **Where it lives:** `parseDrivePath()` in `lib/sheet-music.ts`, and `listDrive()` in `lib/sheet-music-index.ts`.
+  - **Where it lives:** `readSheetMusic()` and `classify()` in `lib/sheet-music.ts`, and `listDrive()` in `lib/sheet-music-index.ts`.
 - **The Index (Sheet Music Index sheet):**
   - **Songs** has one row per song, keyed by **Song ID** (`SSSH1989-233`). It holds the details and the rights. A file joins its song by Collection (the folder name) + Hymn Number, or, without a number, by a title only one song in that collection has. Bracketed notes and punctuation are ignored when matching titles.
   - A file whose song has no Songs row is left out, since there's no rights decision for it.
-  - **Versions** (older name: **Editions**) is optional. A row only adds a key or capo fret to one version; it never has to exist.
+  - **Versions** (older name: **Editions**) is optional. A row only adds a key or capo fret to one version of one type; its **Variant** column takes the type's name (e.g. `Capo (Chords)`; the older `Standard`, `Chords` and `Capo` still work). It never has to exist.
   - Columns are found by header name, and blank or placeholder cells (`?`) are ignored.
   - The Files tab is no longer read. **Notes**, **Migration** and **References** never are.
 - **Matching a page to the Index:** a numbered song is looked up by its number in `siteConfig.sheetMusic.hymnalCollection` (Soul-Stirring Songs and Hymns 1989). An unnumbered song (a Psalm or an insert) is matched by title, but only when exactly one Index song has that title; an ambiguous title shows nothing rather than the wrong music. Pages still only exist for songs that have been sung or scheduled. Once a song gets a page, its Index entry appears automatically.
@@ -395,7 +395,7 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
 **Profiles:**
 - **Owners:** Clerk holds the first name, last name and photo. The site holds the middle name, preferred name, bio, phone, voice part, usual services and instruments (each with a skill level and a primary).
 - **Questions:** everyone answers "Can you read sheet music?" and gives a music-theory level. **Musicians** also answer **How do you play?** (a five-stop By ear ↔ Sheet music scale).
-- **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Titles & instruments**. An item still in use is archived, not deleted.
+- **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Admin → Configuration**. An item still in use is archived, not deleted.
 - **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator.
 
 **Security model:**
@@ -457,7 +457,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 |---|---|---|
 | **Permissions** | What may be shown or linked (security) | Members-only sheet music is linked only with `view_sheet_music`; account requests appear only with `manage_users` |
 | **Roles** | Broad responsibilities | Musician and Song Leader mean the service music matters to them |
-| **Titles, instruments** | What is most relevant | A pianist's song links open the piano part; a guitarist's the capo chart. A title never grants anything |
+| **Titles, instruments** | What is most relevant | Each person's song links open their assigned sheet music type (e.g. Capo (Chords) or Clarinet (Bb)). A title never grants anything |
 | **Current data** | What appears at all | No "0 requests", no empty cards, no placeholders for future features |
 
 - These come together in one `DashboardFocus` (`lib/dashboard/focus.ts`). Capabilities are read from permissions, never role names, so a custom role with the right permission gets the same Dashboard.
@@ -473,12 +473,21 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
   | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`) |
   | **Coming up** | Everyone | The next services (up to three within a week). Someone with an assigned sheet music type gets a **Sheet Music** link under each song that has that type, and nothing under one that doesn't |
   | **Songs to brush up on** | People who play or lead | Songs in the next two weeks not sung for six months, or not in the records at all |
-  | **Sheet music to finish** | `manage_sheet_music` | Songs in the next three services (never further ahead, however much of the month is planned) with no Index entry, no files, no Standard score, a chart with MuseScore but no PDF, or rights still to review |
+  | **Sheet music to finish** | `manage_sheet_music` | Songs in the next three services (never further ahead, however much of the month is planned) with no Index entry, no files, no sheet music of the first type (Standard by default), sheet music with MuseScore but no PDF, or rights still to review |
   | **New sheet music** | Everyone, among files they may open | Songs whose files changed in Drive in the last two weeks, upcoming first |
   | **People** | The admin People permissions | Musicians (with their sheet music type, for `manage_sheet_music`), song leaders and people with no role beyond Member, each linking to their admin page |
   | **Quarter at a glance** | `view_analytics` | Services, different songs and the most sung so far this quarter (or the quarter just ended, before the new one's first service) |
 
-- **Sheet music types are assigned, never guessed.** Two people on the same instrument can need different charts, so each person's type (Standard, Chords, Capo - Guitar, a part...) is chosen on their page under **Admin → People** by anyone with `manage_sheet_music`. The choices are read from the Drive folders, so a new kind of chart appears as soon as its first file is added. Stored in `user_sheet_music`; the logic is `src/lib/sheet-music-type.ts`. No type means no links.
+- **Sheet music types are assigned, never guessed.** Two people on the same instrument can need different sheet music, so each person's type is chosen on their page under **Admin → People** by anyone with `manage_sheet_music`. No type means no links.
+- **Types come from source folders, not folder layout.**
+  - The types (defaults: Standard, Standard (Chords), Capo (Chords)) are named, ordered and given their **source folders** under **Admin → Configuration**.
+  - Every type works the same way: it's a list of folders, each picked by browsing the Drive "Sheet Music" folder (**+ Add folder**) and removed with ×. A type takes every PDF and MuseScore file in its folders and the folders inside them, so you never pick a PDF or MuseScore folder. How the folders are laid out is never assumed.
+  - If one type's folder sits inside another type's folder, the files go to the type whose folder is closest to them, then to the type higher in the list.
+  - Files in no type's folders don't appear on the site. When you add a new hymnal or instrument folder in Drive, add it to the right type.
+  - The three starting types are seeded as "every `Chords › Capo` folder inside `01 - Congregational`" and so on. The first visit to Configuration turns these into the actual folders (`expandSheetMusicSources`), after which they're plain folder lists like any other type.
+  - A file's song comes from its name (number, title) and the nearest collection-named folder above it.
+  - Song pages, the Dashboard and download names all use the type names. The Versions tab's "Variant" column takes a type name (older names like "Capo" still work).
+  - Stored in `sheet_music_types`, `sheet_music_type_sources` and `user_sheet_music`. The logic is `classify` in `src/lib/sheet-music.ts` and `src/lib/sheet-music-type.ts`.
 
 - The logic is in `lib/dashboard/` (pure, tested); the reads are in `lib/dashboard/load.ts`, each failing soft so one source being down never takes the page with it.
 
