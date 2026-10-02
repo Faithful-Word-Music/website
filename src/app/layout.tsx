@@ -4,6 +4,7 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AccountProvider } from "@/components/account/AccountContext";
+import { InstalledApp } from "@/components/app/InstalledApp";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
@@ -156,6 +157,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Site-wide: appears on any page once it has been scrolled more
             than a screen, so short pages never show it. */}
         <BackToTop />
+        {/* Only inside the installed app on a phone or tablet: a PDF viewer
+            with Close and Save or share, and pull-to-refresh. */}
+        <InstalledApp />
       </body>
     </html>
   );

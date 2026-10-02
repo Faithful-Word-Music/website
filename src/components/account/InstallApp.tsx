@@ -3,6 +3,7 @@
 import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
+import { isStandalone, STANDALONE_QUERY } from "@/components/app/standalone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -34,8 +35,6 @@ interface InstallPromptEvent extends Event {
 
 type InstallWindow = Window & { [INSTALL_PROMPT_KEY]?: InstallPromptEvent | null };
 
-const STANDALONE_QUERY = "(display-mode: standalone)";
-
 function storedPrompt(): InstallPromptEvent | null {
   return (window as InstallWindow)[INSTALL_PROMPT_KEY] ?? null;
 }
@@ -56,9 +55,7 @@ function installSnapshot(): InstallMode {
   return detectInstallMode({
     userAgent: navigator.userAgent,
     maxTouchPoints: navigator.maxTouchPoints ?? 0,
-    standalone:
-      window.matchMedia(STANDALONE_QUERY).matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true,
+    standalone: isStandalone(),
     hasPrompt: storedPrompt() !== null,
   });
 }

@@ -4,6 +4,7 @@ import type { PDFDocumentLoadingTask, PDFPageProxy, RenderTask } from "pdfjs-dis
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { loadPdfJs } from "@/components/ui/pdfjs";
 import { songListContent } from "@/content/song-list";
 
 const { sheetMusic: copy } = songListContent.songPage;
@@ -21,19 +22,6 @@ const MAX_PIXEL_RATIO = 2;
 const gutter = () => (window.matchMedia("(min-width: 640px)").matches ? 20 : 12);
 
 type Status = "loading" | "ready" | "error";
-
-/**
- * PDF.js is loaded only when a preview is on the page, and its worker only
- * once per visit, however many songs are opened.
- */
-async function loadPdfJs() {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerPort ??= new Worker(
-    new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url),
-    { type: "module" },
-  );
-  return pdfjs;
-}
 
 const labelClasses = "font-sans text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted sm:text-[0.7rem]";
 

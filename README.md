@@ -544,6 +544,10 @@ Signed-in members can install the site as the **Faithful Word Music** app. It op
   - `detectInstallMode`, the platform rules above, tested in `install.test.ts`.
 - `components/account/InstallApp.tsx` renders the section and the card.
 
+**Inside the installed app on a phone or tablet** there's no browser around the site, so `components/app/InstalledApp.tsx` adds two things a browser would otherwise give. The pure parts are in `lib/installed-app.ts`. In a browser, and in the desktop app, it renders nothing and listens to nothing.
+- **A PDF viewer.** Every link to one of the site's PDFs (sheet-music files, a service's sheet music, a month's song list) opens `PdfViewer` instead of a "new tab". On an iPhone that tab otherwise fills the app with no Close button and no way to save. The viewer has Close, the file's name, and **Save or share**: the share sheet on iPhone (Save to Files, Print, other apps), or **Download** plus **Share** elsewhere. The file is fetched once with PDF.js (`components/ui/pdfjs.ts`, shared with the song pages' preview). Pages are drawn only near the view, so long service packets stay light on older phones.
+- **Pull to refresh.** Pull down at the top of a page and let go past the line to reload. It's off while a menu, dialog or the PDF viewer is open, and when the part being touched is scrolled.
+
 **No service worker.** Chromium no longer needs one to install a site, and Safari never did. Offline use, caching and notifications are a later phase. Adding a service worker then doesn't change any of the above.
 
 ### Availability

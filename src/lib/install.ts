@@ -65,7 +65,7 @@ export function detectInstallMode({ userAgent, maxTouchPoints, standalone, hasPr
   if (hasPrompt) return "prompt";
 
   const isMac = /Macintosh/.test(userAgent);
-  if (/iPhone|iPad|iPod/.test(userAgent) || (isMac && maxTouchPoints > 1)) {
+  if (isIosDevice(userAgent, maxTouchPoints)) {
     if (IOS_IN_APP_BROWSER.test(userAgent)) return "ios-open-safari";
     // Chrome, Edge and Firefox on iOS 16.4+ can Add to Home Screen as Safari can; before that, only Safari.
     if (IOS_OTHER_BROWSER.test(userAgent) && iosVersion(userAgent) < 16.4) return "ios-open-safari";
@@ -77,6 +77,11 @@ export function detectInstallMode({ userAgent, maxTouchPoints, standalone, hasPr
     if (version >= 17) return "mac-safari";
   }
   return "none";
+}
+
+/** An iPhone or iPad, including iPadOS, which reports itself as a Mac with a touch screen. */
+export function isIosDevice(userAgent: string, maxTouchPoints: number): boolean {
+  return /iPhone|iPad|iPod/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
 }
 
 /** Chrome, Firefox, Edge and Opera on iOS name themselves with these. */
