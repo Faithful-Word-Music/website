@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getViewer } from "@/lib/auth/session";
-import { getSheetMusicType } from "@/lib/auth/store";
+import { getSheetMusicTypes } from "@/lib/auth/store";
 import { serviceSheets } from "@/lib/dashboard/coming-up";
 import { getSongList } from "@/lib/google-sheets";
 import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
@@ -13,13 +13,14 @@ import { serviceAnchor } from "@/lib/site-search";
  * GET /dashboard/sheet-music/<service>, e.g. /dashboard/sheet-music/2026-10-04-am
  *
  * Everything the signed-in person plays from for one service, as one PDF to
- * print in one go (see src/lib/service-sheet-pdf.ts). Their files only: the
- * one sheet music type assigned to them, among the files their permissions
- * open - the same serviceSheets() rule as the Dashboard's links, with access
- * decided here on the server, never trusted from the page.
+ * print in one go (see src/lib/service-sheet-pdf.ts). Their files only: for
+ * each song, the first of their assigned sheet music types it has, among the
+ * files their permissions open - the same serviceSheets() rule as the
+ * Dashboard's links, with access decided here on the server, never trusted
+ * from the page.
  *
  *   signed out                 -> 401 (the proxy sends them to sign in first)
- *   no type assigned           -> 404
+ *   no types assigned          -> 404
  *   unknown service, or none of
  *   its songs has their music  -> 404
  *   song list or Index down    -> 503
@@ -49,8 +50,8 @@ export async function GET(_request: Request, ctx: RouteContext<"/dashboard/sheet
   const viewer = await getViewer().catch(() => null);
   if (!viewer) return jsonError(401, "sign-in-required");
 
-  const sheetType = await getSheetMusicType(viewer.env, viewer.userId);
-  if (sheetType === null) return jsonError(404, "no-sheet-music-type");
+  const sheetTypes = await getSheetMusicTypes(viewer.env, viewer.userId);
+  if (sheetTypes.length === 0) return jsonError(404, "no-sheet-music-type");
 
   const [songList, sheetMusic] = await Promise.all([getSongList(), getSheetMusicIndex()]);
   if (!songList.ok || !sheetMusic.ok) return jsonError(503, "unavailable");
@@ -62,7 +63,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/dashboard/sheet
 
   const sheets = serviceSheets(service, {
     index: sheetMusic.index,
-    sheetType,
+    sheetTypes,
     viewer: viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER,
   });
   if (!sheets.some((sheet) => sheet.found)) return jsonError(404, "no-sheet-music");

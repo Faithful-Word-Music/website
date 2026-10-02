@@ -20,7 +20,7 @@ import { requireViewer } from "@/lib/auth/session";
 import {
   countRequestsByStatus,
   getProfile,
-  getSheetMusicType,
+  getSheetMusicTypes,
   getUserInstruments,
   getUserTitles,
 } from "@/lib/auth/store";
@@ -62,7 +62,9 @@ export const metadata: Metadata = {
  *   everyone                 Coming up, New sheet music
  *   view_availability        Availability (always, even when nothing is
  *                            unusual), and "Set your normal services"
- *   an assigned sheet type   a "Sheet Music" link under each song that has it
+ *   assigned sheet types     each service's sheet music as one PDF, and under
+ *                            each song the type it uses (their first choice
+ *                            it has), their others it has, or "none yet"
  *   plays or leads singing   Songs to brush up on
  *   manage_sheet_music       Sheet music to finish, musicians with no sheet type
  *   view_analytics           the quarter at a glance
@@ -83,11 +85,11 @@ export default async function DashboardPage() {
   // The first visit after accepting an invitation closes the request that led to it.
   await activateOwnRequests(viewer, person.emails);
 
-  const [profile, instruments, titles, sheetType] = await Promise.all([
+  const [profile, instruments, titles, sheetTypes] = await Promise.all([
     getProfile(viewer.env, viewer.userId),
     getUserInstruments(viewer.env, viewer.userId),
     getUserTitles(viewer.env, viewer.userId),
-    getSheetMusicType(viewer.env, viewer.userId),
+    getSheetMusicTypes(viewer.env, viewer.userId),
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
@@ -103,7 +105,7 @@ export default async function DashboardPage() {
 
   // --- What the data says, for this person ----------------------------------
   const comingUp = music.services
-    ? buildComingUp(music.services, now, focus, { index: music.index, sheetType })
+    ? buildComingUp(music.services, now, focus, { index: music.index, sheetTypes })
     : [];
   const brushUp = servesInMusic(focus) ? brushUpSongs(music.past, music.upcoming, now) : [];
   const gaps = focus.managesSheetMusic && music.index ? findSheetGaps(music.upcoming, music.index, hymnalCollection) : null;

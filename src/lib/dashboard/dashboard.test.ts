@@ -11,7 +11,14 @@ import {
   sheetTypeAttention,
 } from "@/lib/dashboard/providers";
 import type { IndexSong, SheetFile, SheetMusicIndex, SongVersion } from "@/lib/sheet-music";
-import { DEFAULT_SHEET_MUSIC_TYPES, describeSource, fileOfType, legacyVariant, songCount } from "@/lib/sheet-music-type";
+import {
+  assignedFiles,
+  DEFAULT_SHEET_MUSIC_TYPES,
+  describeSource,
+  fileOfType,
+  legacyVariant,
+  songCount,
+} from "@/lib/sheet-music-type";
 import type { Service } from "@/types/song-list";
 
 const rolePermissions = new Map(DEFAULT_ROLES.map((role) => [role.key, role.permissions as string[]]));
@@ -239,6 +246,41 @@ describe("fileOfType", () => {
   });
 });
 
+describe("assignedFiles", () => {
+  const slugs = (found: ReturnType<typeof assignedFiles>) => found.map(({ file }) => file.slug);
+
+  it("shows the first choice, with the person's other types the song has as alternatives", () => {
+    expect(slugs(assignedFiles(fullSong, [CAPO, CHORDS], anyFile))).toEqual(["capo-chords-1.pdf", "standard-chords-1.pdf"]);
+  });
+
+  it("falls back to the next choice when the song lacks the first", () => {
+    const chordsOnly = song([version(CHORDS, [file("standard-chords-1.pdf")])]);
+    expect(slugs(assignedFiles(chordsOnly, [CAPO, CHORDS], anyFile))).toEqual(["standard-chords-1.pdf"]);
+  });
+
+  it("never offers a type outside the list", () => {
+    const standardOnly = song([version(STANDARD, [file("standard-1.pdf")])]);
+    expect(assignedFiles(standardOnly, [CAPO, CHORDS], anyFile)).toEqual([]);
+  });
+
+  it("passes over a type with only a MuseScore file", () => {
+    const museScoreCapo = song([
+      version(CAPO, [file("capo-chords-1.mscz", "musescore")]),
+      version(CHORDS, [file("standard-chords-1.pdf")]),
+    ]);
+    expect(slugs(assignedFiles(museScoreCapo, [CAPO, CHORDS], anyFile))).toEqual(["standard-chords-1.pdf"]);
+  });
+
+  it("passes over a file the person may not open", () => {
+    const noCapo = (sheet: SheetFile) => !sheet.slug.startsWith("capo");
+    expect(slugs(assignedFiles(fullSong, [CAPO, CHORDS], noCapo))).toEqual(["standard-chords-1.pdf"]);
+  });
+
+  it("works the same with one type", () => {
+    expect(slugs(assignedFiles(fullSong, [STANDARD], anyFile))).toEqual(["standard-1.pdf"]);
+  });
+});
+
 describe("sheetTypeAttention", () => {
   it("tells whoever looks after sheet music which musicians have no type yet", () => {
     const missing = [{ id: "u1", name: "Amy" }];
@@ -294,27 +336,27 @@ describe("buildComingUp", () => {
   const services = [service("a", "2026-10-04T10:30:00-07:00", [{ number: "233", title: "Like a River Glorious", key: "Ab" }])];
 
   it("puts a song in the service PDF when it has the assigned type", () => {
-    const [first] = buildComingUp(services, NOW, focusFor(["musician"]), { index, sheetType: CAPO });
+    const [first] = buildComingUp(services, NOW, focusFor(["musician"]), { index, sheetTypes: [CAPO] });
     expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);
   });
 
   it("offers no service PDF to someone with no assigned type - whatever their instruments", () => {
     const pianist = focusFor(["musician"], { instruments: ["Piano"] });
-    const [first] = buildComingUp(services, NOW, pianist, { index, sheetType: null });
+    const [first] = buildComingUp(services, NOW, pianist, { index, sheetTypes: [] });
     expect(first.packetHref).toBeNull();
   });
 
   it("leaves a song out when it lacks the assigned type, rather than using another type", () => {
     const [first] = buildComingUp(services, NOW, focusFor(["musician"]), {
       index,
-      sheetType: 99,
+      sheetTypes: [99],
     });
     expect(first.packetSongs).toEqual([]);
   });
 
   it("includes a copyrighted song's music only with the members' sheet-music permission", () => {
     const withoutPermission = buildFocus({ roleKeys: ["musician"], permissions: new Set(), titles: [], instruments: [] });
-    const [first] = buildComingUp(services, NOW, withoutPermission, { index, sheetType: STANDARD });
+    const [first] = buildComingUp(services, NOW, withoutPermission, { index, sheetTypes: [STANDARD] });
     expect(first.packetSongs).toEqual([]);
   });
 
@@ -325,9 +367,61 @@ describe("buildComingUp", () => {
         { number: null, title: "A Song Not In The Index", key: "C" },
       ]),
     ];
-    const [first] = buildComingUp(withTwo, NOW, focusFor(["musician"]), { index, sheetType: CAPO });
+    const [first] = buildComingUp(withTwo, NOW, focusFor(["musician"]), { index, sheetTypes: [CAPO] });
     expect(first.packetHref).toBe("/dashboard/sheet-music/2026-10-04-am");
     expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);
+  });
+
+  describe("with types in order of preference", () => {
+    const chordsOnly: IndexSong = {
+      ...song([version(CHORDS, [file("standard-chords-1.pdf")])]),
+      id: "SSSH1989-100",
+      title: "Standing on the Promises",
+      hymnNumber: "100",
+    };
+    const mixed = [
+      service("a", "2026-10-04T10:30:00-07:00", [
+        { number: "233", title: "Like a River Glorious", key: "Ab" },
+        { number: "100", title: "Standing on the Promises", key: "Bb" },
+        { number: null, title: "A Song Not In The Index", key: "C" },
+      ]),
+    ];
+    const [first] = buildComingUp(mixed, NOW, focusFor(["musician"]), {
+      index: { songs: [fullSong, chordsOnly], types: TYPES },
+      sheetTypes: [CAPO, CHORDS],
+    });
+
+    it("uses each song's first available type, names it, and links the others", () => {
+      expect(first.showLabels).toBe(true);
+      expect(first.slots[0]?.sheet).toEqual({
+        status: "found",
+        shown: { label: "Capo (Chords)", href: "/library/songs/like-a-river-glorious/sheet-music/capo-chords-1.pdf" },
+        alternatives: [
+          {
+            label: "Standard (Chords)",
+            href: "/library/songs/like-a-river-glorious/sheet-music/standard-chords-1.pdf",
+          },
+        ],
+      });
+      expect(first.slots[1]?.sheet).toMatchObject({ status: "found", shown: { label: "Standard (Chords)" }, alternatives: [] });
+    });
+
+    it("says when a song has none of their types", () => {
+      expect(first.slots[2]?.sheet).toEqual({ status: "missing" });
+    });
+
+    it("puts the fallback song in the service PDF, with the type each uses", () => {
+      expect(first.packetSongs).toEqual([
+        { number: "233", title: "Like a River Glorious", label: "Capo (Chords)" },
+        { number: "100", title: "Standing on the Promises", label: "Standard (Chords)" },
+      ]);
+    });
+  });
+
+  it("does not name the type for someone with only one", () => {
+    const [first] = buildComingUp(services, NOW, focusFor(["musician"]), { index, sheetTypes: [CAPO] });
+    expect(first.showLabels).toBe(false);
+    expect(first.slots[0]?.sheet).toMatchObject({ status: "found", shown: { label: "Capo (Chords)" } });
   });
 
 });

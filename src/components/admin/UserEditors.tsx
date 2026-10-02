@@ -6,11 +6,12 @@ import { useId, useState, useTransition } from "react";
 import {
   removeOverrideAction,
   setOverrideAction,
-  setSheetMusicTypeAction,
+  setSheetMusicTypesAction,
   setTitlesAction,
   setUserRolesAction,
 } from "@/app/admin/actions";
 import { ActionMessage, SelectField, TextField } from "@/components/account/fields";
+import { ArrowIcon, IconButton } from "@/components/admin/OptionListEditor";
 import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
@@ -216,14 +217,10 @@ export function OverrideEditor({
   );
 }
 
-/** The titles an administrator assigns (Pianist, Organist, ...), with one marked as primary. */
-/** The empty choice: no sheet music links on their Dashboard. */
-const NO_SHEET_MUSIC = "";
-
 /**
- * The one type of sheet music a person is given. The list is every type the
- * Drive folders have; an assigned type that has since disappeared stays
- * listed so it is not silently changed.
+ * The types of sheet music a person is given, in order of preference: each
+ * song uses the first of them it has. Add, reorder and remove, then save -
+ * nothing changes until Save sheet music is pressed.
  */
 export function SheetMusicTypeEditor({
   userId,
@@ -231,34 +228,113 @@ export function SheetMusicTypeEditor({
   assigned,
 }: {
   userId: string;
-  /** The types offered, keyed by id, in their configured order. */
-  types: Array<{ key: string; label: string }>;
-  /** The key of the type they have, if any. */
-  assigned: string | null;
+  /** The types offered, in their configured order. */
+  types: Array<{ id: number; label: string }>;
+  /** The ids of the types they have, in their order of preference. */
+  assigned: number[];
 }) {
   const ids = useId();
   const { pending, result, run } = useAction();
-  const [chosen, setChosen] = useState(assigned ?? NO_SHEET_MUSIC);
+  const labelOf = new Map(types.map((type) => [type.id, type.label]));
+  const saved = assigned.filter((id) => labelOf.has(id));
+  const [chosen, setChosen] = useState<number[]>(saved);
+  const remaining = types.filter((type) => !chosen.includes(type.id));
+  const [adding, setAdding] = useState("");
+  const toAdd = remaining.some((type) => String(type.id) === adding) ? adding : String(remaining[0]?.id ?? "");
+  const changed = chosen.length !== saved.length || chosen.some((id, index) => id !== saved[index]);
 
-  const options = [
-    { value: NO_SHEET_MUSIC, label: "None - no sheet music links" },
-    ...types.map((type) => ({ value: type.key, label: type.label })),
-  ];
+  function move(index: number, by: -1 | 1) {
+    setChosen((current) => {
+      const next = [...current];
+      [next[index], next[index + by]] = [next[index + by], next[index]];
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-3">
-      <SelectField id={`${ids}-type`} label="Sheet music type" value={chosen} options={options} onChange={setChosen} />
-      <Button
-        type="button"
-        disabled={pending || chosen === (assigned ?? NO_SHEET_MUSIC)}
-        onClick={() => run(() => setSheetMusicTypeAction(userId, chosen === NO_SHEET_MUSIC ? null : Number(chosen)))}
-      >
+      {chosen.length > 0 ? (
+        <ol className="divide-y divide-line rounded-card border border-line">
+          {chosen.map((id, index) => {
+            const label = labelOf.get(id) ?? "";
+            return (
+              <li key={id} className="flex items-center gap-3 py-1.5 pl-4 pr-1.5">
+                <span className="tnum w-4 shrink-0 text-sm text-gold-dark">{index + 1}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink">{label}</span>
+                  <span className="block text-xs text-muted">
+                    {index === 0 ? "First choice" : "When a song has none of the above"}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center">
+                  {chosen.length > 1 ? (
+                    <>
+                      <IconButton label={`Move ${label} up`} disabled={pending || index === 0} onClick={() => move(index, -1)}>
+                        <ArrowIcon direction="up" />
+                      </IconButton>
+                      <IconButton
+                        label={`Move ${label} down`}
+                        disabled={pending || index === chosen.length - 1}
+                        onClick={() => move(index, 1)}
+                      >
+                        <ArrowIcon direction="down" />
+                      </IconButton>
+                    </>
+                  ) : null}
+                  <IconButton
+                    label={`Remove ${label}`}
+                    disabled={pending}
+                    onClick={() => setChosen((current) => current.filter((item) => item !== id))}
+                  >
+                    <RemoveIcon />
+                  </IconButton>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted">None - no sheet music on their Dashboard.</p>
+      )}
+
+      {remaining.length > 0 ? (
+        <div className="flex gap-2">
+          <SelectField
+            id={`${ids}-add`}
+            label={chosen.length === 0 ? "Sheet music type" : "Another sheet music type, if a song has none of these"}
+            value={toAdd}
+            options={remaining.map((type) => ({ value: String(type.id), label: type.label }))}
+            onChange={setAdding}
+            className="min-w-0 flex-1"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={() => setChosen((current) => [...current, Number(toAdd)])}
+          >
+            {chosen.length === 0 ? "Add" : "Add next"}
+          </Button>
+        </div>
+      ) : null}
+
+      <Button type="button" disabled={pending || !changed} onClick={() => run(() => setSheetMusicTypesAction(userId, chosen))}>
         {pending ? "Saving…" : "Save sheet music"}
       </Button>
       <ActionMessage result={result} />
     </div>
   );
 }
+
+function RemoveIcon() {
+  return (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** The titles an administrator assigns (Pianist, Organist, ...), with one marked as primary. */
 
 export function TitleEditor({
   userId,

@@ -462,7 +462,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 |---|---|---|
 | **Permissions** | What may be shown or linked (security) | Members-only sheet music is linked only with `view_sheet_music`; account requests appear only with `manage_users` |
 | **Roles** | Broad responsibilities | Musician and Song Leader mean the service music matters to them |
-| **Titles, instruments** | What is most relevant | Each person's song links open their assigned sheet music type (e.g. Capo (Chords) or Clarinet (Bb)). A title never grants anything |
+| **Titles, instruments** | What is most relevant | Each person's sheet music comes from their assigned sheet music types (e.g. Capo (Chords), then Standard (Chords)). A title never grants anything |
 | **Current data** | What appears at all | No "0 requests", no empty cards, no placeholders for future features |
 
 - These come together in one `DashboardFocus` (`lib/dashboard/focus.ts`). Capabilities are read from permissions, never role names, so a custom role with the right permission gets the same Dashboard.
@@ -472,7 +472,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
   | Section | Who sees it | What it shows |
   |---|---|---|
   | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`); no normal services set (`view_availability`, low priority) |
-  | **Coming up** | Everyone | The next services (up to three within a week). Someone with an assigned sheet music type gets a **Sheet Music** link under each song that has that type, and nothing under one that doesn't |
+  | **Coming up** | Everyone | The next services (up to three within a week). Someone with assigned sheet music types gets each service's sheet music as one PDF to print, using for each song the first of their types it has. With more than one type, each song names the type used and links their other types it has; a song with none of their types says so |
   | **Availability** | `view_availability` | Always present, kept short: their normal services, the next service and their state for it, their upcoming exceptions, other people's changes in the next two weeks, and **View availability** |
   | **Songs to brush up on** | People who play or lead | Songs in the next two weeks not sung for six months, or not in the records at all |
   | **Sheet music to finish** | `manage_sheet_music` | Songs in the next three services (never further ahead, however much of the month is planned) with no Index entry, no files, no sheet music of the first type (Standard by default), sheet music with MuseScore but no PDF, or rights still to review |
@@ -480,7 +480,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
   | **People** | The admin People permissions | Musicians (with their sheet music type, for `manage_sheet_music`), song leaders and people with no role beyond Member, each linking to their admin page |
   | **Quarter at a glance** | `view_analytics` | Services, different songs and the most sung so far this quarter (or the quarter just ended, before the new one's first service) |
 
-- **Sheet music types are assigned, never guessed.** Two people on the same instrument can need different sheet music, so each person's type is chosen on their page under **Admin → People** by anyone with `manage_sheet_music`. No type means no links.
+- **Sheet music types are assigned, never guessed.** Two people on the same instrument can need different sheet music, so each person's types are chosen on their page under **Admin → People** by anyone with `manage_sheet_music`, in order of preference. A guitarist might have **Capo (Chords)**, then **Standard (Chords)** for songs that need no capo. Each song uses the first of their types that has a PDF they may open (a MuseScore-only file doesn't count); one with none of them shows as unavailable, never as another type. The order only chooses what is shown and never restricts access. No types means no sheet music. Types live in `user_sheet_music_types`; the older one-type `user_sheet_music` was copied in once, and still mirrors each person's first choice for older deployments sharing the database.
 - **Types come from source folders, not folder layout.**
   - The types (defaults: Standard, Standard (Chords), Capo (Chords)) are named, ordered and given their **source folders** under **Admin → Configuration**.
   - Every type works the same way: it's a list of folders, each picked by browsing the Drive "Sheet Music" folder (**+ Add folder**) and removed with ×. A type takes every PDF and MuseScore file in its folders and the folders inside them, so you never pick a PDF or MuseScore folder. How the folders are laid out is never assumed.

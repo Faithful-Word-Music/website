@@ -191,7 +191,31 @@ async function seedSheetMusicTypes(sql: Sql, env: ClerkEnv): Promise<void> {
         AND lower(t.legacy_key) = lower(u.variant || '|' || coalesce(u.instrument, ''))`,
     [env],
   );
+  // Each person's one type becomes the first (and only) of their ordered
+  // list - once per environment, so a list cleared later is not refilled.
+  const [copied] = (await sql.query(`SELECT 1 FROM schema_fixups WHERE clerk_env = $1 AND key = $2`, [
+    env,
+    SHEET_MUSIC_PRIORITY_FIXUP,
+  ])) as unknown[];
+  if (!copied) {
+    await sql.transaction((txn) => [
+      txn.query(
+        `INSERT INTO user_sheet_music_types (clerk_env, clerk_user_id, type_id, position, assigned_by, assigned_at)
+         SELECT clerk_env, clerk_user_id, type_id, 1, assigned_by, assigned_at FROM user_sheet_music
+          WHERE clerk_env = $1 AND type_id IS NOT NULL
+         ON CONFLICT DO NOTHING`,
+        [env],
+      ),
+      txn.query(`INSERT INTO schema_fixups (clerk_env, key) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+        env,
+        SHEET_MUSIC_PRIORITY_FIXUP,
+      ]),
+    ]);
+  }
 }
+
+/** The schema_fixups key for copying single assignments into user_sheet_music_types. */
+const SHEET_MUSIC_PRIORITY_FIXUP = "2026-10-sheet-music-priority";
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "23505";
@@ -428,6 +452,7 @@ export async function deleteUserData(env: ClerkEnv, userId: string): Promise<voi
       "user_instruments",
       "user_titles",
       "user_sheet_music",
+      "user_sheet_music_types",
       "availability_exceptions",
     ].map((table) =>
       txn.query(`DELETE FROM ${table} WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
@@ -767,44 +792,64 @@ export async function getUserInstruments(env: ClerkEnv, userId: string): Promise
 // Assigned sheet music
 // ---------------------------------------------------------------------------
 
-/** The sheet music type (its id) assigned to each person. Anyone without one is absent from the map. */
-export async function sheetMusicTypesForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+/**
+ * The sheet music types (their ids) assigned to each person, in order of
+ * preference. Anyone without any is absent from the map.
+ */
+export async function sheetMusicTypesForUsers(env: ClerkEnv, userIds: string[]): Promise<Map<string, number[]>> {
+  const result = new Map<string, number[]>();
   if (userIds.length === 0) return result;
   const sql = await db(env);
   const rows = (await sql.query(
-    `SELECT clerk_user_id, type_id FROM user_sheet_music
-      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[]) AND type_id IS NOT NULL`,
+    `SELECT clerk_user_id, type_id FROM user_sheet_music_types
+      WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[])
+      ORDER BY clerk_user_id, position, assigned_at`,
     [env, userIds],
   )) as Array<{ clerk_user_id: string; type_id: number }>;
-  for (const row of rows) result.set(row.clerk_user_id, row.type_id);
+  for (const row of rows) {
+    const list = result.get(row.clerk_user_id);
+    if (list) list.push(row.type_id);
+    else result.set(row.clerk_user_id, [row.type_id]);
+  }
   return result;
 }
 
-export async function getSheetMusicType(env: ClerkEnv, userId: string): Promise<number | null> {
-  return (await sheetMusicTypesForUsers(env, [userId])).get(userId) ?? null;
+export async function getSheetMusicTypes(env: ClerkEnv, userId: string): Promise<number[]> {
+  return (await sheetMusicTypesForUsers(env, [userId])).get(userId) ?? [];
 }
 
-/** Assigns a person's sheet music type, or clears it (null). */
-export async function setSheetMusicType(
+/**
+ * Sets a person's sheet music types, in order of preference; an empty list
+ * clears them. The first choice is also written to the older one-type table
+ * (user_sheet_music), so a deployment still running the older code against
+ * this shared database keeps giving them their sheet music. That mirror can
+ * go once every deployment reads user_sheet_music_types.
+ */
+export async function setSheetMusicTypes(
   env: ClerkEnv,
   userId: string,
-  typeId: number | null,
+  typeIds: readonly number[],
   assignedBy: string,
 ): Promise<void> {
   const sql = await db(env);
-  if (typeId === null) {
-    await sql.query(`DELETE FROM user_sheet_music WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]);
-    return;
-  }
-  await sql.query(
-    `INSERT INTO user_sheet_music (clerk_env, clerk_user_id, type_id, variant, instrument, assigned_by)
-     VALUES ($1, $2, $3, NULL, NULL, $4)
-     ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
-       type_id = EXCLUDED.type_id, variant = NULL, instrument = NULL,
-       assigned_by = EXCLUDED.assigned_by, assigned_at = now()`,
-    [env, userId, typeId, assignedBy],
-  );
+  await sql.transaction((txn) => [
+    txn.query(`DELETE FROM user_sheet_music_types WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
+    txn.query(
+      `INSERT INTO user_sheet_music_types (clerk_env, clerk_user_id, type_id, position, assigned_by)
+       SELECT $1, $2, t.id, t.ord, $4 FROM unnest($3::int[]) WITH ORDINALITY AS t(id, ord)`,
+      [env, userId, typeIds, assignedBy],
+    ),
+    typeIds.length === 0
+      ? txn.query(`DELETE FROM user_sheet_music WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId])
+      : txn.query(
+          `INSERT INTO user_sheet_music (clerk_env, clerk_user_id, type_id, variant, instrument, assigned_by)
+           VALUES ($1, $2, $3, NULL, NULL, $4)
+           ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
+             type_id = EXCLUDED.type_id, variant = NULL, instrument = NULL,
+             assigned_by = EXCLUDED.assigned_by, assigned_at = now()`,
+          [env, userId, typeIds[0], assignedBy],
+        ),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -824,7 +869,7 @@ export async function listSheetMusicTypes(env: ClerkEnv): Promise<SheetMusicType
   const [types, sources] = (await Promise.all([
     sql.query(
       `SELECT t.id, t.label, t.legacy_key,
-              (SELECT count(*) FROM user_sheet_music u WHERE u.clerk_env = t.clerk_env AND u.type_id = t.id)::int AS usage
+              (SELECT count(*) FROM user_sheet_music_types u WHERE u.clerk_env = t.clerk_env AND u.type_id = t.id)::int AS usage
          FROM sheet_music_types t WHERE t.clerk_env = $1 ORDER BY t.sort_order, t.label`,
       [env],
     ),
@@ -894,8 +939,9 @@ export async function renameSheetMusicType(env: ClerkEnv, id: number, label: str
 }
 
 /**
- * Deletes a type, its sources, and the assignments of it - those people get
- * no sheet music links until given another type (all by cascade).
+ * Deletes a type, its sources, and the assignments of it - it simply drops
+ * out of each person's list, and anyone left with none gets no sheet music
+ * until given another type (all by cascade).
  */
 export async function deleteSheetMusicType(env: ClerkEnv, id: number): Promise<void> {
   const sql = await db(env);

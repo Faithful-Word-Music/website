@@ -25,7 +25,7 @@ import { audienceFor, toProfileRecord, visibleProfile } from "@/lib/auth/profile
 import { requireAnyPermission } from "@/lib/auth/session";
 import {
   getProfile,
-  getSheetMusicType,
+  getSheetMusicTypes,
   getUserInstruments,
   getUserTitles,
   listOptions,
@@ -64,7 +64,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
   const isSelf = person.id === viewer.userId;
 
   const managesSheetMusic = viewer.can("manage_sheet_music");
-  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, sheetType, sheetTypes] =
+  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, assignedSheetTypes, sheetTypes] =
     await Promise.all([
       loadAuthorization(viewer.env, person.id),
       listOverrides(viewer.env, person.id),
@@ -73,7 +73,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
       getUserInstruments(viewer.env, person.id),
       getUserTitles(viewer.env, person.id),
       listOptions(viewer.env, "titles"),
-      getSheetMusicType(viewer.env, person.id),
+      getSheetMusicTypes(viewer.env, person.id),
       managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
     ]);
   const effective = resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
@@ -120,13 +120,13 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
         {viewer.can("manage_sheet_music") ? (
           <Section
             title="Sheet music"
-            description="The one type of sheet music their Dashboard links under each upcoming song. Songs without this type get no link."
+            description="The sheet music their Dashboard gives them, in order of preference. Each song uses the first of these it has; a song with none of them shows as unavailable."
           >
             {sheetTypes ? (
               <SheetMusicTypeEditor
                 userId={person.id}
-                types={sheetTypes.map((type) => ({ key: String(type.id), label: type.label }))}
-                assigned={sheetType === null ? null : String(sheetType)}
+                types={sheetTypes.map((type) => ({ id: type.id, label: type.label }))}
+                assigned={assignedSheetTypes}
               />
             ) : null}
           </Section>

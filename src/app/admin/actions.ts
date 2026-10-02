@@ -47,7 +47,7 @@ import {
   setInvitationRoles,
   setOptionArchived,
   setOverride,
-  setSheetMusicType,
+  setSheetMusicTypes,
   setUserTitles,
   updateRole,
   addSheetMusicSource,
@@ -356,28 +356,34 @@ export async function setTitlesAction(userId: unknown, titleIds: unknown, primar
 }
 
 /**
- * Chooses the one type of sheet music a person is given (its id), or clears
- * it (null). Only a type offered under Admin ->
- * Configuration can be chosen - checked here against that list.
+ * Chooses the types of sheet music a person is given (their ids), in order
+ * of preference; an empty list clears them. Only types offered under Admin
+ * -> Configuration can be chosen - checked here against that list.
  */
-export async function setSheetMusicTypeAction(userId: unknown, typeId: unknown): Promise<ActionResult> {
+export async function setSheetMusicTypesAction(userId: unknown, typeIds: unknown): Promise<ActionResult> {
   return withPermission("manage_sheet_music", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success) return { ok: false, error: "Unknown person." };
+    if (!Array.isArray(typeIds) || typeIds.length > 20) return { ok: false, error: "Unknown sheet music type." };
 
-    if (typeId === null) {
-      await setSheetMusicType(viewer.env, target.data, null, viewer.userId);
-      revalidatePath(`/admin/users/${target.data}`);
-      return { ok: true, value: null, message: "Sheet music cleared. Their Dashboard shows no sheet music links." };
+    const ids = typeIds.map(parseId);
+    if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+      return { ok: false, error: "Unknown sheet music type." };
     }
+    const offered = await listSheetMusicTypes(viewer.env);
+    const types = ids.flatMap((id) => offered.find((type) => type.id === id) ?? []);
+    if (types.length !== ids.length) return { ok: false, error: "That sheet music type no longer exists." };
 
-    const id = parseId(typeId);
-    const type = id ? (await listSheetMusicTypes(viewer.env)).find((candidate) => candidate.id === id) : undefined;
-    if (!type) return { ok: false, error: "That sheet music type no longer exists." };
-
-    await setSheetMusicType(viewer.env, target.data, type.id, viewer.userId);
+    await setSheetMusicTypes(viewer.env, target.data, types.map((type) => type.id), viewer.userId);
     revalidatePath(`/admin/users/${target.data}`);
-    return { ok: true, value: null, message: `Sheet music set to ${type.label}.` };
+    return {
+      ok: true,
+      value: null,
+      message:
+        types.length === 0
+          ? "Sheet music cleared. Their Dashboard shows no sheet music."
+          : `Sheet music set to ${types.map((type) => type.label).join(", then ")}.`,
+    };
   });
 }
 

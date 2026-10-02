@@ -150,7 +150,9 @@ export const AUTH_SCHEMA = [
    )`,
   // The sheet music each person is given on their Dashboard, chosen for them
   // by whoever looks after the sheet music (manage_sheet_music): one type
-  // per person (type_id, added below).
+  // per person (type_id, added below). Superseded by user_sheet_music_types;
+  // still kept in step with each person's first choice, for deployments
+  // running the older code against this shared database.
   `CREATE TABLE IF NOT EXISTS user_sheet_music (
      ${ENV},
      clerk_user_id text        NOT NULL,
@@ -198,6 +200,19 @@ export const AUTH_SCHEMA = [
   `ALTER TABLE user_sheet_music ADD COLUMN IF NOT EXISTS type_id integer
      REFERENCES sheet_music_types (id) ON DELETE CASCADE`,
   `ALTER TABLE user_sheet_music ALTER COLUMN variant DROP NOT NULL`,
+  // The types each person is given, in order of preference: each song uses
+  // the first of them it has (src/lib/sheet-music-type.ts). Replaces the one
+  // type in user_sheet_music, whose assignments are copied here once (see
+  // seedSheetMusicTypes in store.ts).
+  `CREATE TABLE IF NOT EXISTS user_sheet_music_types (
+     ${ENV},
+     clerk_user_id text        NOT NULL,
+     type_id       integer     NOT NULL REFERENCES sheet_music_types (id) ON DELETE CASCADE,
+     position      smallint    NOT NULL,
+     assigned_by   text,
+     assigned_at   timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id, type_id)
+   )`,
   // One-time data changes already applied in an environment (see
   // PERMISSION_FIXUPS in permissions.ts), so each runs exactly once.
   `CREATE TABLE IF NOT EXISTS schema_fixups (

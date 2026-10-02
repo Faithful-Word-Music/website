@@ -4,6 +4,7 @@ import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
+import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
 import { formatCountdown, splitDateLabel } from "@/lib/service-time";
@@ -11,9 +12,10 @@ import { formatCountdown, splitDateLabel } from "@/lib/service-time";
 const copy = dashboardContent.comingUp;
 
 /**
- * The next services and their songs. Someone with an assigned sheet music
- * type gets their sheet music for each service as one PDF, with how to print
- * it - all of it or only some - in a dialog beside the button.
+ * The next services and their songs. Someone with assigned sheet music types
+ * gets their sheet music for each service as one PDF, with how to print it -
+ * all of it or only some - in a dialog beside the button; under each song,
+ * which of their types it uses, and a note when it has none of them.
  */
 export function ComingUp({
   services,
@@ -93,7 +95,7 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
 
       <ol aria-labelledby={headingId} className="mt-4 divide-y divide-line border-y border-line">
         {service.slots.map((song, index) => (
-          <SongRow key={index} song={song} />
+          <SongRow key={index} song={song} showLabel={service.showLabels} />
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
       </ol>
@@ -104,6 +106,7 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
           <ServiceSheetMusic
             href={service.packetHref}
             songs={service.packetSongs}
+            showLabels={service.showLabels}
             label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
           />
         </div>
@@ -112,7 +115,7 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
   );
 }
 
-function SongRow({ song }: { song: ComingUpSong | null }) {
+function SongRow({ song, showLabel }: { song: ComingUpSong | null; showLabel: boolean }) {
   return (
     <li className="flex items-baseline gap-3 py-2">
       <span className="tnum w-8 shrink-0 text-right font-display text-base text-gold-dark">
@@ -121,6 +124,7 @@ function SongRow({ song }: { song: ComingUpSong | null }) {
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
         {song ? <SongLink title={song.title} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
+        {song?.sheet ? <SongSheet sheet={song.sheet} showLabel={showLabel} /> : null}
       </span>
       {song?.key ? (
         <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">
@@ -129,5 +133,43 @@ function SongRow({ song }: { song: ComingUpSong | null }) {
         </span>
       ) : null}
     </li>
+  );
+}
+
+const sheetLinkClasses =
+  "underline decoration-line underline-offset-2 transition-colors hover:text-ink hover:decoration-gold";
+
+/**
+ * Under a song: which of the person's sheet music types the service PDF uses
+ * for it, with their other types it has as single PDFs - named only when
+ * they have more than one type. A song with none of their types says so.
+ */
+function SongSheet({ sheet, showLabel }: { sheet: NonNullable<ComingUpSong["sheet"]>; showLabel: boolean }) {
+  if (sheet.status === "missing") {
+    return <span className="mt-0.5 block text-xs italic text-muted">{copy.noSheet}</span>;
+  }
+  if (!showLabel) return null;
+  return (
+    <span className="mt-0.5 block text-xs text-muted">
+      <a href={sheet.shown.href} target="_blank" rel="noopener" className={cn(sheetLinkClasses, "text-ink-soft")}>
+        {sheet.shown.label}
+        <span className="sr-only"> {copy.sheetNewTab}</span>
+      </a>
+      {sheet.alternatives.length > 0 ? (
+        <>
+          {" · "}
+          {copy.alsoSheet}{" "}
+          {sheet.alternatives.map((choice, index) => (
+            <span key={choice.href}>
+              {index > 0 ? ", " : null}
+              <a href={choice.href} target="_blank" rel="noopener" className={sheetLinkClasses}>
+                {choice.label}
+                <span className="sr-only"> {copy.sheetNewTab}</span>
+              </a>
+            </span>
+          ))}
+        </>
+      ) : null}
+    </span>
   );
 }

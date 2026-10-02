@@ -66,13 +66,16 @@ export async function loadPeople(viewer: Viewer): Promise<{ people: Person[]; in
     ]);
     return {
       people: accounts.value.accounts.map((account) => {
-        const sheetType = sheetTypes.get(account.id);
+        // Their types in order of preference: "Capo (Chords) → Standard (Chords)".
+        const labels = (sheetTypes.get(account.id) ?? []).flatMap(
+          (id) => offered.find((type) => type.id === id)?.label ?? [],
+        );
         return {
           id: account.id,
           name: account.fullName,
           title: titles.get(account.id)?.[0]?.label ?? null,
           roleKeys: roles.get(account.id) ?? [],
-          sheetMusic: offered.find((type) => type.id === sheetType)?.label ?? null,
+          sheetMusic: labels.length > 0 ? labels.join(" → ") : null,
         };
       }),
       instrumentCounts,

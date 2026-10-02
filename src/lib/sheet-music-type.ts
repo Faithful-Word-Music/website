@@ -8,11 +8,13 @@
  * it (see classify in src/lib/sheet-music.ts), so the Drive folders can be
  * laid out however suits them; nothing about their layout is assumed.
  *
- * Each person's type is assigned by whoever looks after the sheet music
- * (manage_sheet_music) - never worked out from their instruments, because
- * two people on the same instrument can need different sheet music. Their
- * Dashboard then links only that type, and nothing at all when a song has no
- * file of that type.
+ * Each person's types are assigned by whoever looks after the sheet music
+ * (manage_sheet_music), in order of preference - never worked out from their
+ * instruments, because two people on the same instrument can need different
+ * sheet music. A guitarist might have Capo (Chords), then Standard (Chords)
+ * for the songs that need no capo. Each song uses the first of their types
+ * it has (assignedFiles); a song with none of them shows as unavailable -
+ * never a type outside their list.
  *
  * Pure - no server-only import - so it can be unit tested.
  */
@@ -103,6 +105,21 @@ export function fileOfType(
       version.files.filter((file) => file.format === "pdf" && mayOpen(file)).map((file) => ({ version, file })),
     );
   return matches.find(({ version }) => version.version === "1") ?? matches[0] ?? null;
+}
+
+/**
+ * A person's sheet music for a song: the PDF of each of their types (see
+ * fileOfType) that the song has, in their order of preference. The first is
+ * the one to show and the rest are the alternatives; none means the song has
+ * none of their types. A type with only a MuseScore file, or only files they
+ * may not open, is passed over for the next.
+ */
+export function assignedFiles(
+  song: IndexSong,
+  typeIds: readonly number[],
+  mayOpen: (file: SheetFile) => boolean,
+): Array<{ version: SongVersion; file: SheetFile }> {
+  return typeIds.flatMap((typeId) => fileOfType(song, typeId, mayOpen) ?? []);
 }
 
 /** How many songs have a file of the type. */

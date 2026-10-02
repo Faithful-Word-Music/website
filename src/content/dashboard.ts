@@ -136,6 +136,11 @@ export const dashboardContent = {
     fullList: "Full song list",
     notPosted: "Songs not posted yet",
     pendingSong: "To be announced",
+    /** Under a song: the person's other sheet music types it has, e.g. "also Standard (Chords)". */
+    alsoSheet: "also",
+    /** Under a song with none of the person's sheet music types. */
+    noSheet: "No sheet music in your types yet",
+    sheetNewTab: "(PDF, opens in a new tab)",
     /** The whole service's sheet music as one PDF, to print in one go. */
     packet: {
       button: "Sheet music for this service",

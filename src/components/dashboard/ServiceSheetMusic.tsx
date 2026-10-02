@@ -9,14 +9,25 @@ import { dashboardContent } from "@/content/dashboard";
 
 const copy = dashboardContent.comingUp.packet;
 
-type PacketSong = { number: string | null; title: string };
+type PacketSong = { number: string | null; title: string; label: string };
 
 /**
  * A service's sheet music as one PDF (see src/lib/service-sheet-pdf.ts), and
  * beside it an "i" that opens a dialog on printing it: all of it, only some
  * songs, or one song from its own page.
  */
-export function ServiceSheetMusic({ href, songs, label }: { href: string; songs: PacketSong[]; label: string }) {
+export function ServiceSheetMusic({
+  href,
+  songs,
+  showLabels,
+  label,
+}: {
+  href: string;
+  songs: PacketSong[];
+  /** Name each song's sheet music type in the list: only when they have more than one. */
+  showLabels: boolean;
+  label: string;
+}) {
   const [open, setOpen] = useState(false);
   const count = (songs.length === 1 ? copy.count[0] : copy.count[1]).replace("{count}", String(songs.length));
 
@@ -72,7 +83,9 @@ export function ServiceSheetMusic({ href, songs, label }: { href: string; songs:
         </button>
       </div>
 
-      {open ? <PrintHelpDialog href={href} songs={songs} label={label} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <PrintHelpDialog href={href} songs={songs} showLabels={showLabels} label={label} onClose={() => setOpen(false)} />
+      ) : null}
     </>
   );
 }
@@ -85,11 +98,13 @@ export function ServiceSheetMusic({ href, songs, label }: { href: string; songs:
 function PrintHelpDialog({
   href,
   songs,
+  showLabels,
   label,
   onClose,
 }: {
   href: string;
   songs: PacketSong[];
+  showLabels: boolean;
   label: string;
   onClose: () => void;
 }) {
@@ -179,7 +194,10 @@ function PrintHelpDialog({
               {songs.map((song, index) => (
                 <li key={index} className="flex gap-2">
                   <span className="tnum w-8 shrink-0 text-right text-gold-dark">{song.number ?? "·"}</span>
-                  <span className="text-ink">{song.title}</span>
+                  <span className="text-ink">
+                    {song.title}
+                    {showLabels ? <span className="text-muted"> · {song.label}</span> : null}
+                  </span>
                 </li>
               ))}
             </ol>
