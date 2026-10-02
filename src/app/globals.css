@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+/* The installed app's login screen (src/app/login): no header, the mark and
+   name stacked above the form, no footer but the copyright, and the whole
+   screen on one page with no scrolling. Only in the
+   installed app (display-mode: standalone) - the website's login page is
+   unchanged. The page marks itself with data-app-login. */
+@custom-variant app-login {
+  @media (display-mode: standalone) {
+    :where(body:has([data-app-login])) & {
+      @slot;
+    }
+  }
+}
+
+@media (display-mode: standalone) {
+  /* No rubber-band bounce: the screen sits still. */
+  html:has([data-app-login]) {
+    overscroll-behavior: none;
+  }
+
+  /* Exactly the screen's height, the form centred above the copyright. Taller than the screen (a very small phone, or
+     the keyboard up) and it can still scroll, so nothing is ever cut off. */
+  body:has([data-app-login]) {
+    height: 100dvh;
+  }
+
+  body:has([data-app-login]) #main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}
+
 /* ===========================================================================
    DESIGN TOKENS  -  the one place site-wide colours, type and depth are set.
    Change a value here and it updates everywhere. Avoid hard-coded hex codes

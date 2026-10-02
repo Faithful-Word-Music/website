@@ -61,7 +61,10 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
           transition: the content should look like it changed, not the viewport. */}
       <header
         style={{ viewTransitionName: "site-header" }}
-        className="sticky top-0 z-40 border-b border-line/80 glass"
+        // Not in the installed app's login screen (the app-login variant in
+        // globals.css): the app has nothing to navigate to before logging in,
+        // so the page shows the logo and name itself, large and centred.
+        className="sticky top-0 z-40 border-b border-line/80 glass app-login:hidden"
       >
         <Container size="wide">
           <div className="flex h-16 items-center justify-between">

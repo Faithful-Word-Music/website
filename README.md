@@ -515,6 +515,8 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 Signed-in members can install the site as the **Faithful Word Music** app. It opens in its own window, with no browser bar, on the Dashboard (`start_url`).
 
+**The app's login screen** is the whole screen, like an app's sign-in screen. There's no header or navigation. The mark sits above the name and tagline (as on the loading screen), then the login form, then only the footer's copyright line, with no scrolling. It's done in CSS with the `app-login` variant in `globals.css`, which applies only in `display-mode: standalone` on a page marked `data-app-login`, so the website's login page is unchanged.
+
 **The app is members-only.** Inside it, someone signed out never sees the public site. Every page sends them to `/login`, which then brings them back. Only `/login`, `/accept-invite` and `/request-access` stay open. The website in a browser is unchanged. `lib/app-only.ts` holds the rules. There are two layers, because public pages are static:
 - `appOnlyInitScript` runs in `<head>` and redirects a full page load before anything paints, using Clerk's `__client_uat` cookie.
 - `components/app/AppOnly.tsx` does the same once Clerk has loaded, which covers moving between pages and logging out.
