@@ -93,6 +93,54 @@ export const accountContent = {
     profileLink: "Your profile",
   },
 
+  /**
+   * Installing the site as an app: on /account, and as a dismissible card on
+   * the Dashboard. Only signed-in members see it, and only on a device that
+   * can install (src/lib/install.ts).
+   */
+  install: {
+    title: "Install the app",
+    lead: `Add ${siteConfig.name} to this device. It opens in its own window, straight to your Dashboard, like any other app.`,
+    cardTitle: `Install ${siteConfig.name}`,
+    cardDetail: "Open it from your home screen or dock, like any other app.",
+    button: `Install ${siteConfig.name}`,
+    showSteps: "Show me how",
+    hideSteps: "Hide the steps",
+    dismiss: "Not now",
+    dismissLabel: "Hide the install suggestion",
+    /** iPhone and iPad: no browser there can install by itself. */
+    ios: {
+      intro: "On iPhone and iPad, installing is done from the Share menu:",
+      steps: [
+        "Tap the Share button (the square with an arrow pointing up). In Safari it is in the toolbar; in other browsers it may be in the address bar or the ⋯ menu.",
+        "Scroll down and tap Add to Home Screen.",
+        "Make sure Open as Web App is on if you see it, then tap Add.",
+      ],
+    },
+    /** iPhone/iPad browsers that cannot add to the Home Screen (non-Safari before iOS 16.4, apps' built-in browsers). */
+    iosOpenSafari: {
+      intro: "This browser can't add the app to your Home Screen, but Safari can:",
+      steps: [
+        "Open this page in Safari. Some browsers have Open in Safari in their menu; otherwise copy the address and paste it into Safari.",
+        "In Safari, tap the Share button (the square with an arrow pointing up).",
+        "Tap Add to Home Screen, then Add.",
+      ],
+    },
+    /** Safari on a Mac (17 and later). */
+    macSafari: {
+      intro: "In Safari on a Mac:",
+      steps: ["Open the File menu (or the Share button) and choose Add to Dock.", "Click Add."],
+    },
+    /**
+     * On /account, wherever there is no Install button to press: older phones
+     * and browsers that only offer installing from their own menu.
+     */
+    olderPhone: {
+      title: "Using an older phone?",
+      body: "If you don't see an Install button, open your browser's menu (⋮ or ⋯) and choose Install app or Add to Home screen. On an iPhone or iPad, open this page in Safari, tap Share, then Add to Home Screen. On some older phones this adds an icon that opens the site in your browser rather than in its own window.",
+    },
+  },
+
   /** The avatar menu in the header. */
   menu: {
     button: "Account menu",

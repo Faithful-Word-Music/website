@@ -2,6 +2,7 @@ import { UserProfile } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InstallAppSection } from "@/components/account/InstallApp";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -24,6 +25,9 @@ export const metadata: Metadata = {
  * addresses, password and signed-in devices, shown in Clerk's own screen.
  * Account-level settings the site adds later (notification preferences,
  * whether other members may see your profile) belong on this page too.
+ *
+ * "Install the app" sits above Clerk's screen, on devices that can install
+ * the site as an app and are not already running it (src/lib/install.ts).
  */
 export default async function AccountSettingsPage() {
   await requireViewer("/account");
@@ -39,6 +43,7 @@ export default async function AccountSettingsPage() {
             </Link>
           </p>
         </SectionHeading>
+        <InstallAppSection className="mt-10" />
         <div className="mt-10 flex justify-center">
           <UserProfile routing="path" path="/account" appearance={clerkProfileAppearance} />
         </div>

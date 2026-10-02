@@ -2,6 +2,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InstallAppCard } from "@/components/account/InstallApp";
 import { AttentionList } from "@/components/dashboard/AttentionList";
 import { AvailabilitySummary } from "@/components/dashboard/AvailabilitySummary";
 import { ComingUp } from "@/components/dashboard/ComingUp";
@@ -71,6 +72,9 @@ export const metadata: Metadata = {
  *   manage_users             account requests, invitations to follow up
  *   view_profiles            musicians without instruments
  *   the People permissions   People (musicians, song leaders, members only)
+ *
+ * On a device that can install the site as an app, a dismissible "Install
+ * Faithful Word Music" card sits under the greeting (src/lib/install.ts).
  *
  * Adding a feature here: load its data (failing soft, see load.ts), add an
  * attention provider if it can need action, and render its section only when
@@ -186,6 +190,9 @@ export default async function DashboardPage() {
             5. New sheet music        - what changed
             6. People, the quarter    - the wider picture
         */}
+        {/* Shown by the browser only where installing is possible, until dismissed. */}
+        <InstallAppCard className="mt-10" />
+
         {attention.length > 0 ? <AttentionList items={attention} className="mt-10" /> : null}
 
         <ComingUp services={comingUp} unavailable={!music.services} now={now} className="mt-10" />

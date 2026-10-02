@@ -221,3 +221,46 @@ export async function renderOgCard({
     { width: CARD_WIDTH, height: CARD_HEIGHT, fonts },
   );
 }
+
+/**
+ * The app icon at a given size, for the installed app (src/app/manifest.ts)
+ * and the iPhone/iPad home screen (src/app/apple-icon.tsx).
+ *
+ * - "any": the mark as it is, rounded tile and all, on a clear background.
+ * - "full-bleed": an ink square edge to edge, for platforms that cut their own
+ *   shape out of the icon. The mark's tile is the same ink, so its rounded
+ *   corners disappear into it. `markScale` shrinks the mark to keep it inside
+ *   the part every platform shows (Android's maskable safe zone is the middle
+ *   80% circle).
+ */
+export async function renderAppIcon({
+  size,
+  background,
+  markScale = 1,
+}: {
+  size: number;
+  background: "any" | "full-bleed";
+  markScale?: number;
+}) {
+  const mark = await loadMark();
+  const markSize = Math.round(size * markScale);
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: size,
+          height: size,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: background === "full-bleed" ? INK : "transparent",
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={mark} width={markSize} height={markSize} alt="" />
+      </div>
+    ),
+    { width: size, height: size },
+  );
+}

@@ -13,6 +13,7 @@ import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
 import { clerkAppearance, clerkLocalization } from "@/lib/auth/appearance";
 import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
+import { installPromptCaptureScript } from "@/lib/install";
 import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
@@ -60,6 +61,14 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+  },
+  // Added to an iPhone or iPad Home Screen, the site opens as its own app
+  // under its full name. The manifest (src/app/manifest.ts) does the same
+  // everywhere else.
+  appleWebApp: {
+    capable: true,
+    title: siteConfig.name,
+    statusBarStyle: "default",
   },
 };
 
@@ -121,6 +130,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Applies a saved light/dark choice before the first paint, so the
             page never flashes the other theme. See src/lib/theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Keeps the browser's "install this app" event for signed-in
+            members' Install button, and stops Chrome offering it to everyone
+            on its own. See src/lib/install.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: installPromptCaptureScript }} />
       </head>
       <body className="flex min-h-full flex-col bg-paper">
         {/* Scroll-reveal content starts hidden and is revealed by JavaScript.

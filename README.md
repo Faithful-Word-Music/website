@@ -64,6 +64,7 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `/account` | Account settings: Clerk's screen for sign-in email, password and devices. Old `/account/edit` and `/account/security` links redirect |
 | `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
 | `POST /api/account-requests` | The request form's endpoint |
+| `/manifest.webmanifest`, `/app-icon/<variant>`, `/apple-icon` | What makes the site installable as the Faithful Word Music app, and its icons. See [Installing the app](#installing-the-app) |
 
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Google Sheets API ·
 Neon Postgres (song archive) · Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) ·
@@ -509,6 +510,41 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
   - Live at `/people` and `/people/<id>` (`/profile` always means "mine").
   - Get their own permission, returned as the `members` audience from `audienceFor()`.
   - Any "show my profile to members" choice belongs on `/account`.
+
+#### Installing the app
+
+Signed-in members can install the site as the **Faithful Word Music** app. It opens in its own window, with no browser bar, at `/`, which the proxy sends on to the Dashboard.
+
+**Where it's offered:** only to signed-in members, and only on a device that can install and isn't already running the app:
+- **Account settings** (`/account`) has an **Install the app** section above Clerk's screen. It's the permanent home.
+- The **Dashboard** shows an **Install Faithful Word Music** card under the greeting. **Not now** hides it on that device (`localStorage`). Account settings still has it.
+- Wherever there's no button to press (older phones, Firefox), Account settings shows **Using an older phone?**, which explains installing from the browser's own menu. The Dashboard card only appears where there's something to press.
+- Visitors who aren't signed in see nothing. The site doesn't stop anyone installing from the browser's own menu; it just never advertises it to them.
+
+| Platform | How it installs | What the member sees |
+|---|---|---|
+| Chrome, Edge, Samsung Internet (Android, Windows, macOS, ChromeOS, Linux) | The browser's `beforeinstallprompt` event | **Install Faithful Word Music** opens the browser's own install dialog |
+| iPhone and iPad (Safari, and Chrome, Edge or Firefox on iOS 16.4+) | Share → **Add to Home Screen**. No browser there can be asked to install | The same button shows the steps |
+| iPhone and iPad in Chrome, Edge or Firefox before iOS 16.4, or inside an app (Facebook, Instagram) | Only Safari can add to the Home Screen | The button explains opening the page in Safari first |
+| Safari 17+ on a Mac | File → **Add to Dock** | The same button shows the steps |
+| Older Chrome, Firefox, other browsers | No install event (older Chrome only fired it for sites with a service worker) | No button; Account settings explains the browser menu's **Install app** / **Add to Home screen** |
+| Already running as the app | | Nothing |
+
+**How it fits together:**
+- `app/manifest.ts` is the web app manifest:
+  - name and short name are both `siteConfig.name`;
+  - `display: standalone`, start and scope `/`, paper as the theme and background colour.
+- The icons are drawn from `app/icon.svg` by `renderAppIcon` in `lib/og.tsx`, so they follow the logo:
+  - `app/app-icon/[variant]/route.tsx` serves 192, 512 and a maskable 512 for Android's shapes;
+  - `app/apple-icon.tsx` is the 180px Home Screen icon.
+  - All of them are built at build time and served as static files.
+- `appleWebApp` in `app/layout.tsx` makes an iOS Home Screen icon open full-screen under the full name.
+- `lib/install.ts` holds:
+  - `installPromptCaptureScript`, which runs in `<head>` before React. It keeps Chromium's install event for the button, because the event can fire before hydration. Its `preventDefault()` also stops Chrome on Android offering its own install bar to every visitor.
+  - `detectInstallMode`, the platform rules above, tested in `install.test.ts`.
+- `components/account/InstallApp.tsx` renders the section and the card.
+
+**No service worker.** Chromium no longer needs one to install a site, and Safari never did. Offline use, caching and notifications are a later phase. Adding a service worker then doesn't change any of the above.
 
 ### Availability
 
