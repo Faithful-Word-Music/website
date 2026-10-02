@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
+import { haptic } from "@/components/app/haptic";
 import { PdfViewer } from "@/components/app/PdfViewer";
 import { useInstalledAppOnTouch } from "@/components/app/standalone";
 import { cn } from "@/components/ui/cn";
+import { finishNavigationProgress, startNavigationProgress } from "@/components/ui/NavigationProgress";
 import { appContent } from "@/content/app";
 import { isPdfPath, PULL_THRESHOLD, pullDistance } from "@/lib/installed-app";
 
@@ -36,12 +39,31 @@ export function InstalledApp() {
     return () => document.removeEventListener("click", onClick, true);
   }, [active]);
 
-  const pull = usePullToRefresh(active && pdf === null);
+  // A refresh fetches the page's data again in place, with the gold loading
+  // bar across the top, rather than reloading the whole app: the page stays
+  // where it is and there is no blank flash.
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+  const refreshStarted = useRef(false);
+  const refresh = useCallback(() => {
+    haptic();
+    refreshStarted.current = true;
+    startNavigationProgress();
+    startRefresh(() => router.refresh());
+  }, [router]);
+
+  useEffect(() => {
+    if (refreshing || !refreshStarted.current) return;
+    refreshStarted.current = false;
+    finishNavigationProgress();
+  }, [refreshing]);
+
+  const distance = usePullToRefresh(active && pdf === null && !refreshing, refresh);
 
   if (!active) return null;
   return (
     <>
-      <PullIndicator {...pull} />
+      <PullIndicator distance={distance} />
       {pdf ? <PdfViewer key={pdf} href={pdf} onClose={() => setPdf(null)} /> : null}
     </>
   );
@@ -62,10 +84,9 @@ function canStartPull(target: EventTarget | null): boolean {
   return true;
 }
 
-/** Pull down at the top of a page, let go past the line, and the app reloads. */
-function usePullToRefresh(enabled: boolean) {
+/** Pull down at the top of a page and let go past the line to refresh it. */
+function usePullToRefresh(enabled: boolean, onRefresh: () => void): number {
   const [distance, setDistance] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (!enabled) return;
@@ -101,13 +122,9 @@ function usePullToRefresh(enabled: boolean) {
 
     function onEnd() {
       if (!start) return;
-      if (current >= PULL_THRESHOLD) {
-        start = null;
-        setRefreshing(true);
-        window.location.reload();
-        return;
-      }
+      const release = current >= PULL_THRESHOLD;
       reset();
+      if (release) onRefresh();
     }
 
     document.addEventListener("touchstart", onStart, { passive: true });
@@ -121,40 +138,34 @@ function usePullToRefresh(enabled: boolean) {
       document.removeEventListener("touchcancel", reset);
       setDistance(0);
     };
-  }, [enabled]);
+  }, [enabled, onRefresh]);
 
-  return { distance, refreshing };
+  return distance;
 }
 
-/** The chip that comes down from the top while pulling. */
-function PullIndicator({ distance, refreshing }: { distance: number; refreshing: boolean }) {
-  if (distance === 0 && !refreshing) return null;
+/** The chip that comes down from the top while pulling; the gold bar takes over once let go. */
+function PullIndicator({ distance }: { distance: number }) {
+  if (distance === 0) return null;
   const copy = appContent.pullToRefresh;
-  const shown = refreshing ? PULL_THRESHOLD : distance;
-  const ready = refreshing || distance >= PULL_THRESHOLD;
+  const ready = distance >= PULL_THRESHOLD;
 
   return (
     <div
-      aria-hidden={!refreshing}
-      role={refreshing ? "status" : undefined}
-      style={{ transform: `translate(-50%, ${shown - 32}px)`, opacity: Math.min(1, shown / PULL_THRESHOLD) }}
+      aria-hidden="true"
+      style={{ transform: `translate(-50%, ${distance - 32}px)`, opacity: Math.min(1, distance / PULL_THRESHOLD) }}
       className="pointer-events-none fixed left-1/2 top-0 z-[70] flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-soft shadow-card"
     >
-      {refreshing ? (
-        <span className="size-3.5 animate-spin rounded-full border-2 border-line border-t-ink motion-reduce:animate-none" />
-      ) : (
-        <svg
-          aria-hidden="true"
-          width="14"
-          height="14"
-          viewBox="0 0 16 16"
-          fill="none"
-          className={cn("transition-transform", ready && "rotate-180")}
-        >
-          <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-      {refreshing ? copy.refreshing : ready ? copy.release : copy.pull}
+      <svg
+        aria-hidden="true"
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        className={cn("transition-transform", ready && "rotate-180")}
+      >
+        <path d="M8 2.5v11M3.5 9 8 13.5 12.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      {ready ? copy.release : copy.pull}
     </div>
   );
 }

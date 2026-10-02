@@ -4,7 +4,9 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AccountProvider } from "@/components/account/AccountContext";
+import { AppOnly } from "@/components/app/AppOnly";
 import { InstalledApp } from "@/components/app/InstalledApp";
+import { Splash } from "@/components/app/Splash";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
@@ -14,7 +16,9 @@ import { NavigationProgress } from "@/components/ui/NavigationProgress";
 import { siteConfig } from "@/config/site";
 import { clerkAppearance, clerkLocalization } from "@/lib/auth/appearance";
 import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
+import { appOnlyInitScript } from "@/lib/app-only";
 import { installPromptCaptureScript } from "@/lib/install";
+import { splashInitScript } from "@/lib/splash";
 import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
@@ -103,7 +107,11 @@ function AccountsProvider({ enabled, children }: { enabled: boolean; children: R
       signUpFallbackRedirectUrl="/profile/edit?welcome=1"
       afterSignOutUrl="/"
     >
-      <AccountProvider>{children}</AccountProvider>
+      <AccountProvider>
+        {/* The installed app: members only (src/lib/app-only.ts). */}
+        <AppOnly />
+        {children}
+      </AccountProvider>
     </ClerkProvider>
   );
 }
@@ -135,6 +143,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             members' Install button, and stops Chrome offering it to everyone
             on its own. See src/lib/install.ts. */}
         <script dangerouslySetInnerHTML={{ __html: installPromptCaptureScript }} />
+        {/* Puts up the loading screen for a signed-in member's first load in
+            this tab or app launch. See src/lib/splash.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: splashInitScript }} />
+        {/* The installed app is members-only: signed out, it goes straight
+            to log in. See src/lib/app-only.ts. */}
+        {authEnabled ? <script dangerouslySetInnerHTML={{ __html: appOnlyInitScript }} /> : null}
       </head>
       <body className="flex min-h-full flex-col bg-paper">
         {/* Scroll-reveal content starts hidden and is revealed by JavaScript.
@@ -142,6 +156,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <noscript>
           <style>{".reveal{opacity:1;transform:none}"}</style>
         </noscript>
+
+        {/* The loading screen: hidden unless the script above put it up. */}
+        <Splash />
 
         {/* A thin bar across the top while the next page loads. */}
         <NavigationProgress />

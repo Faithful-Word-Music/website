@@ -21,7 +21,22 @@ import { usePagePath } from "@/components/ui/use-page-path";
  * Driven by writing styles to the bar directly rather than through React
  * state: it changes many times a second and nothing else depends on it.
  * Purely visual - screen readers hear the new page's title instead.
+ *
+ * Other loads can run it too: startNavigationProgress() and
+ * finishNavigationProgress(), as the installed app's pull-to-refresh does.
  */
+
+const START_EVENT = "fwm:progress-start";
+const FINISH_EVENT = "fwm:progress-finish";
+
+/** Runs the bar for a load that is not a page change, until finishNavigationProgress(). */
+export function startNavigationProgress() {
+  window.dispatchEvent(new Event(START_EVENT));
+}
+
+export function finishNavigationProgress() {
+  window.dispatchEvent(new Event(FINISH_EVENT));
+}
 
 /** The shortest the bar is ever on screen, so a quick page change still reads. */
 const MIN_VISIBLE_MS = 300;
@@ -132,9 +147,13 @@ export function NavigationProgress() {
     state.finish = finish;
     document.addEventListener("click", onClick, true);
     window.addEventListener("popstate", onPopState);
+    window.addEventListener(START_EVENT, start);
+    window.addEventListener(FINISH_EVENT, finish);
     return () => {
       document.removeEventListener("click", onClick, true);
       window.removeEventListener("popstate", onPopState);
+      window.removeEventListener(START_EVENT, start);
+      window.removeEventListener(FINISH_EVENT, finish);
       clearTimers();
     };
   }, []);

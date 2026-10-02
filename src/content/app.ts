@@ -25,6 +25,5 @@ export const appContent = {
   pullToRefresh: {
     pull: "Pull to refresh",
     release: "Release to refresh",
-    refreshing: "Refreshing…",
   },
 } as const;

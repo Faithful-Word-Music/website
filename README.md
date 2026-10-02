@@ -513,7 +513,13 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 #### Installing the app
 
-Signed-in members can install the site as the **Faithful Word Music** app. It opens in its own window, with no browser bar, at `/`, which the proxy sends on to the Dashboard.
+Signed-in members can install the site as the **Faithful Word Music** app. It opens in its own window, with no browser bar, on the Dashboard (`start_url`).
+
+**The app is members-only.** Inside it, someone signed out never sees the public site. Every page sends them to `/login`, which then brings them back. Only `/login`, `/accept-invite` and `/request-access` stay open. The website in a browser is unchanged. `lib/app-only.ts` holds the rules. There are two layers, because public pages are static:
+- `appOnlyInitScript` runs in `<head>` and redirects a full page load before anything paints, using Clerk's `__client_uat` cookie.
+- `components/app/AppOnly.tsx` does the same once Clerk has loaded, which covers moving between pages and logging out.
+
+Neither is protection; members' pages still check on the server.
 
 **Where it's offered:** only to signed-in members, and only on a device that can install and isn't already running the app:
 - **Account settings** (`/account`) has an **Install the app** section above Clerk's screen. It's the permanent home.
@@ -546,7 +552,12 @@ Signed-in members can install the site as the **Faithful Word Music** app. It op
 
 **Inside the installed app on a phone or tablet** there's no browser around the site, so `components/app/InstalledApp.tsx` adds two things a browser would otherwise give. The pure parts are in `lib/installed-app.ts`. In a browser, and in the desktop app, it renders nothing and listens to nothing.
 - **A PDF viewer.** Every link to one of the site's PDFs (sheet-music files, a service's sheet music, a month's song list) opens `PdfViewer` instead of a "new tab". On an iPhone that tab otherwise fills the app with no Close button and no way to save. The viewer has Close, the file's name, and **Save or share**: the share sheet on iPhone (Save to Files, Print, other apps), or **Download** plus **Share** elsewhere. The file is fetched once with PDF.js (`components/ui/pdfjs.ts`, shared with the song pages' preview). Pages are drawn only near the view, so long service packets stay light on older phones.
-- **Pull to refresh.** Pull down at the top of a page and let go past the line to reload. It's off while a menu, dialog or the PDF viewer is open, and when the part being touched is scrolled.
+- **Pull to refresh.** Pull down at the top of a page and let go past the line. The phone gives a short tap (`components/app/haptic.ts`: the Vibration API on Android, a native switch's tick on iOS 18+), and the page's data is fetched again in place with `router.refresh()` while the gold loading bar runs (`startNavigationProgress()` in `NavigationProgress.tsx`). It's off while a menu, dialog or the PDF viewer is open, and when the part being touched is scrolled.
+
+**The loading screen.** On a signed-in member's first load in a browser tab or app launch, the mark and the name sit centred on paper, in light or dark like the rest of the site. A soft gold glow pulses around the mark while the page loads, then the screen fades away once the page is ready. It always stays at least 2 seconds, long enough to see one full pulse of the glow (`MIN_VISIBLE_MS` in `Splash.tsx`, kept in step with `.splash-glow`). Visitors never see it. In the app, it also comes back straight after signing in (`showSplash()`) and stays until the next page arrives, as an app's launch screen does.
+- It has to be up from the first frame, before React or Clerk load, and public pages are static. So `splashInitScript` in `lib/splash.ts` runs in `<head>`. It reads Clerk's `__client_uat` cookie, which holds a sign-in time or 0, and `sessionStorage` for "already shown here", then sets `data-splash` on `<html>`.
+- `components/app/Splash.tsx` is always in the page, hidden by CSS until that attribute appears, and takes it away. The styles are `.splash` in `globals.css`.
+- The cookie only decides whether to show a loading screen, never what anyone may see. A 6-second failsafe takes it down if a script fails.
 
 **No service worker.** Chromium no longer needs one to install a site, and Safari never did. Offline use, caching and notifications are a later phase. Adding a service worker then doesn't change any of the above.
 

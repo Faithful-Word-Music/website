@@ -8,8 +8,9 @@ import { PAPER } from "@/lib/og";
  * "Faithful Word Music" app, opening in its own window rather than a browser
  * tab. Only signed-in members are offered installing (src/lib/install.ts).
  *
- * It starts at "/", which the proxy sends signed-in members on to their
- * Dashboard. The icons are drawn from the one mark, src/app/icon.svg
+ * It opens on the Dashboard: the proxy sends anyone signed out to log in
+ * first, and inside the app the public site is never shown
+ * (src/lib/app-only.ts). The icons are drawn from the one mark, src/app/icon.svg
  * (src/app/app-icon/[variant]/route.tsx).
  */
 export default function manifest(): MetadataRoute.Manifest {
@@ -18,7 +19,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: siteConfig.name,
     short_name: siteConfig.shortName,
     description: siteConfig.description,
-    start_url: "/",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     background_color: PAPER,

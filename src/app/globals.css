@@ -423,6 +423,60 @@ html.motion-ready .reveal {
   }
 }
 
+/* --- 4. The loading screen ----------------------------------------------
+   Signed-in members' first load in a tab or app launch (src/lib/splash.ts,
+   src/components/app/Splash.tsx). Hidden unless the <head> script has put
+   data-splash on <html>. The mark settles in, the name follows, and the
+   whole screen fades away once the page is ready. */
+.splash {
+  display: none;
+}
+
+html[data-splash] .splash {
+  display: flex;
+}
+
+.splash[data-leaving] {
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
+.splash-mark {
+  animation: splash-mark 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.splash-name {
+  animation: enter-fade-up 500ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both;
+}
+
+/* While it is up, a soft gold glow breathes around the mark: loading. One
+   full pulse fits the screen's minimum time (MIN_VISIBLE_MS in Splash.tsx);
+   keep the two in step. */
+.splash-glow {
+  animation: splash-glow 1.6s ease-in-out 300ms infinite;
+}
+
+@keyframes splash-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-gold) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 36px 6px color-mix(in srgb, var(--color-gold) 45%, transparent);
+  }
+}
+
+@keyframes splash-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* --- Reduced motion ------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   html {
