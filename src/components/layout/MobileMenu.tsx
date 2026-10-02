@@ -40,13 +40,13 @@ export function MobileMenu({
   useScrollLock(open);
 
   /**
-   * Close if the viewport grows past the breakpoint. Without this, `md:hidden`
+   * Close if the viewport grows past the breakpoint. Without this, `lg:hidden`
    * would hide the overlay while the body stayed pinned - the page would
    * silently become unscrollable after a rotate or a resize.
    */
   useEffect(() => {
     if (!open) return;
-    const wide = window.matchMedia("(min-width: 768px)");
+    const wide = window.matchMedia("(min-width: 1024px)");
     function onChange() {
       if (wide.matches) onClose();
     }
@@ -60,7 +60,7 @@ export function MobileMenu({
       inert={!open}
       className={cn(
         // Fixed to the viewport, starting below the 64px header bar.
-        "fixed inset-x-0 bottom-0 top-16 z-30 md:hidden",
+        "fixed inset-x-0 bottom-0 top-16 z-30 lg:hidden",
         // The menu scrolls itself if the list ever outgrows the screen;
         // overscroll-contain stops a flick chaining through to the page.
         "overflow-y-auto overscroll-contain bg-paper",

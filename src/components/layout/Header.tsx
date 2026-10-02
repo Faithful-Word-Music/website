@@ -69,7 +69,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
 
             <div className="flex items-center gap-1">
               {/* Desktop navigation */}
-              <nav aria-label="Primary" className="hidden md:block">
+              <nav aria-label="Primary" className="hidden lg:block">
                 <ul className="flex items-center gap-1">
                   {items.map((item) => (
                     <li key={item.href}>
@@ -77,7 +77,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                         href={item.href}
                         aria-current={isActive(item.href) ? "page" : undefined}
                         className={cn(
-                          "relative inline-flex min-h-11 items-center rounded-full px-4 text-sm transition-colors",
+                          "relative inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-4 text-sm transition-colors",
                           isActive(item.href)
                             ? "text-ink"
                             : "text-muted hover:text-ink",
@@ -115,7 +115,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={() => setOpen((value) => !value)}
-                className="-mr-2 inline-flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper md:hidden"
+                className="-mr-2 inline-flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper lg:hidden"
               >
                 <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
                 {/* Three rules that fold into a cross: keys closing on a stave. */}

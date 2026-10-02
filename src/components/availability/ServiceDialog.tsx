@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { availabilityContent } from "@/content/availability";
 import type { BoardService } from "@/lib/availability/board";
-import { NOTE_LIMIT, type AvailabilityChoice } from "@/lib/availability/effective";
+import { NOTE_LIMIT, type ExceptionStatus } from "@/lib/availability/effective";
 import { serviceDay, serviceLine, stateLabel } from "@/lib/availability/format";
 
 import { Dialog } from "./Dialog";
@@ -44,20 +44,21 @@ export function ServiceDialog({
   const ids = useId();
   const router = useRouter();
   const own = service.subject;
-  const [choice, setChoice] = useState<AvailabilityChoice>(own?.exception ?? "normal");
+  // Two choices only. Whether one is an exception follows from their normal
+  // services: choosing the usual one simply clears any exception.
+  const [choice, setChoice] = useState<ExceptionStatus>(own?.effective ? "available" : "unavailable");
   const [note, setNote] = useState(own?.note ?? "");
   const [result, setResult] = useState<Result>(null);
   const [pending, startTransition] = useTransition();
 
   const canEdit = Boolean(subject && own && editable);
-  const usual = own?.normal ? copy.service.usualYes : copy.service.usualNo;
-  const choices: Array<{ value: AvailabilityChoice; label: string }> = [
+  const usual: ExceptionStatus = own?.normal ? "available" : "unavailable";
+  const choices: Array<{ value: ExceptionStatus; label: string }> = [
     { value: "available", label: copy.service.choices.available },
     { value: "unavailable", label: copy.service.choices.unavailable },
-    { value: "normal", label: copy.service.choices.normal.replace("{usual}", usual) },
   ];
-  // Choosing what they would be anyway is the same as Normal: no note to keep.
-  const isChange = choice !== "normal" && (choice === "available") !== own?.normal;
+  // The usual choice keeps no exception, so it has no note either.
+  const isChange = choice !== usual;
 
   function save() {
     if (!subject) return;
@@ -137,16 +138,15 @@ export function ServiceDialog({
                               ? own.normal
                                 ? "normally-available"
                                 : "available-by-exception"
-                              : option.value === "unavailable"
-                                ? own.normal
-                                  ? "unavailable-by-exception"
-                                  : "normally-unavailable"
-                                : own.normal
-                                  ? "normally-available"
-                                  : "normally-unavailable"
+                              : own.normal
+                                ? "unavailable-by-exception"
+                                : "normally-unavailable"
                           }
                         />
                         {option.label}
+                        {option.value === usual ? (
+                          <span className="ml-auto text-xs text-muted">{copy.service.usual}</span>
+                        ) : null}
                       </label>
                     );
                   })}
@@ -154,6 +154,7 @@ export function ServiceDialog({
               </fieldset>
               {isChange ? (
                 <div className="mt-4">
+                  <p className="mb-3 text-xs text-muted">{copy.service.exceptionHint}</p>
                   <TextField
                     id={`${ids}-note`}
                     label={copy.service.note}

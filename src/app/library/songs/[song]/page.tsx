@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
 import { SongLink } from "@/components/song-list/SongLink";
 import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
@@ -65,22 +66,19 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
         />
 
         {/*
-          What most visitors come for sits first: the sheet music when it can
-          be shared, then the song's details. When it can't, the details lead
+          What most visitors come for sits first: the sheet music whenever this
+          visitor can open it (members' files included, once a member is
+          known), then the song's details. When they can't, the details lead
           and the short "not available publicly" note follows them.
         */}
         {sheetMusic ? (
-          sheetMusic.available ? (
-            <>
-              <SheetMusic music={sheetMusic} title={title} className="mt-10" />
-              <AboutSong music={sheetMusic} />
-            </>
-          ) : (
-            <>
-              <AboutSong music={sheetMusic} className="mt-10" />
-              <SheetMusic music={sheetMusic} title={title} />
-            </>
-          )
+          <SongSections
+            publicFiles={sheetMusic.available}
+            membersFiles={sheetMusic.membersOnly}
+            sheet={<SheetMusic music={sheetMusic} title={title} className="" />}
+            about={<AboutSong music={sheetMusic} className="" />}
+            className="mt-10"
+          />
         ) : null}
 
         {sheetMusic ? (

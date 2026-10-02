@@ -34,13 +34,13 @@ export const availabilityContent = {
     normal: "Normal",
     away: "Unavailable by exception",
     extra: "Available by exception",
-    off: "Not normally",
+    off: "Not one of your services",
     changes: "People with changes",
   },
 
   states: {
     "normally-available": "Available",
-    "normally-unavailable": "Not normally serving",
+    "normally-unavailable": "Not one of your services",
     "available-by-exception": "Available by exception",
     "unavailable-by-exception": "Unavailable by exception",
   },
@@ -68,11 +68,10 @@ export const availabilityContent = {
     choices: {
       available: "Available",
       unavailable: "Unavailable",
-      /** {usual} is replaced with "available" or "not available". */
-      normal: "Normal (usually {usual})",
     },
-    usualYes: "available",
-    usualNo: "not available",
+    /** Beside the choice that matches their normal services. Choosing it clears any exception. */
+    usual: "Your usual",
+    exceptionHint: "This differs from the normal services, so it shows as an exception.",
     note: "Note",
     noteHint: "Optional. Visible to the whole music team.",
     notePlaceholder: "e.g. Out of town",
@@ -93,6 +92,7 @@ export const availabilityContent = {
     from: "From",
     to: "To",
     status: "Mark as",
+    clear: "Clear changes",
     /** {count} and {list} are replaced. */
     covers: ["Covers {count} service: {list}", "Covers {count} services: {list}"],
     none: "No upcoming services in that range.",

@@ -26,7 +26,7 @@ The website of **Faithful Word Music**, the music ministry of
    - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
-   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience)
+   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience) · [Availability](#availability)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
@@ -59,6 +59,7 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `/request-access` | Ask for an account. Creates a request for an administrator to review, never an account |
 | `/accept-invite` | Where Clerk invitation emails land; the only place an account can be created |
 | `/dashboard` | The signed-in home: what needs the member's attention and what is coming up for them |
+| `/availability` | The music ministry's shared availability board: normal services, and dated exceptions for whole services. Musicians, song leaders and the music director only (`view_availability`) |
 | `/profile`, `/profile/edit` | A member's own profile (who they are in the ministry) and its editor |
 | `/account` | Account settings: Clerk's screen for sign-in email, password and devices. Old `/account/edit` and `/account/security` links redirect |
 | `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
@@ -145,6 +146,7 @@ src/
 │   ├── api/cron/sync-archive/        Nightly archive sync
 │   ├── login/  request-access/  accept-invite/   Member log in, account requests, invitations (Clerk)
 │   ├── dashboard/                    The signed-in home
+│   ├── availability/                 The availability board and its server actions
 │   ├── profile/                      A member's own profile and profile editor
 │   ├── account/                      Account settings (Clerk: email, password, devices)
 │   ├── admin/                        Requests, invitations, people, roles, titles & instruments
@@ -156,6 +158,7 @@ src/
 │   ├── song-list/                    Everything on /song-list (see below)
 │   ├── account/  admin/              Account pages' forms, the account context and menu, and the admin editors
 │   ├── dashboard/                    The Dashboard's sections
+│   ├── availability/                 The availability calendar, dialogs and editors
 │   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
 │   └── layout/  home/  contact/
 ├── config/site.ts                    Every public setting, in one place
@@ -190,7 +193,8 @@ src/
 | `auth/clerk.ts`, `auth/clerk-env.ts` | Every Clerk Backend API call, and which Clerk instance may be used where |
 | `auth/profile-visibility.ts` | Which profile fields each audience (self, staff, later other members) may see (pure) |
 | `navigation.ts` | Which links the header, mobile menu, footer and account menu show, for visitors and per permission (pure) |
-| `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up` and `sheet-choice` (pure) |
+| `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up`, `repertoire`, `sheet-gaps`, `new-sheet-music` and `people` (pure); `load.ts` does the reads (server-only) |
+| `availability/` | Availability: `occurrences` (which services happen), `effective` (normal + exception = effective, the one rule), `board`, `summary`, `range`, `access` (who is on the board, whose records someone may change), `forms`, `format` (pure); `store.ts` and `load.ts` (server-only) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
 `NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
@@ -396,7 +400,8 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
 - **Owners:** Clerk holds the first name, last name and photo. The site holds the middle name, preferred name, bio, phone, voice part, usual services and instruments (each with a skill level and a primary).
 - **Questions:** everyone answers "Can you read sheet music?" and gives a music-theory level. **Musicians** also answer **How do you play?** (a five-stop By ear ↔ Sheet music scale).
 - **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Admin → Configuration**. An item still in use is archived, not deleted.
-- **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator.
+- **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator. (Normal services are also seen by the music team on the [availability board](#availability).)
+- **Usual services** are shown on the profile but edited on `/availability`. The profile form never writes them, so saving it can't wipe them.
 
 **Security model:**
 - **Every protected page and every server action checks, on the server:**
@@ -407,7 +412,7 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
   - and only then does the action run.
   This all goes through `src/lib/auth/session.ts`.
 - **Things that are never trusted:** hidden buttons, the header menu, the proxy and the admin layout. The header's "Admin" link is only a convenience.
-- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/dashboard`, `/profile`, `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards, and sends signed-in visitors on `/` to `/dashboard`. It doesn't run on any other public page, so they stay static and cached.
+- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/dashboard`, `/availability`, `/profile`, `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards, and sends signed-in visitors on `/` to `/dashboard`. It doesn't run on any other public page, so they stay static and cached.
 
 **One database, two Clerk instances:**
 - Local, Preview and Production share one Neon database, but Clerk Development and Production have separate users.
@@ -445,8 +450,8 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 **Navigation** (`src/lib/navigation.ts`, one place for every menu):
 - Visitors: Home, Song List, Library, Contact.
-- Signed in: **Dashboard** takes Home's place, and the public music pages stay.
-- The avatar menu holds Dashboard, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar.
+- Signed in: **Dashboard** takes Home's place, then **Availability** for the music ministry's participants (`view_availability`, never Member-only accounts), and the public music pages stay.
+- The avatar menu holds Dashboard, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar. The bar gives way to the menu below 1024px (`lg`), so the links never wrap.
 - A new destination is one entry in `APP_NAV` (or `ACCOUNT_MENU`) with the `permission` that opens it. Nothing unfinished is listed.
 
 **Why the header finds out in the browser:** public pages are static, so they can't know who is looking. `AccountProvider` (`components/account/AccountContext.tsx`) reads the Clerk session in the browser and asks `/api/account/me` once for the person's own permissions. The header, footer, search and members' sheet music all share that one answer. A signed-in person briefly sees the visitor's links on a static page until Clerk loads; that is the price of keeping the public site static. **Showing a link is never the protection**: every page, file and action checks permissions again on the server.
@@ -462,16 +467,13 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 - These come together in one `DashboardFocus` (`lib/dashboard/focus.ts`). Capabilities are read from permissions, never role names, so a custom role with the right permission gets the same Dashboard.
 - Someone with several responsibilities (say Administrator, Music Director and Pianist) gets **one** page: each section draws on the parts of the focus it needs, and attention items are de-duplicated by id.
-- **Sections** (each shown only when it has something real to say):
+- **Sections**, in this order for everyone (absent sections are skipped): things to do, this week, availability, preparing, what changed, the wider picture. Each is shown only when it has something real to say, except Availability, which is always there for the people it applies to.
 
   | Section | Who sees it | What it shows |
   |---|---|---|
-  In this order for everyone (absent sections are skipped): things to do, this week, preparing, what changed, the wider picture.
-
-  | Section | Who sees it | What it shows |
-  |---|---|---|
-  | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`) |
+  | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`); no normal services set (`view_availability`, low priority) |
   | **Coming up** | Everyone | The next services (up to three within a week). Someone with an assigned sheet music type gets a **Sheet Music** link under each song that has that type, and nothing under one that doesn't |
+  | **Availability** | `view_availability` | Always present, kept short: their normal services, the next service and their state for it, their upcoming exceptions, other people's changes in the next two weeks, and **View availability** |
   | **Songs to brush up on** | People who play or lead | Songs in the next two weeks not sung for six months, or not in the records at all |
   | **Sheet music to finish** | `manage_sheet_music` | Songs in the next three services (never further ahead, however much of the month is planned) with no Index entry, no files, no sheet music of the first type (Standard by default), sheet music with MuseScore but no PDF, or rights still to review |
   | **New sheet music** | Everyone, among files they may open | Songs whose files changed in Drive in the last two weeks, upcoming first |
@@ -491,7 +493,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 - The logic is in `lib/dashboard/` (pure, tested); the reads are in `lib/dashboard/load.ts`, each failing soft so one source being down never takes the page with it.
 
-**Adding a feature to the signed-in application** (Availability, Service Planner, Notifications…):
+**Adding a feature to the signed-in application** (Service Planner, Notifications…; Availability followed these steps):
 1. Its route, protected by `requireViewer()` and its own permission (added to `permissions.ts` when something checks it), and added to the proxy matcher.
 2. A nav entry in `lib/navigation.ts` gated on that permission.
 3. If it can need action, an attention provider in `lib/dashboard/providers.ts` returning `AttentionItem`s (nothing when there is nothing to do).
@@ -507,6 +509,40 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
   - Live at `/people` and `/people/<id>` (`/profile` always means "mine").
   - Get their own permission, returned as the `members` audience from `audienceFor()`.
   - Any "show my profile to members" choice belongs on `/account`.
+
+### Availability
+
+**One question:** is this person available for this *whole* service, compared with their normal schedule? Set your normal services once, then only record what changes. In a normal week nobody does anything. It is not a rota, a staffing tool or a scheduler: an unavailable organist just means no organ.
+
+**Who it is for.** The music ministry's participants, by permission, never by role name:
+
+| Permission | Default roles | Can |
+|---|---|---|
+| `view_availability` | Musician, Song Leader, Music Director | Appear on the board, see everyone's changes, keep their own normal services and exceptions |
+| `manage_availability` | Music Director | Also change anyone else's, on their behalf |
+
+- Member-only accounts get neither: no nav link, no Dashboard section, and `/availability` shows "no access".
+- **The board (roster)** is everyone holding `view_availability` through a role or an individual grant, minus denies (`availabilityRosterIds` in `lib/availability/access.ts`). The Administrator role's blanket "every permission" lets an admin open and manage the board, but doesn't list them on it unless they also hold a music role.
+- The Music Director is on the board like anyone else and manages their own availability the same way. Managing other people's is a separate permission.
+- Existing databases get the new permissions once: `PERMISSION_FIXUPS` in `permissions.ts`, recorded in `schema_fixups`, so an admin who later removes one doesn't see it come back.
+
+**The model:**
+- **Normal services** stay where they always were, in `user_profiles.service_availability` (Sunday AM, Sunday PM, Wednesday PM, special services). Existing answers carried over untouched. They're edited only on `/availability` (the Profile shows them read-only, with a link).
+- **Exceptions** (`availability_exceptions`) are one row per person per service: `(service_date, slot)`, the same identity the song archive uses, with status `available` or `unavailable` and an optional note. Only real differences are stored: choosing **Normal**, or choosing what the normal pattern already says, deletes the row. Nothing is generated per week, and past rows simply stop mattering.
+- **Effective availability** = normal + exception, worked out in one place: `effectiveAvailability()` in `lib/availability/effective.ts`. It returns the normal and effective states, the exception, and one of *normally available*, *normally unavailable*, *available by exception* or *unavailable by exception*. The calendar and the Dashboard use it, and later the Service Planner and member profiles will too.
+- **Services** come from `siteConfig.songList.regularServices` for any date range (`lib/availability/occurrences.ts`). A dated song-list service on a day or time that isn't a regular service becomes a **special** service, matched against the "Special services" normal choice. Nothing here creates events.
+- **Date ranges** ("away October 15–22") are only a way of entering changes. A range becomes every service in it that hasn't started, each stored as its own exception. The range itself isn't stored.
+- **Whole services only.** There are no times, partial services or songs anywhere in the model or the forms.
+
+**The page** (`/availability`, with `?month=YYYY-MM`, `?view=me`, and `?person=<id>` for leaders):
+- **md and wider:** a month grid where only service days carry anything. Each service shows your own state: quiet when normal, a gold + for available by exception, a struck-through × for unavailable by exception. Under **Everyone** it also shows a count of people who differ from normal. **Phones:** the same services as an agenda list.
+- **Choosing a service** opens a dialog with just **Available** or **Unavailable**, the one matching your normal services marked "Your usual". Whether it is an exception follows from the normal services: choosing the usual one clears any exception. Then an optional note (labelled as visible to the whole music team), who differs from normal, and who is expected. Services that have started are read-only.
+- **Report a date range** marks every service in a range Available or Unavailable, or **Clear changes** removes the range's exceptions. **Normal services** and **Upcoming changes** sit beside the calendar. Under **Me**, Upcoming changes lists your own, each removable; under **Everyone**, it lists the ministry's next eight.
+- **Leaders** get a **Managing** picker. Everything on the page then applies to that person, with a banner saying so.
+
+**Security:** every change goes through `src/app/availability/actions.ts`, wrapped in `withPermission("view_availability")`. Whose record it is comes from `availabilityTarget()`: your own always comes from the session, and anyone else's needs `manage_availability` and must be someone on the board. Each service is checked to be real and not yet started. Deleting an account removes the person's exceptions.
+
+**Later:** the Service Planner should ask `effectiveAvailability()` (or build on `buildBoard`) rather than store availability itself. Member profiles can show normal services and upcoming exceptions from the same tables. Notifications, private staff notes and creating special events aren't part of this phase.
 
 ---
 
@@ -541,6 +577,7 @@ Vitest covers the pure logic in `src/lib`:
 - the year in song (`year-recap.test.ts`)
 - permissions, navigation per permission, and profile visibility (`auth/permissions.test.ts`, `navigation.test.ts`, `auth/profile-visibility.test.ts`)
 - the Dashboard's focus, attention list, coming services and sheet-music choice (`dashboard/dashboard.test.ts`)
+- availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.
 

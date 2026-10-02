@@ -7,6 +7,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useAccount } from "@/components/account/AccountContext";
 import { PdfPreview } from "@/components/song-list/PdfPreview";
 import { SheetFileButton } from "@/components/song-list/SheetFileButton";
+import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import type { PublicSheetFile } from "@/lib/sheet-music";
 
@@ -113,4 +114,34 @@ export function MemberPreview({ src, title, label }: { src: string; title: strin
   const access = useContext(AccessContext);
   if (access !== "allowed") return null;
   return <PdfPreview src={src} title={title} label={label} />;
+}
+
+/**
+ * A song page's sheet music and "About this song", in order: the sheet music
+ * leads whenever this visitor can open it - public files, or members' files
+ * for a signed-in member who may see them - and the details lead otherwise.
+ * The page is cached for everyone, so a member's order is settled here, in
+ * the browser. The sections are swapped with CSS order, never re-mounted.
+ */
+export function SongSections({
+  publicFiles,
+  membersFiles,
+  sheet,
+  about,
+  className,
+}: {
+  publicFiles: boolean;
+  membersFiles: boolean;
+  sheet: ReactNode;
+  about: ReactNode;
+  className?: string;
+}) {
+  const { me } = useAccount();
+  const sheetFirst = publicFiles || (membersFiles && Boolean(me?.canViewSheetMusic));
+  return (
+    <div className={cn("flex flex-col gap-12", className)}>
+      <div className={cn("empty:hidden", sheetFirst ? "order-1" : "order-2")}>{sheet}</div>
+      <div className={cn("empty:hidden", sheetFirst ? "order-2" : "order-1")}>{about}</div>
+    </div>
+  );
 }

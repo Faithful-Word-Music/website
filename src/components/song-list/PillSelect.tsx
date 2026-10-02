@@ -33,12 +33,14 @@ export function PillSelect<T extends string>({
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
         className={cn(
-          "glass min-h-11 w-full appearance-none rounded-full pl-4 pr-9 text-sm transition-shadow duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/40",
+          "glass min-h-11 w-full cursor-pointer appearance-none rounded-full pl-4 pr-9 text-sm transition-[border-color,box-shadow] duration-200 hover:border-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/40",
           value === "" ? "text-muted" : "text-ink",
         )}
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          // Solid colours: an option otherwise inherits the pill's see-through
+          // background, which some browsers draw as a grey list.
+          <option key={option.value} value={option.value} className="bg-surface text-ink">
             {option.label}
           </option>
         ))}

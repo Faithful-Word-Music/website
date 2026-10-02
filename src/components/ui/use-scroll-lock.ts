@@ -3,38 +3,45 @@
 import { useEffect } from "react";
 
 /**
- * Locks the page while `active` - for overlays such as the mobile menu and the
- * search palette.
+ * Locks the page while `active` - for overlays such as the mobile menu, the
+ * search palette and dialogs.
  *
- * `overflow: hidden` on <body> is the usual suggestion and it does not hold
- * on iOS Safari. Pinning the body with `position: fixed` and an offsetting
- * `top` does, and keeps the visual position identical.
+ * The page is never moved: `overflow: hidden` on <html> and <body> stops it
+ * scrolling (iOS has honoured this since iOS 16), so the sticky header and
+ * the browser's toolbars stay exactly where they were. An earlier version
+ * pinned <body> with `position: fixed`; on iPhone Chrome, once the toolbar had
+ * collapsed from scrolling, that dropped the header below a blank strip.
  *
- * Restoring uses `behavior: "instant"` on purpose: globals.css sets
- * `html { scroll-behavior: smooth }`, so a plain scrollTo would visibly
- * animate the page back to where it already was.
+ * On desktop, the scrollbar's width is kept as padding while it is hidden,
+ * so nothing shifts sideways. Nested locks (a dialog over the menu) only
+ * unlock when the last one closes.
  */
+let locks = 0;
+let saved: { htmlOverflow: string; bodyOverflow: string; bodyPadding: string } | null = null;
+
 export function useScrollLock(active: boolean) {
   useEffect(() => {
     if (!active) return;
 
-    const scrollY = window.scrollY;
+    const html = document.documentElement;
     const body = document.body;
-    const previous = {
-      position: body.style.position,
-      top: body.style.top,
-      width: body.style.width,
-    };
-
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
+    if (locks === 0) {
+      saved = { htmlOverflow: html.style.overflow, bodyOverflow: body.style.overflow, bodyPadding: body.style.paddingRight };
+      const scrollbar = window.innerWidth - html.clientWidth;
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+    }
+    locks += 1;
 
     return () => {
-      body.style.position = previous.position;
-      body.style.top = previous.top;
-      body.style.width = previous.width;
-      window.scrollTo({ top: scrollY, behavior: "instant" });
+      locks -= 1;
+      if (locks === 0 && saved) {
+        html.style.overflow = saved.htmlOverflow;
+        body.style.overflow = saved.bodyOverflow;
+        body.style.paddingRight = saved.bodyPadding;
+        saved = null;
+      }
     };
   }, [active]);
 }

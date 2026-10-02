@@ -122,7 +122,7 @@ export function UserMenu() {
   return (
     // From md up only: on phones the header has no room for it, and the same
     // links sit at the foot of the mobile menu instead (MobileAccountMenu).
-    <div ref={rootRef} className="relative hidden md:block print:hidden">
+    <div ref={rootRef} className="relative hidden lg:block print:hidden">
       <button
         type="button"
         aria-expanded={open}

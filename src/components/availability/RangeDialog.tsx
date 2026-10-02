@@ -125,7 +125,9 @@ function RangeDialog({
         options={[
           { value: "unavailable" as const, label: copy.service.choices.unavailable },
           { value: "available" as const, label: copy.service.choices.available },
-          { value: "normal" as const, label: "Normal" },
+          // Not a third availability: it removes the range's exceptions, for
+          // undoing a range entered by mistake.
+          { value: "normal" as const, label: copy.range.clear },
         ]}
         selected={[status]}
         onChange={(next) => setStatus(next[0] ?? status)}
