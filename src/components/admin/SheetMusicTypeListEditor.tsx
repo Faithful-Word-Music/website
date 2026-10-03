@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import {
   addSheetMusicTypeAction,
@@ -14,6 +14,10 @@ import { ActionMessage, TextField } from "@/components/account/fields";
 import { DriveFolderBrowser } from "@/components/admin/DriveFolderBrowser";
 import { ArrowIcon, IconButton, PencilIcon } from "@/components/admin/OptionListEditor";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/StatusIcons";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
 import type { ActionResult } from "@/lib/auth/session";
 import type { DriveFolder } from "@/lib/sheet-music";
@@ -36,6 +40,8 @@ interface Type {
   sources: Source[];
 }
 
+const words = feedbackContent;
+
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
@@ -53,23 +59,15 @@ export function SheetMusicTypeListEditor({
 }) {
   const ids = useId();
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const { pending, result, run: runAction, stateOf } = useAction();
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<{ id: number; label: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
   const [browsingFor, setBrowsingFor] = useState<number | null>(null);
 
-  function run(action: () => Promise<ActionResult>, onOk?: () => void) {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await action();
-      setResult(outcome);
-      if (outcome.ok) {
-        onOk?.();
-        router.refresh();
-      }
-    });
+  /** `key` names the button pressed, so only it shows working and done. */
+  function run(key: string, action: () => Promise<ActionResult>, onOk?: () => void) {
+    void runAction(action, { key, onOk });
   }
 
   function remove(type: Type) {
@@ -78,6 +76,7 @@ export function SheetMusicTypeListEditor({
       return;
     }
     run(
+      `delete:${type.id}`,
       () => deleteSheetMusicTypeAction(type.id),
       () => {
         setEditing(null);
@@ -96,7 +95,7 @@ export function SheetMusicTypeListEditor({
                 className="flex flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  run(() => renameSheetMusicTypeAction(type.id, editing.label), () => setEditing(null));
+                  run(`rename:${type.id}`, () => renameSheetMusicTypeAction(type.id, editing.label), () => setEditing(null));
                 }}
               >
                 <TextField
@@ -111,7 +110,14 @@ export function SheetMusicTypeListEditor({
                     <span className="text-sm text-ink">
                       Delete {type.label}? {count(type.usage, "person", "people")} will have no sheet music type.
                     </span>
-                    <Button type="button" disabled={pending} onClick={() => remove(type)}>
+                    <Button
+                      type="button"
+                      state={stateOf(`delete:${type.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
+                      disabled={pending}
+                      onClick={() => remove(type)}
+                    >
                       Yes, delete
                     </Button>
                     <Button type="button" variant="quiet" onClick={() => setConfirmingDelete(null)}>
@@ -120,7 +126,13 @@ export function SheetMusicTypeListEditor({
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="submit" disabled={pending || !editing.label.trim()}>
+                    <Button
+                      type="submit"
+                      state={stateOf(`rename:${type.id}`)}
+                      pendingLabel={words.saving}
+                      doneLabel={words.saved}
+                      disabled={pending || !editing.label.trim()}
+                    >
                       Save
                     </Button>
                     <Button type="button" variant="quiet" onClick={() => setEditing(null)}>
@@ -129,6 +141,9 @@ export function SheetMusicTypeListEditor({
                     <Button
                       type="button"
                       variant="quiet"
+                      state={stateOf(`delete:${type.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
                       disabled={pending}
                       onClick={() => remove(type)}
                       className="ml-auto"
@@ -150,15 +165,17 @@ export function SheetMusicTypeListEditor({
                 <div className="flex shrink-0 items-center">
                   <IconButton
                     label={`Move ${type.label} up`}
+                    busy={stateOf(`up:${type.id}`) === "pending"}
                     disabled={pending || index === 0}
-                    onClick={() => run(() => moveSheetMusicTypeAction(type.id, "up"))}
+                    onClick={() => run(`up:${type.id}`, () => moveSheetMusicTypeAction(type.id, "up"))}
                   >
                     <ArrowIcon direction="up" />
                   </IconButton>
                   <IconButton
                     label={`Move ${type.label} down`}
+                    busy={stateOf(`down:${type.id}`) === "pending"}
                     disabled={pending || index === types.length - 1}
-                    onClick={() => run(() => moveSheetMusicTypeAction(type.id, "down"))}
+                    onClick={() => run(`down:${type.id}`, () => moveSheetMusicTypeAction(type.id, "down"))}
                   >
                     <ArrowIcon direction="down" />
                   </IconButton>
@@ -195,10 +212,15 @@ export function SheetMusicTypeListEditor({
                         aria-label={`Remove folder ${source.description}`}
                         title="Remove this folder"
                         disabled={pending}
-                        onClick={() => run(() => removeSheetMusicSourceAction(source.id))}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-30"
+                        aria-busy={stateOf(`source:${source.id}`) === "pending" || undefined}
+                        onClick={() => run(`source:${source.id}`, () => removeSheetMusicSourceAction(source.id))}
+                        className={cn(
+                          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors not-disabled:hover:bg-surface not-disabled:hover:text-ink",
+                          // The one at work is not dimmed; its neighbours are.
+                          stateOf(`source:${source.id}`) === "pending" ? "text-ink" : "disabled:opacity-30",
+                        )}
                       >
-                        <span aria-hidden>×</span>
+                        {stateOf(`source:${source.id}`) === "pending" ? <Spinner /> : <span aria-hidden>×</span>}
                       </button>
                     </li>
                   ))}
@@ -235,7 +257,7 @@ export function SheetMusicTypeListEditor({
         className="flex flex-col gap-3 sm:flex-row sm:items-end"
         onSubmit={(event) => {
           event.preventDefault();
-          run(() => addSheetMusicTypeAction(newLabel), () => setNewLabel(""));
+          run("add", () => addSheetMusicTypeAction(newLabel), () => setNewLabel(""));
         }}
       >
         <div className="flex-1">
@@ -248,7 +270,14 @@ export function SheetMusicTypeListEditor({
             onChange={setNewLabel}
           />
         </div>
-        <Button type="submit" size="lg" disabled={pending || !newLabel.trim()}>
+        <Button
+          type="submit"
+          size="lg"
+          state={stateOf("add")}
+          pendingLabel={words.adding}
+          doneLabel={words.added}
+          disabled={pending || !newLabel.trim()}
+        >
           Add
         </Button>
       </form>

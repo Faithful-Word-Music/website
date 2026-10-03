@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { NoAccess, Notice } from "@/components/account/Notices";
 import { ProfileView, SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
+import { feedbackContent } from "@/content/feedback";
 import { Pill } from "@/components/admin/StatusPill";
 import { OverrideEditor, RoleEditor, SheetMusicTypeEditor, TitleEditor } from "@/components/admin/UserEditors";
 import { BackLink } from "@/components/ui/BackLink";
@@ -212,6 +213,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
                     action={deleteUserAction.bind(null, person.id)}
                     label="Delete account"
                     pendingLabel="Deleting…"
+                    doneToast={feedbackContent.accountDeleted}
                     variant="quiet"
                     confirm="Permanently delete this account and profile? This cannot be undone."
                   />

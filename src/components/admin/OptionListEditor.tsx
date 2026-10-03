@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import {
   addOptionAction,
@@ -14,8 +13,13 @@ import { ActionMessage, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/StatusIcons";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
 import type { ActionResult } from "@/lib/auth/session";
+
+const words = feedbackContent;
 
 interface Item {
   id: number;
@@ -44,9 +48,7 @@ export function OptionListEditor({
   usageVerb: string;
 }) {
   const ids = useId();
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const { pending, result, run: runAction, stateOf } = useAction();
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<{ id: number; label: string } | null>(null);
   /** The item whose Delete was pressed and is waiting for "Yes, delete". */
@@ -64,6 +66,7 @@ export function OptionListEditor({
       return;
     }
     run(
+      `delete:${item.id}`,
       () => deleteOptionAction(list, item.id),
       () => {
         setEditing(null);
@@ -74,16 +77,9 @@ export function OptionListEditor({
 
   const people = (count: number) => (count === 1 ? "1 person" : `${count} people`);
 
-  function run(action: () => Promise<ActionResult>, onOk?: () => void) {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await action();
-      setResult(outcome);
-      if (outcome.ok) {
-        onOk?.();
-        router.refresh();
-      }
-    });
+  /** `key` names the button pressed, so only it shows working and done. */
+  function run(key: string, action: () => Promise<ActionResult>, onOk?: () => void) {
+    void runAction(action, { key, onOk });
   }
 
   const active = items.filter((item) => !item.archived);
@@ -99,7 +95,7 @@ export function OptionListEditor({
                 className="flex flex-1 flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  run(() => renameOptionAction(list, item.id, editing.label), () => setEditing(null));
+                  run(`rename:${item.id}`, () => renameOptionAction(list, item.id, editing.label), () => setEditing(null));
                 }}
               >
                 <label htmlFor={`${ids}-rename-${item.id}`} className="sr-only">
@@ -119,7 +115,14 @@ export function OptionListEditor({
                     <span className="text-sm text-ink">
                       Delete {item.label}? It comes off {people(item.usage)}&apos;s profile.
                     </span>
-                    <Button type="button" disabled={pending} onClick={() => remove(item)}>
+                    <Button
+                      type="button"
+                      state={stateOf(`delete:${item.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
+                      disabled={pending}
+                      onClick={() => remove(item)}
+                    >
                       Yes, delete
                     </Button>
                     <Button type="button" variant="quiet" onClick={() => setConfirmingDelete(null)}>
@@ -128,7 +131,13 @@ export function OptionListEditor({
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="submit" disabled={pending}>
+                    <Button
+                      type="submit"
+                      state={stateOf(`rename:${item.id}`)}
+                      pendingLabel={words.saving}
+                      doneLabel={words.saved}
+                      disabled={pending}
+                    >
                       Save
                     </Button>
                     <Button type="button" variant="quiet" onClick={() => setEditing(null)}>
@@ -137,6 +146,9 @@ export function OptionListEditor({
                     <Button
                       type="button"
                       variant="quiet"
+                      state={stateOf(`delete:${item.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
                       disabled={pending}
                       onClick={() => remove(item)}
                       className="ml-auto"
@@ -158,15 +170,17 @@ export function OptionListEditor({
                 <div className="flex shrink-0 items-center">
                   <IconButton
                     label={`Move ${item.label} up`}
+                    busy={stateOf(`up:${item.id}`) === "pending"}
                     disabled={pending || index === 0}
-                    onClick={() => run(() => moveOptionAction(list, item.id, "up"))}
+                    onClick={() => run(`up:${item.id}`, () => moveOptionAction(list, item.id, "up"))}
                   >
                     <ArrowIcon direction="up" />
                   </IconButton>
                   <IconButton
                     label={`Move ${item.label} down`}
+                    busy={stateOf(`down:${item.id}`) === "pending"}
                     disabled={pending || index === active.length - 1}
-                    onClick={() => run(() => moveOptionAction(list, item.id, "down"))}
+                    onClick={() => run(`down:${item.id}`, () => moveOptionAction(list, item.id, "down"))}
                   >
                     <ArrowIcon direction="down" />
                   </IconButton>
@@ -190,7 +204,7 @@ export function OptionListEditor({
         className="flex flex-col gap-3 sm:flex-row sm:items-end"
         onSubmit={(event) => {
           event.preventDefault();
-          run(() => addOptionAction(list, newLabel), () => setNewLabel(""));
+          run("add", () => addOptionAction(list, newLabel), () => setNewLabel(""));
         }}
       >
         <div className="flex-1">
@@ -202,7 +216,14 @@ export function OptionListEditor({
             onChange={setNewLabel}
           />
         </div>
-        <Button type="submit" size="lg" disabled={pending || !newLabel.trim()}>
+        <Button
+          type="submit"
+          size="lg"
+          state={stateOf("add")}
+          pendingLabel={words.adding}
+          doneLabel={words.added}
+          disabled={pending || !newLabel.trim()}
+        >
           Add
         </Button>
       </form>
@@ -218,7 +239,14 @@ export function OptionListEditor({
                 <Pill tone="muted">{item.label}</Pill>
                 {confirmingDelete === item.id ? (
                   <>
-                    <Button type="button" disabled={pending} onClick={() => remove(item)}>
+                    <Button
+                      type="button"
+                      state={stateOf(`delete:${item.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
+                      disabled={pending}
+                      onClick={() => remove(item)}
+                    >
                       Yes, delete
                     </Button>
                     <Button type="button" variant="quiet" onClick={() => setConfirmingDelete(null)}>
@@ -230,12 +258,23 @@ export function OptionListEditor({
                     <Button
                       type="button"
                       variant="quiet"
+                      state={stateOf(`restore:${item.id}`)}
+                      pendingLabel={words.restoring}
+                      doneLabel={words.restored}
                       disabled={pending}
-                      onClick={() => run(() => archiveOptionAction(list, item.id, false))}
+                      onClick={() => run(`restore:${item.id}`, () => archiveOptionAction(list, item.id, false))}
                     >
                       Restore
                     </Button>
-                    <Button type="button" variant="quiet" disabled={pending} onClick={() => remove(item)}>
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      state={stateOf(`delete:${item.id}`)}
+                      pendingLabel={words.deleting}
+                      doneLabel={words.deleted}
+                      disabled={pending}
+                      onClick={() => remove(item)}
+                    >
                       Delete
                     </Button>
                   </>
@@ -253,18 +292,21 @@ export function OptionListEditor({
 
 /**
  * A row action: an icon, with its word beside it from sm up when `text` is
- * given. 40px square on phones, so it stays easy to tap.
+ * given. 40px square on phones, so it stays easy to tap. While its action
+ * runs (`busy`) a spinner takes the icon's place, undimmed.
  */
 export function IconButton({
   label,
   text,
   disabled,
+  busy = false,
   onClick,
   children,
 }: {
   label: string;
   text?: string;
   disabled: boolean;
+  busy?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -273,14 +315,16 @@ export function IconButton({
       type="button"
       aria-label={label}
       title={label}
-      disabled={disabled}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
       onClick={onClick}
       className={cn(
-        "inline-flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full text-sm text-muted transition-colors hover:bg-paper hover:text-ink disabled:opacity-30",
+        "inline-flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full text-sm text-muted transition-colors not-disabled:hover:bg-paper not-disabled:hover:text-ink",
+        busy ? "text-ink" : "disabled:opacity-30",
         text && "sm:px-3",
       )}
     >
-      {children}
+      {busy ? <Spinner /> : children}
       {text ? <span className="hidden sm:inline">{text}</span> : null}
     </button>
   );

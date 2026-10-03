@@ -1,14 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { createSpecialService } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
-import type { ActionResult } from "@/lib/auth/session";
 
 import { Panel } from "./Panel";
 
@@ -23,18 +24,18 @@ export function NewSpecialService({ today, className }: { today: string; classNa
   const [label, setLabel] = useState("");
   const [time, setTime] = useState("19:00");
   const [songs, setSongs] = useState(4);
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
+  const { result, run, stateOf } = useAction();
 
   function create() {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await createSpecialService({ date, slot, label, time, songs });
-      setResult(outcome);
-      if (outcome.ok) {
+    // The dialog closes onto the new service's page, so a toast says it was created.
+    void run(() => createSpecialService({ date, slot, label, time, songs }), {
+      refresh: false,
+      toast: true,
+      onOk: (outcome) => {
+        if (!outcome.ok) return;
         setOpen(false);
         router.push(`/service-planner/${outcome.value.anchor}`);
-      }
+      },
     });
   }
 
@@ -55,7 +56,14 @@ export function NewSpecialService({ today, className }: { today: string; classNa
               <Button type="button" variant="quiet" onClick={() => setOpen(false)}>
                 {copy.special.cancel}
               </Button>
-              <Button type="button" onClick={create} disabled={pending || label.trim() === ""}>
+              <Button
+                type="button"
+                state={stateOf()}
+                pendingLabel={feedbackContent.creating}
+                doneLabel={feedbackContent.created}
+                onClick={create}
+                disabled={label.trim() === ""}
+              >
                 {copy.special.create}
               </Button>
             </>

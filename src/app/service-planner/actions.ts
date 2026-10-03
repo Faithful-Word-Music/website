@@ -235,7 +235,7 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
     if (isLocked(current?.startsAt ?? occurrence.startsAt, Date.now())) return { ok: false, error: MESSAGES.locked };
 
     if (!current) {
-      if (parsed.data.status === "draft") return { ok: true, value: { status: "draft" } };
+      if (parsed.data.status === "draft") return { ok: true, value: { status: "draft" }, message: copy.workspace.returnedToDraft };
       await ensurePlan(
         viewer.env,
         {
@@ -255,7 +255,16 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
     if (!plan) return { ok: false, error: MESSAGES.notFound };
     // Leaving or entering the song list, or appearing/vanishing in Availability.
     refreshEverything();
-    return { ok: true, value: { status: plan.status } };
+    return {
+      ok: true,
+      value: { status: plan.status },
+      message:
+        plan.status === "cancelled"
+          ? copy.workspace.cancelled
+          : current?.status === "cancelled"
+            ? copy.workspace.restored
+            : copy.workspace.returnedToDraft,
+    };
   });
 }
 

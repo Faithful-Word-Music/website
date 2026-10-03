@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { setServiceAvailability } from "@/app/availability/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
@@ -9,7 +8,9 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { Collapse } from "@/components/ui/Collapse";
 import { Modal } from "@/components/ui/Modal";
+import { useAction } from "@/components/ui/use-action";
 import { availabilityContent } from "@/content/availability";
+import { feedbackContent } from "@/content/feedback";
 import type { BoardService } from "@/lib/availability/board";
 import { NOTE_LIMIT, type ExceptionStatus } from "@/lib/availability/effective";
 import { serviceDay, serviceLine, stateLabel } from "@/lib/availability/format";
@@ -23,8 +24,6 @@ export interface Subject {
   name: string;
   isSelf: boolean;
 }
-
-type Result = { ok: boolean; message?: string; error?: string } | null;
 
 /**
  * One whole service: the subject's own choice (Available, Unavailable or
@@ -43,7 +42,6 @@ export function ServiceDialog({
   onClose: () => void;
 }) {
   const ids = useId();
-  const router = useRouter();
   const own = service.subject;
   // Two choices only. Whether one is an exception follows from their normal
   // services: choosing the usual one simply clears any exception.
@@ -51,8 +49,7 @@ export function ServiceDialog({
   const [note, setNote] = useState(own?.note ?? "");
   const [showExpected, setShowExpected] = useState(false);
   const expectedId = `${ids}-expected`;
-  const [result, setResult] = useState<Result>(null);
-  const [pending, startTransition] = useTransition();
+  const { result, run, stateOf } = useAction();
 
   const canEdit = Boolean(subject && own && editable);
   const usual: ExceptionStatus = own?.normal ? "available" : "unavailable";
@@ -65,21 +62,18 @@ export function ServiceDialog({
 
   function save() {
     if (!subject) return;
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await setServiceAvailability({
-        date: service.date,
-        slot: service.slot,
-        status: choice,
-        note: isChange ? note : "",
-        userId: subject.isSelf ? undefined : subject.id,
-      });
-      setResult(outcome);
-      if (outcome.ok) {
-        router.refresh();
-        onClose();
-      }
-    });
+    // The dialog closes on saving, so a toast says "Saved."
+    void run(
+      () =>
+        setServiceAvailability({
+          date: service.date,
+          slot: service.slot,
+          status: choice,
+          note: isChange ? note : "",
+          userId: subject.isSelf ? undefined : subject.id,
+        }),
+      { toast: true, onOk: onClose },
+    );
   }
 
   return (
@@ -97,8 +91,14 @@ export function ServiceDialog({
             <Button type="button" variant="secondary" onClick={onClose}>
               {copy.service.close}
             </Button>
-            <Button type="button" onClick={save} disabled={pending}>
-              {pending ? copy.service.saving : copy.service.save}
+            <Button
+              type="button"
+              state={stateOf()}
+              pendingLabel={feedbackContent.saving}
+              doneLabel={feedbackContent.saved}
+              onClick={save}
+            >
+              {copy.service.save}
             </Button>
           </>
         ) : null

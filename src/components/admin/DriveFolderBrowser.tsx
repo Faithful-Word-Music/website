@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 
 import { addSheetMusicSourceAction, previewSheetMusicSourceAction } from "@/app/admin/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import type { ActionResult } from "@/lib/auth/session";
 import type { DriveFolder } from "@/lib/sheet-music";
 
@@ -33,8 +35,7 @@ export function DriveFolderBrowser({
   const [previewed, setPreviewed] = useState<{ key: string; outcome: ActionResult<{ folders: string[][]; songs: number }> } | null>(
     null,
   );
-  const [result, setResult] = useState<ActionResult | null>(null);
-  const [pending, startTransition] = useTransition();
+  const { pending, result, run, stateOf } = useAction();
 
   const children = folders.filter(
     (folder) => folder.path.length === path.length + 1 && keyOf(folder.path.slice(0, -1)) === keyOf(path),
@@ -57,12 +58,8 @@ export function DriveFolderBrowser({
   }, [pathKey]);
 
   function add() {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await addSheetMusicSourceAction(typeId, path);
-      setResult(outcome);
-      if (outcome.ok) onDone(true);
-    });
+    // The browser closes once the folder is added (its list reloads the page), so a toast says which.
+    void run(() => addSheetMusicSourceAction(typeId, path), { refresh: false, toast: true, onOk: () => onDone(true) });
   }
 
   return (
@@ -112,10 +109,17 @@ export function DriveFolderBrowser({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" disabled={path.length === 0 || pending || !preview?.ok} onClick={add}>
-          {pending ? "Adding…" : "Choose this folder"}
+        <Button
+          type="button"
+          state={stateOf()}
+          pendingLabel={feedbackContent.adding}
+          doneLabel={feedbackContent.added}
+          disabled={path.length === 0 || !preview?.ok}
+          onClick={add}
+        >
+          Choose this folder
         </Button>
-        <Button type="button" variant="quiet" onClick={() => onDone(false)}>
+        <Button type="button" variant="quiet" disabled={pending} onClick={() => onDone(false)}>
           Cancel
         </Button>
       </div>

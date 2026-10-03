@@ -180,7 +180,7 @@ export function ShareButton({
 
   const iconClass =
     "inline-flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink aria-expanded:bg-paper aria-expanded:text-ink";
-  const primaryClass = buttonClasses("primary", "md", "disabled:pointer-events-none disabled:opacity-40");
+  const primaryClass = buttonClasses("primary");
 
   return (
     <span className="relative inline-flex">

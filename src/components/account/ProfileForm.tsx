@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition } from "react";
+import { useId, useRef, useState } from "react";
 
 import { saveOwnProfile } from "@/app/profile/actions";
 import { ActionMessage, ChoiceChips, SelectField, TextField } from "@/components/account/fields";
@@ -10,7 +10,9 @@ import { LearningScaleInput } from "@/components/account/LearningScale";
 import { useBackTarget } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useAction } from "@/components/ui/use-action";
 import { accountContent } from "@/content/account";
+import { feedbackContent } from "@/content/feedback";
 import type { ProfileFormValues } from "@/lib/auth/forms";
 import {
   PROFICIENCIES,
@@ -19,8 +21,6 @@ import {
   VOICE_PARTS,
   type Proficiency,
 } from "@/lib/auth/profile-options";
-
-type Result = { ok: boolean; message?: string; error?: string } | null;
 
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
@@ -47,8 +47,7 @@ export function ProfileForm({
   // Cancel goes back to wherever the form was opened from (the profile page if nowhere).
   const back = useBackTarget("/profile");
   const [values, setValues] = useState(initial);
-  const [result, setResult] = useState<Result>(null);
-  const [pending, startTransition] = useTransition();
+  const { result, run, stateOf } = useAction();
 
   function set<K extends keyof ProfileFormValues>(key: K, value: ProfileFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -82,15 +81,12 @@ export function ProfileForm({
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await saveOwnProfile(values);
-      setResult(outcome);
-      if (outcome.ok && welcome) router.push("/dashboard");
-      else if (outcome.ok) router.refresh();
-    });
+    void run(
+      () => saveOwnProfile(values),
+      // A new member goes on to their Dashboard, so a toast there says it was saved.
+      welcome ? { refresh: false, toast: true, onOk: () => router.push("/dashboard") } : {},
+    );
   }
-
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
@@ -269,8 +265,14 @@ export function ProfileForm({
           >
             {welcome ? accountContent.profile.welcome.skip : "Cancel"}
           </Button>
-          <Button type="submit" size="lg" disabled={pending}>
-            {pending ? "Saving…" : welcome ? accountContent.profile.welcome.save : "Save profile"}
+          <Button
+            type="submit"
+            size="lg"
+            state={stateOf()}
+            pendingLabel={feedbackContent.saving}
+            doneLabel={feedbackContent.saved}
+          >
+            {welcome ? accountContent.profile.welcome.save : "Save profile"}
           </Button>
         </div>
       </div>
@@ -285,26 +287,33 @@ export function ProfileForm({
 function PhotoField() {
   const { user } = useUser();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const { pending, result, clear, run, stateOf } = useAction();
+  /** A file that was never sent: the wrong kind, or too large. */
   const [error, setError] = useState<string | null>(null);
 
   if (!user) return null;
 
-  async function upload(file: File | null) {
+  function upload(file: File | null) {
     if (!user) return;
     setError(null);
+    clear();
     if (file && !file.type.startsWith("image/")) return setError("Please choose an image file.");
     if (file && file.size > MAX_PHOTO_BYTES) return setError("Please choose an image under 10 MB.");
-    setBusy(true);
-    try {
-      await user.setProfileImage({ file });
-      await user.reload();
-    } catch {
-      setError("The photo could not be saved. Please try another image.");
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
+    void run(
+      async () => {
+        try {
+          await user.setProfileImage({ file });
+          await user.reload();
+          return { ok: true, message: file ? feedbackContent.photoSaved : feedbackContent.photoRemoved };
+        } catch {
+          return { ok: false, error: "The photo could not be saved. Please try another image." };
+        } finally {
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      },
+      // Clerk holds the photo, so the page has nothing of its own to reload.
+      { key: file ? "upload" : "remove", refresh: false },
+    );
   }
 
   return (
@@ -320,11 +329,27 @@ function PhotoField() {
       <div>
         <p className="text-sm font-medium text-ink">Profile photo</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>
-            {busy ? "Saving…" : user.hasImage ? "Change photo" : "Upload photo"}
+          <Button
+            type="button"
+            variant="secondary"
+            state={stateOf("upload")}
+            pendingLabel={feedbackContent.saving}
+            doneLabel={feedbackContent.saved}
+            disabled={pending}
+            onClick={() => inputRef.current?.click()}
+          >
+            {user.hasImage ? "Change photo" : "Upload photo"}
           </Button>
-          {user.hasImage ? (
-            <Button type="button" variant="quiet" disabled={busy} onClick={() => upload(null)}>
+          {user.hasImage || stateOf("remove") !== "idle" ? (
+            <Button
+              type="button"
+              variant="quiet"
+              state={stateOf("remove")}
+              pendingLabel={feedbackContent.removing}
+              doneLabel={feedbackContent.removed}
+              disabled={pending}
+              onClick={() => upload(null)}
+            >
               Remove
             </Button>
           ) : null}
@@ -339,10 +364,12 @@ function PhotoField() {
           onChange={(event) => {
             // Cancelling the file picker gives no file - that must not remove the photo.
             const file = event.target.files?.[0];
-            if (file) void upload(file);
+            if (file) upload(file);
           }}
         />
-        {error ? <p className="mt-2 text-sm text-gold-dark">{error}</p> : null}
+        <div className="mt-2">
+          <ActionMessage result={error ? { ok: false, error } : result} />
+        </div>
       </div>
     </div>
   );

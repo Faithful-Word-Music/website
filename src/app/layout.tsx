@@ -13,6 +13,7 @@ import { SkipLink } from "@/components/layout/SkipLink";
 import { PageHistoryTracker } from "@/components/ui/BackLink";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
+import { Toaster } from "@/components/ui/Toaster";
 import { siteConfig } from "@/config/site";
 import { clerkAppearance, clerkLocalization } from "@/lib/auth/appearance";
 import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
@@ -170,6 +171,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
         {/* A thin bar across the top while the next page loads. */}
         <NavigationProgress />
+        {/* "Saved." for anything whose own button is gone by then (toast.ts). */}
+        <Toaster />
         <PageHistoryTracker />
         <SkipLink />
         <AccountsProvider enabled={authEnabled}>

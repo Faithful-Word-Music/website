@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createSong } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
@@ -8,9 +8,10 @@ import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { Modal } from "@/components/ui/Modal";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import { siteConfig } from "@/config/site";
-import type { ActionResult } from "@/lib/auth/session";
 import { inChristmasSeason } from "@/lib/church-calendar";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
 import { formatAgo, formatShortDate } from "@/lib/service-time";
@@ -197,19 +198,20 @@ function NewSongForm({
   const [number, setNumber] = useState("");
   const [collection, setCollection] = useState("");
   const [key, setKey] = useState("");
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
+  const { result, run, stateOf } = useAction();
 
   return (
     <form
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
-        setResult(null);
-        startTransition(async () => {
-          const outcome = await createSong({ title, number, collection, defaultKey: key });
-          setResult(outcome);
-          if (outcome.ok) onCreated(outcome.value);
+        // The picker closes with the new song chosen, so a toast says it was added.
+        void run(() => createSong({ title, number, collection, defaultKey: key }), {
+          refresh: false,
+          toast: true,
+          onOk: (outcome) => {
+            if (outcome.ok) onCreated(outcome.value);
+          },
         });
       }}
     >
@@ -239,7 +241,13 @@ function NewSongForm({
         <Button type="button" variant="quiet" onClick={onCancel}>
           {copy.special.cancel}
         </Button>
-        <Button type="submit" disabled={pending || title.trim() === ""}>
+        <Button
+          type="submit"
+          state={stateOf()}
+          pendingLabel={feedbackContent.adding}
+          doneLabel={feedbackContent.added}
+          disabled={title.trim() === ""}
+        >
           {copy.newSong.create}
         </Button>
       </div>

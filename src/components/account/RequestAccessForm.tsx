@@ -160,8 +160,14 @@ export function RequestAccessForm() {
 
       <div className="flex flex-col gap-4 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-relaxed text-muted">{form.note}</p>
-        <Button type="submit" size="lg" disabled={submitting} className="shrink-0">
-          {submitting ? form.submitting : form.submit}
+        <Button
+          type="submit"
+          size="lg"
+          state={submitting ? "pending" : "idle"}
+          pendingLabel={form.submitting}
+          className="shrink-0"
+        >
+          {form.submit}
         </Button>
       </div>
     </form>

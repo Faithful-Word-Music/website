@@ -227,11 +227,20 @@
      the hand. Put it back, once, for every button on the site.
 
      Excluding :disabled keeps the rule honest: a disabled button should never
-     look clickable. (Button.tsx also sets disabled:cursor-not-allowed.)
+     look clickable. Instead the pointer itself says "not now", on every
+     disabled button and field - and none of them reacts to hover (hover and
+     press styles are written `not-disabled:hover:`, see README).
   */
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
   }
 
   /* The page body takes focus only programmatically (skip link, Back to top),
@@ -500,6 +509,21 @@ html[data-packets] .packet-slot {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* "Done": a tick that draws itself in (CheckIcon, StatusIcons.tsx; its path has pathLength 1). */
+.animate-check {
+  stroke-dasharray: 1;
+  animation: check-draw 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }
 

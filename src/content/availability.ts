@@ -76,7 +76,6 @@ export const availabilityContent = {
     noteHint: "Optional. Visible to the whole music team.",
     notePlaceholder: "e.g. Out of town",
     save: "Save",
-    saving: "Saving…",
     close: "Close",
     changes: "Changes from normal",
     noChanges: "Everyone is on their normal schedule.",
@@ -119,6 +118,7 @@ export const availabilityContent = {
     noneMine: "No upcoming changes. Your normal services apply.",
     noneEveryone: "No upcoming changes. Everyone is on their normal schedule.",
     remove: "Back to normal",
+    removed: "Back to normal for that service.",
     /** {name} {date} is replaced, for screen readers. */
     removeLabel: "Return {name} to normal for {date}",
   },

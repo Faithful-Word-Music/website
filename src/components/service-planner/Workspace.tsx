@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { deleteSpecialService, publishServices, saveService, setServiceStatus } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -13,7 +13,9 @@ import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { RehearsalMark } from "@/components/ui/SectionHeading";
+import { useAction } from "@/components/ui/use-action";
 import { useFlip } from "@/components/ui/use-flip";
+import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { ActionResult } from "@/lib/auth/session";
 import { churchTimeOf, progressLabel, serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
@@ -34,6 +36,7 @@ import { SongPicker, type ChosenSong } from "./SongPicker";
 
 const copy = servicePlannerContent;
 const ws = copy.workspace;
+const words = feedbackContent;
 
 /** The keys offered as you type; any other key ("C Dorian") can still be typed. */
 const KEYS = ["C", "Db", "D", "Eb", "E", "F", "F#", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -66,8 +69,7 @@ export function Workspace(props: WorkspaceProps) {
   const [label, setLabel] = useState(service.label ?? "");
   const [time, setTime] = useState(churchTimeOf(service.startsAt));
   const [picker, setPicker] = useState<{ index: number; replacing: string | null } | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
+  const { pending, result, clear, run: runAction, stateOf } = useAction();
   const [conflict, setConflict] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
   useFlip(listRef, slots);
@@ -103,7 +105,7 @@ export function Workspace(props: WorkspaceProps) {
   // --- editing -------------------------------------------------------------
 
   const update = (next: PlanSlots) => {
-    setResult(null);
+    clear();
     setSlots(next);
   };
   const move = (index: number, by: -1 | 1) => {
@@ -129,18 +131,25 @@ export function Workspace(props: WorkspaceProps) {
 
   // --- saving --------------------------------------------------------------
 
-  function run(action: () => Promise<ActionResult<unknown>>) {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await action();
-      if (!outcome.ok && outcome.error === ws.conflict) setConflict(true);
-      setResult(outcome);
-      if (outcome.ok) router.refresh();
-    });
+  /**
+   * Each button has its own key, so only the one pressed shows working and
+   * done. The page gives this editor a fresh copy once the stored service
+   * changes (its `key`), which would take a message here with it - so "Saved"
+   * is said in a toast, which stays.
+   */
+  function run(key: string, action: () => Promise<ActionResult<unknown>>) {
+    return runAction(
+      async () => {
+        const outcome = await action();
+        if (!outcome.ok && outcome.error === ws.conflict) setConflict(true);
+        return outcome;
+      },
+      { key, toast: true },
+    );
   }
 
   const save = (publish: boolean) =>
-    run(() =>
+    run(publish ? "publish" : "save", () =>
       // Nothing changed: publishing alone, so the history records no empty edit.
       publish && !dirty
         ? publishServices({ anchors: [service.anchor] })
@@ -155,6 +164,9 @@ export function Workspace(props: WorkspaceProps) {
     );
 
   const title = serviceTitle({ slot: service.slot, startsAt: service.startsAt, label: label.trim() || service.label });
+  // Saved, but the fresh copy has not arrived yet: nothing here is unsaved, and nothing can be saved twice.
+  const settled = ["save", "publish", "status", "delete"].some((key) => stateOf(key) === "done");
+  const locking = pending || settled;
 
   return (
     <>
@@ -264,7 +276,7 @@ export function Workspace(props: WorkspaceProps) {
                           placeholder={ws.key}
                           autoComplete="off"
                           onChange={(event) => setKey(index, event.target.value)}
-                          className="tnum h-9 w-16 shrink-0 rounded-md border border-line bg-surface px-2 text-center text-sm font-medium text-ink transition-colors placeholder:text-muted hover:border-muted/50 disabled:opacity-70"
+                          className="tnum h-9 w-16 shrink-0 rounded-md border border-line bg-surface px-2 text-center text-sm font-medium text-ink transition-colors placeholder:text-muted not-disabled:hover:border-muted/50 disabled:opacity-70"
                         />
                       </>
                     ) : null}
@@ -305,7 +317,7 @@ export function Workspace(props: WorkspaceProps) {
                   type="button"
                   onClick={() => update([...slots, null])}
                   disabled={slots.length >= 20}
-                  className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink disabled:opacity-50"
+                  className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-muted transition-colors not-disabled:hover:text-ink disabled:opacity-50"
                 >
                   <span aria-hidden="true">+</span> {ws.addPlace}
                 </button>
@@ -325,6 +337,8 @@ export function Workspace(props: WorkspaceProps) {
                 <div className="min-w-0 basis-full text-sm sm:basis-auto sm:flex-1">
                   {result ? (
                     <ActionMessage result={result} />
+                  ) : settled ? (
+                    <ActionMessage result={{ ok: true, message: ws.saved }} />
                   ) : dirty ? (
                     <span className="inline-flex items-center gap-2 text-gold-dark">
                       <span aria-hidden="true" className="size-1.5 rounded-full bg-gold" />
@@ -338,17 +352,40 @@ export function Workspace(props: WorkspaceProps) {
                 </div>
                 <div className="flex w-full gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
                   {status === "published" ? (
-                    <Button type="button" onClick={() => save(false)} disabled={pending || !dirty}>
+                    <Button
+                      type="button"
+                      state={stateOf("save")}
+                      pendingLabel={words.saving}
+                      doneLabel={words.saved}
+                      onClick={() => save(false)}
+                      disabled={locking || !dirty}
+                    >
                       {ws.saveChanges}
                     </Button>
                   ) : (
                     <>
-                      {dirty ? (
-                        <Button type="button" variant="secondary" onClick={() => save(false)} disabled={pending}>
+                      {/* Stays to say "Saved", though a saved draft has nothing left to save. */}
+                      {dirty || stateOf("save") !== "idle" ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          state={stateOf("save")}
+                          pendingLabel={words.saving}
+                          doneLabel={words.saved}
+                          onClick={() => save(false)}
+                          disabled={locking}
+                        >
                           {ws.save}
                         </Button>
                       ) : null}
-                      <Button type="button" onClick={() => save(true)} disabled={pending}>
+                      <Button
+                        type="button"
+                        state={stateOf("publish")}
+                        pendingLabel={words.publishing}
+                        doneLabel={words.published}
+                        onClick={() => save(true)}
+                        disabled={locking}
+                      >
                         {dirty ? ws.saveAndPublish : ws.publish}
                       </Button>
                     </>
@@ -413,8 +450,11 @@ export function Workspace(props: WorkspaceProps) {
                     type="button"
                     variant="secondary"
                     className="w-full"
-                    disabled={pending}
-                    onClick={() => run(() => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
+                    state={stateOf("status")}
+                    pendingLabel={words.updating}
+                    doneLabel={words.done}
+                    disabled={locking}
+                    onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
                   >
                     {ws.unpublish}
                   </Button>
@@ -424,8 +464,11 @@ export function Workspace(props: WorkspaceProps) {
                     type="button"
                     variant="secondary"
                     className="w-full"
-                    disabled={pending}
-                    onClick={() => run(() => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
+                    state={stateOf("status")}
+                    pendingLabel={words.restoring}
+                    doneLabel={words.restored}
+                    disabled={locking}
+                    onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
                   >
                     {ws.restore}
                   </Button>
@@ -434,12 +477,16 @@ export function Workspace(props: WorkspaceProps) {
                     type="button"
                     variant="quiet"
                     className="w-full"
-                    disabled={pending}
+                    state={stateOf("delete")}
+                    pendingLabel={words.deleting}
+                    doneLabel={words.deleted}
+                    disabled={locking}
                     onClick={() =>
-                      run(async () => {
+                      run("delete", async () => {
                         const outcome = await deleteSpecialService({ anchor: service.anchor });
-                        if (outcome.ok) router.push("/service-planner");
-                        return outcome;
+                        if (!outcome.ok) return outcome;
+                        router.push("/service-planner");
+                        return { ...outcome, message: words.serviceDeleted };
                       })
                     }
                   >
@@ -450,8 +497,11 @@ export function Workspace(props: WorkspaceProps) {
                     type="button"
                     variant="quiet"
                     className="w-full"
-                    disabled={pending}
-                    onClick={() => run(() => setServiceStatus({ anchor: service.anchor, status: "cancelled" }))}
+                    state={stateOf("status")}
+                    pendingLabel={words.updating}
+                    doneLabel={words.done}
+                    disabled={locking}
+                    onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "cancelled" }))}
                   >
                     {ws.cancelService}
                   </Button>
@@ -508,7 +558,7 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex size-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink disabled:pointer-events-none disabled:opacity-25"
+      className="inline-flex size-9 items-center justify-center rounded-full text-muted transition-colors not-disabled:hover:bg-paper not-disabled:hover:text-ink disabled:opacity-25"
     >
       <svg
         aria-hidden="true"

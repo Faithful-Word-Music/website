@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import {
   removeOverrideAction,
@@ -15,27 +14,12 @@ import { ArrowIcon, IconButton } from "@/components/admin/OptionListEditor";
 import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { ADMIN_ROLE, MEMBER_ROLE, PERMISSIONS, PERMISSION_GROUPS, type Permission } from "@/lib/auth/permissions";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
-import type { ActionResult } from "@/lib/auth/session";
 
-function useAction() {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
-  function run(action: () => Promise<ActionResult<unknown>>, onOk?: () => void) {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await action();
-      setResult(outcome);
-      if (outcome.ok) {
-        onOk?.();
-        router.refresh();
-      }
-    });
-  }
-  return { pending, result, run };
-}
+const words = feedbackContent;
 
 /**
  * Tick a role to give it, untick to take it away, then save - nothing changes
@@ -55,7 +39,7 @@ export function RoleEditor({
   /** Administrators may change their own roles, except Administrator itself. */
   canEditSelf: boolean;
 }) {
-  const { pending, result, run } = useAction();
+  const { pending, result, run, stateOf } = useAction();
   const [chosen, setChosen] = useState<string[]>(assigned);
 
   const changes = roles
@@ -111,8 +95,15 @@ export function RoleEditor({
         </p>
       ) : null}
       {editable ? (
-        <Button type="button" disabled={pending || changes.length === 0} onClick={() => run(() => setUserRolesAction(userId, changes))}>
-          {pending ? "Saving…" : "Save roles"}
+        <Button
+          type="button"
+          state={stateOf()}
+          pendingLabel={words.saving}
+          doneLabel={words.saved}
+          disabled={changes.length === 0}
+          onClick={() => run(() => setUserRolesAction(userId, changes))}
+        >
+          Save roles
         </Button>
       ) : null}
       <ActionMessage result={result} />
@@ -134,7 +125,7 @@ export function OverrideEditor({
   isSelf: boolean;
 }) {
   const ids = useId();
-  const { pending, result, run } = useAction();
+  const { pending, result, run, stateOf } = useAction();
   const [permission, setPermission] = useState<Permission>("view_service_plans");
   const [effect, setEffect] = useState<"grant" | "deny">("grant");
   const [note, setNote] = useState("");
@@ -164,8 +155,11 @@ export function OverrideEditor({
                 <Button
                   type="button"
                   variant="quiet"
+                  state={stateOf(override.permission)}
+                  pendingLabel={words.removing}
+                  doneLabel={words.removed}
                   disabled={pending}
-                  onClick={() => run(() => removeOverrideAction(userId, override.permission))}
+                  onClick={() => run(() => removeOverrideAction(userId, override.permission), { key: override.permission })}
                 >
                   Remove
                 </Button>
@@ -203,10 +197,13 @@ export function OverrideEditor({
           />
           <Button
             type="button"
+            state={stateOf()}
+            pendingLabel={words.saving}
+            doneLabel={words.saved}
             disabled={pending}
-            onClick={() => run(() => setOverrideAction(userId, { permission, effect, note }), () => setNote(""))}
+            onClick={() => run(() => setOverrideAction(userId, { permission, effect, note }), { onOk: () => setNote("") })}
           >
-            {pending ? "Saving…" : "Save exception"}
+            Save exception
           </Button>
         </div>
       ) : (
@@ -234,7 +231,7 @@ export function SheetMusicTypeEditor({
   assigned: number[];
 }) {
   const ids = useId();
-  const { pending, result, run } = useAction();
+  const { pending, result, run, stateOf } = useAction();
   const labelOf = new Map(types.map((type) => [type.id, type.label]));
   const saved = assigned.filter((id) => labelOf.has(id));
   const [chosen, setChosen] = useState<number[]>(saved);
@@ -318,8 +315,15 @@ export function SheetMusicTypeEditor({
         </div>
       ) : null}
 
-      <Button type="button" disabled={pending || !changed} onClick={() => run(() => setSheetMusicTypesAction(userId, chosen))}>
-        {pending ? "Saving…" : "Save sheet music"}
+      <Button
+        type="button"
+        state={stateOf()}
+        pendingLabel={words.saving}
+        doneLabel={words.saved}
+        disabled={!changed}
+        onClick={() => run(() => setSheetMusicTypesAction(userId, chosen))}
+      >
+        Save sheet music
       </Button>
       <ActionMessage result={result} />
     </div>
@@ -346,7 +350,7 @@ export function TitleEditor({
   assigned: Array<{ titleId: number; isPrimary: boolean }>;
 }) {
   const ids = useId();
-  const { pending, result, run } = useAction();
+  const { result, run, stateOf } = useAction();
   const [chosen, setChosen] = useState<number[]>(assigned.map((item) => item.titleId));
   const [primary, setPrimary] = useState<number | null>(
     assigned.find((item) => item.isPrimary)?.titleId ?? assigned[0]?.titleId ?? null,
@@ -391,8 +395,14 @@ export function TitleEditor({
           })}
         </ul>
       )}
-      <Button type="button" disabled={pending} onClick={() => run(() => setTitlesAction(userId, chosen, primary))}>
-        {pending ? "Saving…" : "Save titles"}
+      <Button
+        type="button"
+        state={stateOf()}
+        pendingLabel={words.saving}
+        doneLabel={words.saved}
+        onClick={() => run(() => setTitlesAction(userId, chosen, primary))}
+      >
+        Save titles
       </Button>
       <ActionMessage result={result} />
     </div>

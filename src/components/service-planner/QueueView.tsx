@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { publishServices } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -11,8 +10,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { Collapse } from "@/components/ui/Collapse";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
-import type { ActionResult } from "@/lib/auth/session";
 import { monthLabel } from "@/lib/availability/format";
 import { serviceDate, serviceTitle, statusLine } from "@/lib/service-planner/format";
 import type { PlannerStatus } from "@/lib/service-planner/model";
@@ -58,24 +58,14 @@ export function QueueView({
   /** "Start planning <month>" and "Not yet", at the end of the list (PlanAhead). */
   planAhead?: ReactNode;
 }) {
-  const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
+  const { pending, result, run, stateOf } = useAction();
 
   const toggle = (anchor: string) =>
     setSelected((current) => (current.includes(anchor) ? current.filter((item) => item !== anchor) : [...current, anchor]));
 
   function publishSelected() {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await publishServices({ anchors: selected });
-      setResult(outcome);
-      if (outcome.ok) {
-        setSelected([]);
-        router.refresh();
-      }
-    });
+    void run(() => publishServices({ anchors: selected }), { onOk: () => setSelected([]) });
   }
 
   return (
@@ -132,10 +122,17 @@ export function QueueView({
             {selected.length > 0 ? (
               <>
                 <span className="text-sm text-ink">{copy.queue.selected.replace("{count}", String(selected.length))}</span>
-                <Button type="button" variant="quiet" onClick={() => setSelected([])}>
+                <Button type="button" variant="quiet" disabled={pending} onClick={() => setSelected([])}>
                   {copy.queue.clearSelection}
                 </Button>
-                <Button type="button" onClick={publishSelected} disabled={pending} className="ml-auto">
+                <Button
+                  type="button"
+                  state={stateOf()}
+                  pendingLabel={feedbackContent.publishing}
+                  doneLabel={feedbackContent.published}
+                  onClick={publishSelected}
+                  className="ml-auto"
+                >
                   {(selected.length === 1 ? copy.queue.publishOne : copy.queue.publishMany).replace(
                     "{count}",
                     String(selected.length),

@@ -1,12 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { approveRequestAction, rejectRequestAction } from "@/app/admin/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { InvitationRolePicker, type AssignableRole } from "@/components/admin/InviteForm";
 import { Button } from "@/components/ui/Button";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
 import type { ActionResult } from "@/lib/auth/session";
 
@@ -25,24 +26,12 @@ export function RequestReview({
   roles: AssignableRole[];
 }) {
   const ids = useId();
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const { pending, result, run: runAction, stateOf } = useAction();
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [note, setNote] = useState("");
   const [chosenRoles, setChosenRoles] = useState<string[]>([]);
-  const [result, setResult] = useState<ActionResult | null>(null);
 
-  function run(action: () => Promise<ActionResult>) {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await action();
-      setResult(outcome);
-      if (outcome.ok) {
-        setMode("idle");
-        router.refresh();
-      }
-    });
-  }
+  const run = (action: () => Promise<ActionResult>) => void runAction(action, { onOk: () => setMode("idle") });
 
   return (
     <div className="space-y-4">
@@ -67,10 +56,12 @@ export function RequestReview({
           <div className="flex flex-wrap gap-3">
             <Button
               type="button"
-              disabled={pending}
+              state={stateOf()}
+              pendingLabel={feedbackContent.sending}
+              doneLabel={feedbackContent.sent}
               onClick={() => run(() => approveRequestAction(requestId, chosenRoles))}
             >
-              {pending ? "Sending…" : "Send invitation"}
+              Send invitation
             </Button>
             <Button type="button" variant="quiet" disabled={pending} onClick={() => setMode("idle")}>
               Cancel
@@ -92,8 +83,14 @@ export function RequestReview({
             onChange={setNote}
           />
           <div className="flex flex-wrap gap-3">
-            <Button type="button" disabled={pending} onClick={() => run(() => rejectRequestAction(requestId, note))}>
-              {pending ? "Saving…" : "Decline request"}
+            <Button
+              type="button"
+              state={stateOf()}
+              pendingLabel={feedbackContent.saving}
+              doneLabel={feedbackContent.saved}
+              onClick={() => run(() => rejectRequestAction(requestId, note))}
+            >
+              Decline request
             </Button>
             <Button type="button" variant="quiet" disabled={pending} onClick={() => setMode("idle")}>
               Cancel

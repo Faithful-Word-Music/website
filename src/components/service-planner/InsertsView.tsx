@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
 import { applyInsertToPublished, setInsertWeek } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/StatusIcons";
+import { useAction, type ActionOutcome, type ActionState } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { ActionResult } from "@/lib/auth/session";
 import { monthLabel } from "@/lib/availability/format";
@@ -22,6 +25,7 @@ import { Chevron } from "./Panel";
 import { SongPicker } from "./SongPicker";
 
 const copy = servicePlannerContent.inserts;
+const words = feedbackContent;
 
 export interface InsertWeekRow {
   weekStart: string;
@@ -40,26 +44,14 @@ export type InsertMonthRow = Omit<InsertMonth, "weekStarts"> & { weeks: InsertWe
  */
 export function InsertsView({ months, candidates, now }: { months: InsertMonthRow[]; candidates: CandidateSong[]; now: number }) {
   const [choosing, setChoosing] = useState<string | null>(null);
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [results, setResults] = useState<Record<string, ActionResult<unknown>>>({});
+  const { pending, result, clear, run: runAction, stateOf } = useAction();
+  /** The week the last action was for: its row shows the outcome. */
+  const [acted, setActed] = useState<string | null>(null);
 
-  /** A week's last message goes as soon as something new is done to it. */
-  function forget(weekStart: string) {
-    setResults((current) => {
-      const rest = { ...current };
-      delete rest[weekStart];
-      return rest;
-    });
-  }
-
-  function run(weekStart: string, action: () => Promise<ActionResult<unknown>>) {
-    forget(weekStart);
-    startTransition(async () => {
-      const outcome = await action();
-      setResults((current) => ({ ...current, [weekStart]: outcome }));
-      if (outcome.ok) router.refresh();
-    });
+  /** Only the week's button that was pressed shows working and done. */
+  function run(weekStart: string, button: WeekButton, action: () => Promise<ActionResult<unknown>>) {
+    setActed(weekStart);
+    void runAction(action, { key: `${weekStart}:${button}` });
   }
 
   const weekList = (month: InsertMonthRow) => (
@@ -70,13 +62,15 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
             key={week.weekStart}
             week={week}
             pending={pending}
-            result={results[week.weekStart] ?? null}
+            result={acted === week.weekStart ? result : null}
+            stateOf={(button) => stateOf(`${week.weekStart}:${button}`)}
             onChoose={() => {
-              forget(week.weekStart);
+              // A week's last message goes as soon as something new is done to it.
+              if (acted === week.weekStart) clear();
               setChoosing(week.weekStart);
             }}
-            onClear={() => run(week.weekStart, () => setInsertWeek({ weekStart: week.weekStart, song: null }))}
-            onUpdatePublished={() => run(week.weekStart, () => applyInsertToPublished({ weekStart: week.weekStart }))}
+            onClear={() => run(week.weekStart, "clear", () => setInsertWeek({ weekStart: week.weekStart, song: null }))}
+            onUpdatePublished={() => run(week.weekStart, "update", () => applyInsertToPublished({ weekStart: week.weekStart }))}
           />
         ))}
       </ul>
@@ -117,7 +111,7 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
           onChoose={(song) => {
             const weekStart = choosing;
             setChoosing(null);
-            run(weekStart, () => setInsertWeek({ weekStart, song }));
+            run(weekStart, "set", () => setInsertWeek({ weekStart, song }));
           }}
           onClose={() => setChoosing(null)}
         />
@@ -126,17 +120,22 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
   );
 }
 
+/** A week's actions: setting its insert, clearing it, and updating its published services. */
+type WeekButton = "set" | "clear" | "update";
+
 function WeekRow({
   week,
   pending,
   result,
+  stateOf,
   onChoose,
   onClear,
   onUpdatePublished,
 }: {
   week: InsertWeekRow;
   pending: boolean;
-  result: ActionResult<unknown> | null;
+  result: ActionOutcome | null;
+  stateOf: (button: WeekButton) => ActionState;
   onChoose: () => void;
   onClear: () => void;
   onUpdatePublished: () => void;
@@ -182,10 +181,16 @@ function WeekRow({
             <button
               type="button"
               disabled={pending}
-              className="font-medium underline decoration-gold underline-offset-4 transition-colors hover:text-ink disabled:opacity-60"
+              aria-busy={stateOf("update") === "pending" || undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 font-medium underline decoration-gold underline-offset-4 transition-colors not-disabled:hover:text-ink",
+                // The one at work is not dimmed; its neighbours are.
+                stateOf("update") !== "pending" && "disabled:opacity-60",
+              )}
               onClick={onUpdatePublished}
             >
-              {copy.updatePublished}
+              {stateOf("update") === "pending" ? <Spinner className="size-3" /> : null}
+              {stateOf("update") === "pending" ? words.updating : copy.updatePublished}
             </button>
           </p>
         ) : null}
@@ -197,11 +202,27 @@ function WeekRow({
       </div>
 
       <div className="flex gap-2">
-        <Button type="button" variant="secondary" onClick={onChoose} disabled={pending}>
+        <Button
+          type="button"
+          variant="secondary"
+          state={stateOf("set")}
+          pendingLabel={words.saving}
+          doneLabel={words.saved}
+          onClick={onChoose}
+          disabled={pending}
+        >
           {week.insert ? copy.change : copy.choose}
         </Button>
         {week.insert ? (
-          <Button type="button" variant="quiet" disabled={pending} onClick={onClear}>
+          <Button
+            type="button"
+            variant="quiet"
+            state={stateOf("clear")}
+            pendingLabel={words.removing}
+            doneLabel={words.removed}
+            disabled={pending}
+            onClick={onClear}
+          >
             {copy.clear}
           </Button>
         ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/components/ui/cn";
+import { CheckIcon } from "@/components/ui/StatusIcons";
 
 /** A labelled input or textarea in the site's form style (see ContactForm). */
 export function TextField({
@@ -167,9 +168,15 @@ export function ActionMessage({ result }: { result: { ok: boolean; message?: str
   if (!result) return null;
   const text = result.ok ? result.message : result.error;
   if (!text) return null;
+  // Done reads as done: a tick and ink, never the muted grey of a hint. A
+  // failure shakes once ("that did not happen").
   return (
-    <p role={result.ok ? "status" : "alert"} className={cn("text-sm", result.ok ? "text-muted" : "text-gold-dark")}>
-      {text}
+    <p
+      role={result.ok ? "status" : "alert"}
+      className={cn("flex items-start gap-1.5 text-sm", result.ok ? "animate-enter text-ink" : "animate-shake text-gold-dark")}
+    >
+      {result.ok ? <CheckIcon className="mt-0.5 text-gold-dark" /> : null}
+      <span>{text}</span>
     </p>
   );
 }

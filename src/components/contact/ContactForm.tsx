@@ -300,12 +300,17 @@ export function ContactForm() {
             size="lg"
             disabled={!hasContent || submitting}
             onClick={clearForm}
-            className="disabled:opacity-40 disabled:hover:border-line disabled:hover:bg-surface"
           >
             {form.clear}
           </Button>
-          <Button type="submit" size="lg" disabled={submitting} className="flex-1 sm:flex-none">
-            {submitting ? form.submitting : form.submit}
+          <Button
+            type="submit"
+            size="lg"
+            state={submitting ? "pending" : "idle"}
+            pendingLabel={form.submitting}
+            className="flex-1 sm:flex-none"
+          >
+            {form.submit}
           </Button>
         </div>
       </div>

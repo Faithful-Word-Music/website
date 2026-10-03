@@ -1,20 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-
 import { setServiceAvailability } from "@/app/availability/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Card } from "@/components/ui/Card";
+import { cn } from "@/components/ui/cn";
+import { Spinner } from "@/components/ui/StatusIcons";
+import { useAction } from "@/components/ui/use-action";
 import { availabilityContent } from "@/content/availability";
+import { feedbackContent } from "@/content/feedback";
 import type { UpcomingChange } from "@/lib/availability/board";
 import { serviceName, serviceShort } from "@/lib/availability/format";
 
 import { StatePill } from "./parts";
 
 const copy = availabilityContent.upcoming;
-
-type Result = { ok: boolean; message?: string; error?: string } | null;
 
 /**
  * "What changes are coming up?" - the subject's own (each removable, back to
@@ -37,26 +36,20 @@ export function UpcomingChanges({
   /** Sent as the person being managed, when it is not the viewer. */
   managedId: string | null;
 }) {
-  const router = useRouter();
-  const [result, setResult] = useState<Result>(null);
-  const [pending, startTransition] = useTransition();
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const { pending, result, run, stateOf } = useAction();
 
   function remove(change: UpcomingChange) {
-    const key = `${change.id}|${change.date}|${change.slot}`;
-    setBusyKey(key);
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await setServiceAvailability({
-        date: change.date,
-        slot: change.slot,
-        status: "normal",
-        userId: managedId ?? undefined,
-      });
-      setResult(outcome.ok ? null : outcome);
-      setBusyKey(null);
-      if (outcome.ok) router.refresh();
-    });
+    // The row itself goes once it has worked, so a toast says it did.
+    void run(
+      () =>
+        setServiceAvailability({
+          date: change.date,
+          slot: change.slot,
+          status: "normal",
+          userId: managedId ?? undefined,
+        }),
+      { key: `${change.id}|${change.date}|${change.slot}`, toast: copy.removed },
+    );
   }
 
   return (
@@ -89,10 +82,16 @@ export function UpcomingChanges({
                     type="button"
                     onClick={() => remove(change)}
                     disabled={pending}
+                    aria-busy={stateOf(key) === "pending" || undefined}
                     aria-label={copy.removeLabel.replace("{name}", change.name).replace("{date}", serviceShort(change))}
-                    className="mt-1.5 text-xs text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold disabled:opacity-60"
+                    className={cn(
+                      "mt-1.5 inline-flex items-center gap-1.5 text-xs text-muted underline decoration-line underline-offset-4 transition-colors not-disabled:hover:text-ink not-disabled:hover:decoration-gold",
+                      // The one at work is not dimmed; its neighbours are.
+                      stateOf(key) !== "pending" && "disabled:opacity-60",
+                    )}
                   >
-                    {busyKey === key ? availabilityContent.service.saving : copy.remove}
+                    {stateOf(key) === "pending" ? <Spinner className="size-3" /> : null}
+                    {stateOf(key) === "pending" ? feedbackContent.saving : copy.remove}
                   </button>
                 ) : null}
               </li>

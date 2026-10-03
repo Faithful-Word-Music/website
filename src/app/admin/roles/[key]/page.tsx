@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
+import { feedbackContent } from "@/content/feedback";
 import { RoleForm } from "@/components/admin/RoleForm";
 import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
@@ -84,6 +85,7 @@ export default async function RolePage({ params }: PageProps<"/admin/roles/[key]
           action={deleteRoleAction.bind(null, role.key)}
           label="Delete role"
           pendingLabel="Deleting…"
+          doneToast={feedbackContent.roleDeleted}
           variant="quiet"
           confirm={deleteWarning}
         />

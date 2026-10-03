@@ -1,13 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { setRangeAvailability } from "@/app/availability/actions";
 import { ActionMessage, ChoiceChips, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { useAction } from "@/components/ui/use-action";
 import { availabilityContent } from "@/content/availability";
+import { feedbackContent } from "@/content/feedback";
 import { NOTE_LIMIT, type AvailabilityChoice } from "@/lib/availability/effective";
 import { serviceShort } from "@/lib/availability/format";
 import { addDays, type Occurrence } from "@/lib/availability/occurrences";
@@ -17,8 +18,6 @@ import { plural } from "@/lib/plural";
 import type { Subject } from "./ServiceDialog";
 
 const copy = availabilityContent;
-
-type Result = { ok: boolean; message?: string; error?: string } | null;
 
 /**
  * "Unavailable October 15-22": one form for every service in a range. It
@@ -66,33 +65,28 @@ function RangeDialog({
   onClose: () => void;
 }) {
   const ids = useId();
-  const router = useRouter();
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(addDays(today, 7));
   const [status, setStatus] = useState<AvailabilityChoice>("unavailable");
   const [note, setNote] = useState("");
-  const [result, setResult] = useState<Result>(null);
-  const [pending, startTransition] = useTransition();
+  const { result, run, stateOf } = useAction();
 
   const covered = from && to && from <= to ? occurrencesInRange(occurrences, from, to, now) : [];
   const preview = covered.slice(0, 6).map(serviceShort).join(", ") + (covered.length > 6 ? ", …" : "");
 
   function save() {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await setRangeAvailability({
-        from,
-        to,
-        status,
-        note: status === "normal" ? "" : note,
-        userId: subject.isSelf ? undefined : subject.id,
-      });
-      setResult(outcome);
-      if (outcome.ok) {
-        router.refresh();
-        onClose();
-      }
-    });
+    // The dialog closes on saving, so a toast says how many services were saved.
+    void run(
+      () =>
+        setRangeAvailability({
+          from,
+          to,
+          status,
+          note: status === "normal" ? "" : note,
+          userId: subject.isSelf ? undefined : subject.id,
+        }),
+      { toast: true, onOk: onClose },
+    );
   }
 
   return (
@@ -109,8 +103,15 @@ function RangeDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             {copy.service.close}
           </Button>
-          <Button type="button" onClick={save} disabled={pending || covered.length === 0}>
-            {pending ? copy.service.saving : copy.range.save}
+          <Button
+            type="button"
+            state={stateOf()}
+            pendingLabel={feedbackContent.saving}
+            doneLabel={feedbackContent.saved}
+            onClick={save}
+            disabled={covered.length === 0}
+          >
+            {copy.range.save}
           </Button>
         </>
       }

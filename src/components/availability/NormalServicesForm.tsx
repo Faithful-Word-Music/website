@@ -1,20 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { setNormalPattern } from "@/app/availability/actions";
 import { ActionMessage, ChoiceChips } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { useAction } from "@/components/ui/use-action";
 import { availabilityContent } from "@/content/availability";
+import { feedbackContent } from "@/content/feedback";
 import { SERVICE_AVAILABILITY, type ServiceAvailability } from "@/lib/auth/profile-options";
 
 import type { Subject } from "./ServiceDialog";
 
 const copy = availabilityContent.normal;
-
-type Result = { ok: boolean; message?: string; error?: string } | null;
 
 /**
  * The services someone usually serves at - the baseline every week starts
@@ -22,19 +21,12 @@ type Result = { ok: boolean; message?: string; error?: string } | null;
  */
 export function NormalServicesForm({ subject, initial }: { subject: Subject; initial: ServiceAvailability[] }) {
   const ids = useId();
-  const router = useRouter();
   const [selected, setSelected] = useState(initial);
-  const [result, setResult] = useState<Result>(null);
-  const [pending, startTransition] = useTransition();
+  const { result, clear, run, stateOf } = useAction();
   const changed = [...selected].sort().join() !== [...initial].sort().join();
 
   function save() {
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await setNormalPattern({ services: selected, userId: subject.isSelf ? undefined : subject.id });
-      setResult(outcome);
-      if (outcome.ok) router.refresh();
-    });
+    void run(() => setNormalPattern({ services: selected, userId: subject.isSelf ? undefined : subject.id }));
   }
 
   return (
@@ -53,14 +45,21 @@ export function NormalServicesForm({ subject, initial }: { subject: Subject; ini
             multiple
             onChange={(next) => {
               setSelected(next);
-              setResult(null);
+              clear();
             }}
           />
         </div>
         {selected.length === 0 ? <p className="mt-3 text-xs text-muted">{copy.none}</p> : null}
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={save} disabled={pending || !changed}>
-            {pending ? availabilityContent.service.saving : copy.save}
+          <Button
+            type="button"
+            state={stateOf()}
+            pendingLabel={feedbackContent.saving}
+            doneLabel={feedbackContent.saved}
+            onClick={save}
+            disabled={!changed}
+          >
+            {copy.save}
           </Button>
           <ActionMessage result={result} />
         </div>

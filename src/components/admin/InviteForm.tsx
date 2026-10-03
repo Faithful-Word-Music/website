@@ -1,12 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { inviteAction } from "@/app/admin/actions";
 import { ActionMessage, ChoiceChips, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
-import type { ActionResult } from "@/lib/auth/session";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 
 export interface AssignableRole {
   key: string;
@@ -45,23 +45,17 @@ export function InvitationRolePicker({
 /** Invite someone directly, without an account request first. */
 export function InviteForm({ roles }: { roles: AssignableRole[] }) {
   const ids = useId();
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [chosenRoles, setChosenRoles] = useState<string[]>([]);
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult | null>(null);
+  const { result, run, stateOf } = useAction();
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setResult(null);
-    startTransition(async () => {
-      const outcome = await inviteAction(email, chosenRoles);
-      setResult(outcome);
-      if (outcome.ok) {
+    void run(() => inviteAction(email, chosenRoles), {
+      onOk: () => {
         setEmail("");
         setChosenRoles([]);
-        router.refresh();
-      }
+      },
     });
   }
 
@@ -78,8 +72,15 @@ export function InviteForm({ roles }: { roles: AssignableRole[] }) {
       />
       <InvitationRolePicker name={`${ids}-roles`} roles={roles} selected={chosenRoles} onChange={setChosenRoles} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Button type="submit" size="lg" disabled={pending || !email.trim()}>
-          {pending ? "Sending…" : "Send invitation"}
+        <Button
+          type="submit"
+          size="lg"
+          state={stateOf()}
+          pendingLabel={feedbackContent.sending}
+          doneLabel={feedbackContent.sent}
+          disabled={!email.trim()}
+        >
+          Send invitation
         </Button>
         <ActionMessage result={result} />
       </div>

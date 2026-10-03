@@ -1,15 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
 
 import { createRoleAction, updateRoleAction } from "@/app/admin/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { useAction } from "@/components/ui/use-action";
+import { feedbackContent } from "@/content/feedback";
 import { PERMISSIONS, PERMISSION_GROUPS, type Permission } from "@/lib/auth/permissions";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
-import type { ActionResult } from "@/lib/auth/session";
 
 /**
  * Create a role, or edit one: its name, description and permissions. A
@@ -34,8 +35,7 @@ export function RoleForm({
   const [label, setLabel] = useState(initial.label);
   const [description, setDescription] = useState(initial.description);
   const [permissions, setPermissions] = useState<string[]>(initial.permissions);
-  const [pending, startTransition] = useTransition();
-  const [result, setResult] = useState<ActionResult<unknown> | null>(null);
+  const { result, run, stateOf } = useAction();
 
   function toggle(permission: string) {
     setPermissions((current) =>
@@ -45,19 +45,19 @@ export function RoleForm({
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setResult(null);
-    startTransition(async () => {
-      const input = { label, description, permissions };
-      if (roleKey) {
-        const outcome = await updateRoleAction(roleKey, input);
-        setResult(outcome);
-        if (outcome.ok) router.refresh();
-      } else {
-        const outcome = await createRoleAction(input);
-        setResult(outcome);
-        if (outcome.ok) router.push(`/admin/roles/${outcome.value}`);
-      }
-    });
+    const input = { label, description, permissions };
+    if (roleKey) {
+      void run(() => updateRoleAction(roleKey, input));
+    } else {
+      // Creating goes on to the new role's page, so a toast there says it was created.
+      void run(() => createRoleAction(input), {
+        refresh: false,
+        toast: true,
+        onOk: (outcome) => {
+          if (outcome.ok) router.push(`/admin/roles/${outcome.value}`);
+        },
+      });
+    }
   }
 
   return (
@@ -124,8 +124,14 @@ export function RoleForm({
 
       {locked ? null : (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Button type="submit" size="lg" disabled={pending}>
-            {pending ? "Saving…" : roleKey ? "Save role" : "Create role"}
+          <Button
+            type="submit"
+            size="lg"
+            state={stateOf()}
+            pendingLabel={roleKey ? feedbackContent.saving : feedbackContent.creating}
+            doneLabel={roleKey ? feedbackContent.saved : feedbackContent.created}
+          >
+            {roleKey ? "Save role" : "Create role"}
           </Button>
           <ActionMessage result={result} />
         </div>
