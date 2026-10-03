@@ -2,13 +2,16 @@ import "server-only";
 
 import { siteConfig } from "@/config/site";
 import { parseMonthGrid, planMonth } from "@/lib/song-list";
-import type { SongListMonth, SongListResult } from "@/types/song-list";
+import type { SongListMonth } from "@/types/song-list";
 
 /**
- * All Google-specific code lives here. Nothing else in the app knows that the
- * song list comes from Google Sheets - the rest of the app sees only the types
- * in src/types/song-list.ts, so this file could be swapped for a database or a
- * CMS without touching the UI.
+ * RETIRED SOURCE - kept only for the one-time import into the Service Planner
+ * (src/app/api/cron/import-sheet-schedule). The song list now comes from the
+ * planner (src/lib/schedule.ts); nothing else reads this module. Delete it,
+ * with the import route, once the import has been run on Production.
+ *
+ * (Not to be confused with the Sheet Music Index, a different and private
+ * Google Sheet read by src/lib/sheet-music-index.ts - that one stays.)
  *
  * READ ONLY. This module never writes to the spreadsheet.
  *
@@ -129,15 +132,15 @@ async function fetchGrids(apiKey: string, titles: string[]): Promise<string[][][
   return titles.map((_, index) => data.valueRanges?.[index]?.values ?? []);
 }
 
+export type SheetReadResult =
+  | { ok: true; months: SongListMonth[]; allMonths: SongListMonth[] }
+  | { ok: false; reason: "not-configured" | "unavailable" };
+
 /**
- * The song list, ready for rendering: the visible months for the schedule, and
- * every month (hidden ones too) as the raw material for song history. Both come
- * from the same two requests.
- *
- * Never throws: a missing key or an unreachable Google degrades to an error
- * state on the page, so the rest of the site stays up.
+ * The retired sheet's months: the visible ones as the schedule showed them,
+ * and every tab (hidden ones too) for history. Never throws.
  */
-export async function getSongList(): Promise<SongListResult> {
+export async function readSheetSchedule(): Promise<SheetReadResult> {
   const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
   if (!apiKey) {

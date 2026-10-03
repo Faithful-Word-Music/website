@@ -3,7 +3,7 @@ import { Hero } from "@/components/home/Hero";
 import { Purpose } from "@/components/home/Purpose";
 import { SongListCta } from "@/components/home/SongListCta";
 import { PageTransition } from "@/components/ui/PageTransition";
-import { getSongList } from "@/lib/google-sheets";
+import { getSchedule } from "@/lib/schedule";
 import { getTimeline } from "@/lib/service-time";
 import type { Service } from "@/types/song-list";
 
@@ -29,11 +29,11 @@ export default async function HomePage() {
 
 /**
  * The visible months' services, or null when there is no service to show right
- * now (sheet unavailable, or nothing coming up). The browser then keeps the
+ * now (schedule unavailable, or nothing coming up). The browser then keeps the
  * card current against its own clock.
  */
 async function loadNextService(): Promise<{ services: Service[] | null; loadedAt: number }> {
-  const result = await getSongList();
+  const result = await getSchedule();
   const loadedAt = Date.now();
   if (!result.ok) return { services: null, loadedAt };
 

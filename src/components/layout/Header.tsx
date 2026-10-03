@@ -8,6 +8,7 @@ import { MobileAccountMenu, UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { useNavFit } from "@/components/layout/use-nav-fit";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Container } from "@/components/ui/Container";
 import { cn } from "@/components/ui/cn";
@@ -24,6 +25,9 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   // whatever their permissions open (src/lib/navigation.ts).
   const { nav } = useAccount();
   const items = primaryNav(nav);
+  // The links sit in the bar while they fit and go behind the menu button
+  // when they don't - how many there are depends on who is signed in.
+  const { mode, rowRef, navRef } = useNavFit(items.map((item) => `${item.href} ${item.label}`).join("|"));
 
   // Close the mobile menu whenever the route changes. Adjusting state during
   // render is React's recommended way to reset state when an input changes -
@@ -33,6 +37,9 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
     setLastPathname(pathname);
     setOpen(false);
   }
+  // Likewise once the links fit in the bar again: the menu is hidden then,
+  // and must not leave the page locked beneath it.
+  if (mode === "wide" && open) setOpen(false);
 
   // Escape closes the menu, as expected of a disclosure.
   useEffect(() => {
@@ -56,7 +63,10 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   }
 
   return (
-    <>
+    // data-nav drives the nav-wide variant (globals.css) for the header and
+    // the menu alike; `contents` keeps it out of the layout, so the header
+    // stays sticky.
+    <div data-nav={mode} className="contents">
       {/* The header is the visitor's fixed reference point during a page
           transition: the content should look like it changed, not the viewport. */}
       <header
@@ -67,12 +77,12 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
         className="sticky top-0 z-40 border-b border-line/80 glass app-login:hidden"
       >
         <Container size="wide">
-          <div className="flex h-16 items-center justify-between">
-            <Brand href={homeHref(nav)} />
+          <div ref={rowRef} className="flex h-16 items-center justify-between gap-4">
+            <Brand href={homeHref(nav)} className="shrink-0" />
 
-            <div className="flex items-center gap-1">
-              {/* Desktop navigation */}
-              <nav aria-label="Primary" className="hidden lg:block">
+            <div className="flex min-w-0 items-center gap-1">
+              {/* The links in a row, while they fit (use-nav-fit.ts) */}
+              <nav ref={navRef} aria-label="Primary" className="hidden min-w-0 overflow-hidden nav-wide:block">
                 <ul className="flex items-center gap-1">
                   {items.map((item) => (
                     <li key={item.href}>
@@ -107,7 +117,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                   mobile menu on phones. The theme sits beside the menu button
                   on phones, so it never needs the menu opened. */}
               <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
-              <ThemeToggle />
+              <ThemeToggle className="shrink-0" />
               {/* The signed-in person's menu. Nothing shows for visitors, and
                   nothing at all while accounts are switched off. */}
               {authEnabled ? <UserMenu /> : null}
@@ -118,7 +128,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={() => setOpen((value) => !value)}
-                className="-mr-2 inline-flex h-11 w-11 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper lg:hidden"
+                className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink transition-colors hover:bg-paper nav-wide:hidden"
               >
                 <span className="sr-only">{open ? "Close menu" : "Open menu"}</span>
                 {/* Three rules that fold into a cross: keys closing on a stave. */}
@@ -161,6 +171,6 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
         onSearch={openSearch}
         account={authEnabled ? <MobileAccountMenu onNavigate={close} /> : null}
       />
-    </>
+    </div>
   );
 }

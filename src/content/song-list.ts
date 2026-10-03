@@ -2,18 +2,15 @@
  * Editable copy for the Congregational Song List page (/song-list) and its
  * archive (/song-list/archive).
  *
- * The SONGS THEMSELVES ARE NOT HERE. They come from the Google Sheet and are
- * never edited in code. This file holds only the wording around them.
+ * The SONGS THEMSELVES ARE NOT HERE. They are planned in the Service Planner
+ * and never edited in code. This file holds only the wording around them.
  */
 export const songListContent = {
   title: "Congregational Song List",
   lead: "The songs currently scheduled for congregational singing at Faithful Word Baptist Church, with hymnal numbers and keys for each service.",
 
-  /** Button linking to the original public spreadsheet. */
-  sheetLinkLabel: "View in Google Sheets",
-
   /**
-   * Button that opens the open month as a PDF, laid out like the spreadsheet,
+   * Button that opens the open month as a PDF, laid out like the printed song list,
    * ready to print or save.
    */
   pdfLabel: "PDF",
@@ -116,7 +113,7 @@ export const songListContent = {
     alsoOn: "Also on {date}",
   },
 
-  /** The sheet marks each date AM or PM; these are the names shown for them. */
+  /** Every service is AM or PM; these are the names shown for them. */
   serviceMarkerLabels: {
     AM: "Morning Service",
     PM: "Evening Service",
@@ -136,18 +133,18 @@ export const songListContent = {
   states: {
     emptyTitle: "No songs listed yet",
     emptyBody:
-      "This month's schedule has not been filled in yet. You can check the spreadsheet directly for the latest.",
+      "This month's songs have not been posted yet. Please check back soon.",
 
     errorTitle: "The song list is temporarily unavailable",
     errorBody:
-      "We could not load the schedule just now. It is usually a brief interruption - please try again shortly. In the meantime you can open the spreadsheet directly.",
+      "We could not load the schedule just now. It is usually a brief interruption - please try again shortly.",
 
     notConfiguredTitle: "The song list is not connected yet",
     notConfiguredBody:
-      "This site is not currently configured to read the song schedule. You can open the spreadsheet directly.",
+      "This site is not currently connected to the song schedule.",
 
     pendingSong: "To be announced",
-    /** A service with nothing written under it yet, or one the sheet has not reached. */
+    /** A service whose songs have not been published yet. */
     notPosted: "Songs not posted yet",
 
     fallbackNotice:
@@ -429,5 +426,57 @@ export const songListContent = {
     emptyBody: "Once services have been held, every song sung will appear here.",
     errorTitle: "The archive is temporarily unavailable",
     errorBody: "We could not load the song history just now. Please try again shortly.",
+    /** The switch between the archive's two views of the same history. */
+    views: {
+      label: "Archive",
+      songs: "Songs",
+      services: "Service plans",
+    },
+  },
+
+  /** The archive's other view: every past service as a complete song list. */
+  serviceArchive: {
+    title: "Service Plans",
+    lead: "Every past service, song by song, in the order it was sung and in the keys it used.",
+    filters: {
+      song: "Song",
+      songPlaceholder: "Title or hymnal number",
+      from: "From",
+      to: "To",
+      type: "Service",
+      key: "Key",
+      anyKey: "Any key",
+      insertOnly: "Inserts only",
+      clear: "Clear",
+    },
+    types: {
+      all: "All services",
+      sundayMorning: "Sunday morning",
+      sundayEvening: "Sunday evening",
+      wednesday: "Wednesday",
+      special: "Special services",
+    },
+    results: "{count} services",
+    resultsOne: "1 service",
+    showMore: "Show {count} more",
+    noResults: "No services match.",
+    insert: "Insert",
+    special: "Special",
+    emptyTitle: "No services recorded yet",
+    emptyBody: "Once services have been held, each one will appear here.",
+    errorTitle: "The archive is temporarily unavailable",
+    errorBody: "We could not load the service history just now. Please try again shortly.",
+    detail: {
+      songs: "Songs",
+      notFound: "No service was recorded then.",
+      published: "Published by {name} on {date}",
+      updated: "Last changed by {name} on {date}",
+      created: "Planned by {name}",
+      someone: "someone",
+      history: "Changes",
+      planner: "Open in the Service Planner",
+      before: "Earlier service",
+      after: "Later service",
+    },
   },
 } as const;

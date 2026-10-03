@@ -509,7 +509,7 @@ function notes(report: QuarterlyReport, persistent: boolean): string[] {
     lines.push(`Comparisons with earlier quarters appear once the records, which begin ${formatLongDate(`${report.recordsBegan}T12:00:00-07:00`)}, cover one.`);
   }
   if (!persistent) {
-    lines.push("The archive database could not be read, so this report used the spreadsheet's last twelve months only.");
+    lines.push("The archive database could not be read, so this report used the Service Planner's published services only.");
   }
   return lines;
 }
@@ -520,7 +520,7 @@ export interface ReportEmail {
   text: string;
 }
 
-/** `persistent` is false when only the sheet could be read (see getSongHistory). */
+/** `persistent` is false when only published plans could be read (see getSongHistory). */
 export function renderQuarterlyReport(report: QuarterlyReport, persistent = true): ReportEmail {
   const subject = `Your quarterly song report: ${report.label}`;
   const title = longLabel(report);

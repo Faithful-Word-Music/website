@@ -29,6 +29,7 @@ import { collectAttention } from "@/lib/dashboard/attention";
 import { buildComingUp } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
 import { loadAvailabilitySummary, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
+import { loadPlannerWork } from "@/lib/service-planner/load";
 import { newSheetMusic } from "@/lib/dashboard/new-sheet-music";
 import { groupPeople, musiciansWithoutInstruments } from "@/lib/dashboard/people";
 import {
@@ -37,6 +38,7 @@ import {
   instrumentAttention,
   invitationAttention,
   profileAttention,
+  servicePlannerAttention,
   sheetGapAttention,
   sheetTypeAttention,
 } from "@/lib/dashboard/providers";
@@ -67,6 +69,8 @@ export const metadata: Metadata = {
  *                            each song the type it uses (their first choice
  *                            it has), their others it has, or "none yet"
  *   plays or leads singing   Songs to brush up on
+ *   manage_service_plans     the next service to plan, and how many need planning
+ *                            soon (links into the Service Planner)
  *   manage_sheet_music       Sheet music to finish, musicians with no sheet type
  *   view_analytics           the quarter at a glance
  *   manage_users             account requests, invitations to follow up
@@ -97,12 +101,13 @@ export default async function DashboardPage() {
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
-  const [music, requests, people, invitations, availability] = await Promise.all([
+  const [music, requests, people, invitations, availability, plannerWork] = await Promise.all([
     loadMusicData(),
     focus.reviewsAccounts ? countRequestsByStatus(viewer.env).catch(() => null) : null,
     focus.seesPeople ? loadPeople(viewer) : null,
     focus.reviewsAccounts ? loadInvitationFollowUps() : null,
     focus.tracksAvailability ? loadAvailabilitySummary(viewer) : null,
+    focus.plansServices ? loadPlannerWork(viewer) : null,
   ]);
   const now = music.loadedAt;
   const { hymnalCollection } = siteConfig.sheetMusic;
@@ -134,6 +139,7 @@ export default async function DashboardPage() {
   const withoutSheetMusic = groups ? groups.musicians.filter((musician) => !musician.sheetMusic) : null;
 
   const attention = collectAttention(
+    servicePlannerAttention(focus, plannerWork, now),
     accountRequestAttention(focus, requests?.pending ?? null),
     invitationAttention(focus, invitations),
     sheetGapAttention(focus, gaps),
@@ -186,9 +192,9 @@ export default async function DashboardPage() {
             1. Needs your attention   - things to do
             2. Coming up              - this week's services
             3. Availability           - always, for those it applies to
-            4. Getting ready          - brush up, sheet music to finish
-            5. New sheet music        - what changed
-            6. People, the quarter    - the wider picture
+            4. Getting ready          - work first: sheet music to finish,
+                                        then new sheet music, then brush up
+            5. People, the quarter    - the wider picture
         */}
         {/* Shown by the browser only where installing is possible, until dismissed. */}
         <InstallAppCard className="mt-10" />
@@ -209,9 +215,9 @@ export default async function DashboardPage() {
               {copy.gettingReady.title}
             </h2>
             <DashboardGrid className="mt-4">
-              {brushUp.length > 0 ? <BrushUp songs={brushUp} recordsBegan={recordsBegan} /> : null}
               {gaps && gaps.length > 0 ? <SheetGaps songs={gaps} /> : null}
               {recentSheets.length > 0 ? <NewSheetMusic songs={recentSheets} now={now} /> : null}
+              {brushUp.length > 0 ? <BrushUp songs={brushUp} recordsBegan={recordsBegan} /> : null}
             </DashboardGrid>
           </section>
         ) : null}

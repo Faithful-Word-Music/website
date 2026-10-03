@@ -1,14 +1,14 @@
 import { siteConfig } from "@/config/site";
-import { getSongList } from "@/lib/google-sheets";
+import { getSchedule } from "@/lib/schedule";
 import { renderServicePicture } from "@/lib/service-picture";
 import { MAX_SHARED_SERVICES } from "@/lib/share-services";
 import { monthSlug } from "@/lib/song-list-pdf";
 
 /**
- * Chosen services as a PNG, for sharing: /song-list/image/september?s=september-0-1,september-1-1
+ * Chosen services as a PNG, for sharing: /song-list/image/september?s=2026-09-06-am,2026-09-06-pm
  * (service ids, as the page knows them). Drawn by renderServicePicture().
  *
- * Built on request from the sheet, like the PDF, so it is as current as the
+ * Built on request from the published schedule, like the PDF, so it is as current as the
  * page; cached at the CDN for siteConfig.songList.revalidateSeconds.
  */
 export async function GET(request: Request, ctx: RouteContext<"/song-list/image/[month]">) {
@@ -17,7 +17,7 @@ export async function GET(request: Request, ctx: RouteContext<"/song-list/image/
     .split(",")
     .filter(Boolean)
     .slice(0, MAX_SHARED_SERVICES);
-  const result = await getSongList();
+  const result = await getSchedule();
 
   if (!result.ok) {
     return new Response("The song list is unavailable right now.", { status: 503 });

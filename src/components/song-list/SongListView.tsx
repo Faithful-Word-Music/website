@@ -250,8 +250,8 @@ export function SongListView({
       <NextServiceSpotlight current={current} next={next} plays={plays} now={now} />
 
       <div className="mt-12 flex flex-col gap-4 sm:mt-14 lg:flex-row lg:items-center lg:justify-between">
-        {/* Tabs appear only when the spreadsheet actually has a second visible
-            month. With one month there is no tab bar and no placeholder. */}
+        {/* Tabs appear only when the schedule shows a second month. With one
+            month there is no tab bar and no placeholder. */}
         <div>
           {months.length > 1 ? (
             <MonthTabs
@@ -377,10 +377,6 @@ export function SongListView({
           cardExtras={cardExtras}
         />
       </div>
-
-      {month.note ? (
-        <p className="mt-8 text-center text-sm italic text-muted">{month.note}</p>
-      ) : null}
 
       <div className="mt-12 flex flex-wrap justify-center gap-3">
         <Link

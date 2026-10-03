@@ -3,8 +3,7 @@ import "server-only";
 import { listAccounts } from "@/lib/auth/clerk";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import type { Viewer } from "@/lib/auth/session";
-import { getSongList } from "@/lib/google-sheets";
-import type { ServiceSlot } from "@/types/song-list";
+import { scheduledServices } from "@/lib/service-planner/store";
 
 import { isEditable, LEADER_PERMISSION } from "./access";
 import { buildBoard, upcomingChanges, type BoardService, type BoardView, type RosterPerson, type UpcomingChange } from "./board";
@@ -13,8 +12,8 @@ import { listExceptions, loadRosterRecords } from "./store";
 
 /**
  * The reads availability pages share: the board's people, named from Clerk
- * (the one source of names), and the song list's services, which is where
- * special services come from.
+ * (the one source of names), and the Service Planner's services, which is
+ * where special services (and cancelled regular ones) come from.
  */
 
 /**
@@ -40,19 +39,14 @@ export async function loadRoster(env: ClerkEnv): Promise<RosterPerson[]> {
     });
 }
 
-/** The song list's dated services, for special services; empty if the sheet cannot be read. */
-export async function loadSongListServices(): Promise<Array<{ date: string | null; slot: ServiceSlot | null }>> {
-  try {
-    const songList = await getSongList();
-    if (!songList.ok) return [];
-    return songList.months
-      .flatMap((month) => month.services)
-      .filter((service) => !service.placeholder)
-      .map((service) => ({ date: service.date, slot: service.slot }));
-  } catch (error) {
-    console.error("[availability] Could not read the song list:", error instanceof Error ? error.message : "unknown error");
-    return [];
-  }
+/**
+ * The planner's services from `from` to `to` - special services as soon as
+ * they are created (drafts too: people need to say whether they can come),
+ * plus names, times and cancellations of regular ones. Empty if the planner
+ * cannot be read, leaving the regular services.
+ */
+export async function loadPlannedServices(env: ClerkEnv, from: string, to: string) {
+  return scheduledServices(env, { from, to });
 }
 
 /** How far ahead the page's upcoming lists and the date-range preview look. */
@@ -95,14 +89,17 @@ export async function loadAvailabilityPage(
   const month = request.month && isMonthString(request.month) ? request.month : thisMonth;
   const view: BoardView = request.view === "me" ? "me" : "everyone";
 
-  const [roster, songList] = await Promise.all([loadRoster(viewer.env), loadSongListServices()]);
+  const { from, to } = monthRange(month);
+  const upcomingTo = addDays(today, UPCOMING_DAYS);
+  const [roster, songList] = await Promise.all([
+    loadRoster(viewer.env),
+    loadPlannedServices(viewer.env, from < today ? from : today, to > upcomingTo ? to : upcomingTo),
+  ]);
   const self = roster.find((person) => person.id === viewer.userId) ?? null;
   const requested = viewer.can(LEADER_PERMISSION) && request.person !== viewer.userId ? request.person : null;
   const managed = requested ? (roster.find((person) => person.id === requested) ?? null) : null;
   const subject = managed ?? self;
 
-  const { from, to } = monthRange(month);
-  const upcomingTo = addDays(today, UPCOMING_DAYS);
   const exceptions = await listExceptions(viewer.env, from < today ? from : today, to > upcomingTo ? to : upcomingTo);
 
   const services = buildBoard({

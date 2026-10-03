@@ -82,7 +82,7 @@ export const PERMISSIONS = {
   },
   view_service_plans: {
     label: "View service plans",
-    description: "See upcoming service plans before they are public.",
+    description: "See published service plans and what to prepare for them.",
     group: "members",
   },
   view_sheet_music: {

@@ -4,7 +4,8 @@ Practical answers to "where do I change this?" for the Faithful Word Music websi
 Nothing here requires knowing React. For developer setup and deployment, see [README.md](./README.md).
 
 After editing any file, commit and push. Vercel rebuilds and deploys automatically.
-**The one exception is the song list, which needs no commit at all** - see below.
+**The one exception is the song list, which needs no commit at all** - it is built in the
+**Service Planner** on the website itself. See below.
 
 ---
 
@@ -12,7 +13,10 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 
 | I want to change… | Edit this |
 |---|---|
-| The congregational song list | **The Google Sheet** - no code change, no deploy |
+| The congregational song list | **The Service Planner** (`/service-planner`, signed in as Music Director) - no code change, no deploy |
+| The weekly insert (Psalm / other song) | **Service Planner → Inserts** |
+| Default number of songs, the insert's place, which services take it | `src/config/site.ts` → `servicePlanner` |
+| Service planner wording | `src/content/service-planner.ts` |
 | Homepage wording | `src/content/home.ts` |
 | Contact page wording, form labels, error messages | `src/content/contact.ts` |
 | Footer headings, resource labels, the list of resources | `src/content/footer.ts` |
@@ -20,7 +24,6 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 | The contact email address | `src/config/site.ts` → `contactEmail` |
 | The email the contact form sends *from* | `src/config/site.ts` → `mail.from` |
 | An external resource URL (YouTube, MuseScore, Drive…) | `src/config/site.ts` → `resources` |
-| The Google Sheet link or spreadsheet ID | `src/config/site.ts` → `songList` |
 | Navigation menu items | `src/config/site.ts` → `nav` |
 | Site colours, fonts, spacing | `src/app/globals.css` (the `@theme` block at the top) |
 | The logo / brand mark | `src/components/layout/Logo.tsx` &mdash; and `src/app/icon.svg`, the browser-tab copy, must match |
@@ -37,55 +40,56 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 
 ## Editing the song list
 
-**Just edit the Google Sheet.** That is the whole workflow:
+**Use the Service Planner.** Log in as the Music Director and choose **Service Planner** in the menu.
+The old Google Sheet is no longer used - editing it changes nothing on the website.
 
-1. Open the sheet.
-2. Edit the song schedule.
-3. Google saves automatically.
-4. Within about 60 seconds, new visitors see the change.
+### Planning a week
 
-No code edit. No commit. No build. No redeploy.
+1. Open **Service Planner**. The next service that needs planning is at the top.
+2. Open it. The week's insert is usually already in third place.
+3. **Choose a song** for each place: type part of the title or the hymn number. Each result shows when
+   it was last sung, how often, its recent keys, and whether it has sheet music. The key it was last
+   sung in is filled in - change it if needed.
+4. Reorder with the arrows, change keys, add or remove places. The **Checks** beside the list point out
+   anything worth a second look (sung recently, planned nearby, missing sheet music, who is away).
+   They never stop you.
+5. **Save draft** to come back later, or **Publish** to put it on the song list.
+6. To publish several services at once (say Sunday morning, Sunday evening and Wednesday), tick them in
+   the list and press **Publish … together**.
 
-### Which months appear on the website
+Published services fold away under **Published**, so the next service to plan is always on top. They
+can still be opened and changed - the song list updates as soon as you **Save changes**. **Return to
+draft** takes a service off the song list.
 
-The website shows **the visible worksheet tabs, in tab order, up to two of them**:
+### Inserts
 
-- The **first visible tab** is treated as the current month.
-- The **second visible tab**, if there is one, is treated as the upcoming month, and the site shows a month switcher.
-- If only one tab is visible, the site shows that month with no switcher and no "coming soon" placeholder.
+**Service Planner → Inserts** lists the coming weeks. Choose one song per week; it goes in third
+place in that week's Sunday morning, Sunday evening and Wednesday services. In any one service you can
+still move it, replace it or remove it - that service then keeps its own choice. Changing a week's
+insert later updates its unpublished services; for published ones the page offers **Update them**.
 
-**Hidden tabs are never shown.** This matters: the workbook contains all twelve months, and the
-eleven you are not using still hold last year's dates. They stay hidden, so they stay off the website.
+### Special services and planning ahead
 
-To publish next month's schedule, **unhide that month's tab**. To retire a month, **hide it again**.
+- **New special service** (on the planner's main page) adds a conference, holiday or other one-off
+  service: give it a date, morning or evening, a name and a start time.
+- Regular services never need adding - they are always there. To plan further ahead, use
+  **Plan further ahead** at the side of the list.
+- A regular service that will not happen can be **cancelled** from its own page (and restored).
 
-> The site uses the Google Sheets API specifically so it can tell which tabs are hidden.
-> A simpler CSV export cannot, and would publish every hidden tab.
+### New songs
 
-### Month names on the website
+If a song is not found when choosing, use **Add "…" as a new song**. Only the title is needed. The song
+gets a Library page straight away; sheet music and details can be added later as usual.
 
-The website shows each tab's **actual title**. Rename a tab to `Christmas 2026` and the website
-says `Christmas 2026`. Nothing in the code needs changing.
+### Exports
 
-### The layout the website expects
+**Export** downloads the song list as a PDF or spreadsheet (formatted like the song list, or as raw
+data). Exports are copies: editing a downloaded file does not change the website.
 
-Each tab is read as a service schedule:
+### Looking back
 
-- **Row 1** is the heading, e.g. `September Song List`.
-- Two side-by-side blocks of services: columns **A/B/C** and columns **E/F/G**. Column **D** is a spacer.
-- Within each block: a **date row** (the date in the title column, number and key left blank), followed by that service's **song rows** (`number`, `title`, `key`).
-- A song with no hymnal number (a Psalm or chorus) simply leaves the number blank. That still reads as a song, not a date.
-
-If a date appears twice - as Sundays do - the site labels the two services **Morning Service** and
-**Evening Service**. Reword those in `src/content/song-list.ts` → `repeatedServiceLabels`.
-
-If the layout ever stops matching, the page does not go blank: it falls back to showing the rows
-plainly, with a short note.
-
-### Formulas
-
-Cells pulling from another spreadsheet (`IMPORTRANGE` and similar) are fine. The website reads the
-**displayed value**, never the formula. Whatever the public sheet shows is what the website shows.
+The **Archive** tab (also **Song Archive → Service plans** on the public site) lists every past service
+with its songs and keys, and can be filtered by date, song, service, key or inserts.
 
 ---
 

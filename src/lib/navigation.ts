@@ -7,8 +7,8 @@
  *                public home page (the proxy sends "/" to "/dashboard") - and
  *                the public music pages stay.
  *
- * A signed-in destination (Availability; later the Service Planner) is one
- * entry in APP_NAV with the permission that opens it. Showing a link is only
+ * A signed-in destination (the Service Planner, Availability) is one entry
+ * in APP_NAV with the permission that opens it. Showing a link is only
  * a convenience: the page itself must still check that permission on the
  * server (src/lib/auth/session.ts).
  *
@@ -46,18 +46,26 @@ export function homeHref(context: NavContext): string {
   return context.signedIn ? "/dashboard" : "/";
 }
 
-/** The public pages, minus Home: signed-in people use the Dashboard instead. */
-const PUBLIC_PAGES: NavEntry[] = siteConfig.nav.filter((item) => item.href !== "/");
+/** A public page's entry, by its address. */
+function publicPage(href: string): NavEntry {
+  const item = siteConfig.nav.find((entry) => entry.href === href)!;
+  return { label: item.label, href: item.href };
+}
 
 /**
- * The signed-in primary navigation, in order. Add new application pages
- * after the Dashboard, each with the permission that opens it.
+ * The signed-in primary navigation, in order: the Dashboard in Home's place,
+ * then where the song list is built, where it is read, and the rest. Each
+ * application page carries the permission that opens it.
  */
 const APP_NAV: NavEntry[] = [
   { label: navigationContent.dashboard, href: "/dashboard" },
+  // The Music Director's - drafts and long-range plans are nobody else's business.
+  { label: navigationContent.servicePlanner, href: "/service-planner", permission: "manage_service_plans" },
+  publicPage("/song-list"),
+  publicPage("/library"),
   // The music ministry's participants only - never a Member-only account.
   { label: navigationContent.availability, href: "/availability", permission: "view_availability" },
-  ...PUBLIC_PAGES,
+  publicPage("/contact"),
 ];
 
 /** The account menu (the avatar in the header), in order. Log out follows it. */
@@ -88,7 +96,7 @@ export function accountMenu(context: NavContext): NavItem[] {
 }
 
 /** The pages only a signed-in person can reach (the proxy sends anyone else to /login). */
-const MEMBER_SECTIONS = ["/dashboard", "/availability", "/profile", "/account", "/admin"];
+const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/availability", "/profile", "/account", "/admin"];
 
 /**
  * Whether this page can only be open to someone signed in. While Clerk is

@@ -109,10 +109,10 @@ export function CommandPalette({
         aria-haspopup="dialog"
         aria-label={searchContent.openLabel}
         title={`${searchContent.openLabel} (${modifier} K)`}
-        className="hidden h-11 items-center justify-center gap-2 rounded-full px-3 text-muted transition-colors hover:bg-paper hover:text-ink lg:inline-flex print:hidden"
+        className="hidden h-11 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-muted transition-colors hover:bg-paper hover:text-ink nav-wide:inline-flex print:hidden"
       >
         <Magnifier />
-        <kbd className="hidden rounded-md border border-line px-1.5 py-0.5 font-sans text-[0.7rem] leading-none text-muted lg:inline-block">
+        <kbd className="hidden whitespace-nowrap rounded-md border border-line px-1.5 py-0.5 font-sans text-[0.7rem] leading-none text-muted nav-wide:inline-block">
           {modifier} K
         </kbd>
       </button>

@@ -42,11 +42,11 @@ export async function GET(request: Request) {
 
   const inputs = await getReportInputs();
   if (!inputs) {
-    console.error("[report] Neither the spreadsheet nor the archive could be read");
+    console.error("[report] Neither the schedule nor the archive could be read");
     if (!preview && live) {
       await sendAlertEmail(
         "Quarterly song report could not be built",
-        "Neither the spreadsheet nor the archive database could be read, so this quarter's report was not sent.\nRun it again from Settings > Cron Jobs in Vercel once the problem is fixed.",
+        "Neither the Service Planner nor the archive database could be read, so this quarter's report was not sent.\nRun it again from Settings > Cron Jobs in Vercel once the problem is fixed.",
       );
     }
     return NextResponse.json({ ok: false }, { status: 503 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { songListContent } from "@/content/song-list";
@@ -100,50 +101,58 @@ export function NextServiceSpotlight({
             ) : null}
           </div>
 
-          <ol className="divide-y divide-line border-y border-line lg:border-t-0">
-            {serviceSlots(featured).map((song, index) => {
-              // A slot not filled in yet keeps its place among the songs.
-              if (!song) {
+          {/* The songs and, right under them, the sheet music for them. */}
+          <div>
+            <ol className="divide-y divide-line border-y border-line lg:border-t-0">
+              {serviceSlots(featured).map((song, index) => {
+                // A slot not filled in yet keeps its place among the songs.
+                if (!song) {
+                  return (
+                    <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                      <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                      <span className="text-base italic text-muted sm:text-xl">
+                        {songListContent.states.pendingSong}
+                      </span>
+                    </li>
+                  );
+                }
+                const hint =
+                  plays && !isNow ? songHint(plays[songKey(song.title)], featured.startsAt!, now, { insert: song.insert }) : null;
+  
                 return (
                   <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
-                    <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
-                    <span className="text-base italic text-muted sm:text-xl">
-                      {songListContent.states.pendingSong}
+                    <span className="tnum w-9 shrink-0 text-right font-display text-lg text-gold-dark sm:w-12 sm:text-2xl">
+                      {song.number ?? <span aria-hidden="true">·</span>}
+                      {song.number ? null : <span className="sr-only">No number</span>}
                     </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink title={song.title} /></span>
+                      {hint ? <SongHintText hint={hint} now={now} /> : null}
+                    </span>
+                    {song.key ? (
+                      <span className="tnum shrink-0 rounded-md border border-line px-2 py-0.5 text-sm font-medium text-ink-soft">
+                        <span className="sr-only">Key of </span>
+                        {song.key}
+                      </span>
+                    ) : null}
                   </li>
                 );
-              }
-              const hint =
-                plays && !isNow ? songHint(plays[songKey(song.title)], featured.startsAt!, now) : null;
-
-              return (
-                <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
-                  <span className="tnum w-9 shrink-0 text-right font-display text-lg text-gold-dark sm:w-12 sm:text-2xl">
-                    {song.number ?? <span aria-hidden="true">·</span>}
-                    {song.number ? null : <span className="sr-only">No number</span>}
+              })}
+              {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
+                <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                  <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                  <span className="text-base italic text-muted sm:text-xl">
+                    {songListContent.states.notPosted}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink title={song.title} /></span>
-                    {hint ? <SongHintText hint={hint} now={now} /> : null}
-                  </span>
-                  {song.key ? (
-                    <span className="tnum shrink-0 rounded-md border border-line px-2 py-0.5 text-sm font-medium text-ink-soft">
-                      <span className="sr-only">Key of </span>
-                      {song.key}
-                    </span>
-                  ) : null}
                 </li>
-              );
-            })}
-            {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
-              <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
-                <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
-                <span className="text-base italic text-muted sm:text-xl">
-                  {songListContent.states.notPosted}
-                </span>
-              </li>
-            ) : null}
-          </ol>
+              ) : null}
+            </ol>
+            <ServicePacketSlot
+              serviceId={featured.id}
+              label={[featured.dateLabel, featured.serviceLabel].filter(Boolean).join(" · ")}
+              className="pt-3 sm:pt-5"
+            />
+          </div>
         </div>
       </Card>
     </section>

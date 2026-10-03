@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { ButtonLink } from "@/components/ui/Button";
+import { BackButton } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { accountContent } from "@/content/account";
@@ -44,7 +44,7 @@ export function AccountsUnavailable() {
   );
 }
 
-/** A signed-in person who lacks the permission for a page. */
+/** A signed-in person who lacks the permission for a page. Back leads to where they came from (the Dashboard if nowhere). */
 export function NoAccess() {
   return (
     <Card className="p-6 text-center sm:p-10">
@@ -54,7 +54,7 @@ export function NoAccess() {
         update your role.
       </p>
       <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <ButtonLink href="/dashboard">Back to Dashboard</ButtonLink>
+        <BackButton fallback="/dashboard" />
       </div>
     </Card>
   );

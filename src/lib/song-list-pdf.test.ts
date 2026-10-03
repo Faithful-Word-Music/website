@@ -47,7 +47,7 @@ describe.each(months)("layoutMonth on the real %s tab", (_, month) => {
 
   it("fits the whole month on one page", () => {
     const { tallest } = splitColumns(month.services, layout.rowPt, layout.gapPt);
-    expect(tallest).toBeLessThanOrEqual(columnSpace(month));
+    expect(tallest).toBeLessThanOrEqual(columnSpace());
   });
 
   it("keeps rows within their limits", () => {
@@ -91,7 +91,6 @@ describe("layoutMonth", () => {
     const month: SongListMonth = {
       title: "Light",
       heading: null,
-      note: null,
       services: [service("a", 4), service("b", 4)],
       fallbackRows: null,
     };
@@ -121,7 +120,7 @@ describe("monthSlug and friends", () => {
   it("names the file after the sheet's own heading", () => {
     expect(pdfFileName(months[0][1])).toBe("September Song List.pdf");
     expect(
-      pdfFileName({ title: "October", heading: null, note: null, services: [], fallbackRows: null }),
+      pdfFileName({ title: "October", heading: null, services: [], fallbackRows: null }),
     ).toBe("October Song List.pdf");
   });
 });

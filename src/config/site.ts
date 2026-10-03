@@ -5,7 +5,7 @@
  * file; they live in environment variables (see .env.example).
  *
  * If you need to change the contact email, an external resource link, the
- * spreadsheet, or the navigation, this is the only file you should have to open.
+ * service times, or the navigation, this is the only file you should have to open.
  */
 
 export const siteConfig = {
@@ -42,20 +42,16 @@ export const siteConfig = {
 
   songList: {
     /**
-     * The public "PUBLIC Song List" Google Sheet.
-     *
-     * The spreadsheet is the source of truth for the song schedule: edit it in
-     * Google Sheets and the website follows automatically, with no code change,
-     * no build and no redeploy. See src/lib/google-sheets.ts.
+     * The retired "PUBLIC Song List" Google Sheet. The song list is now built
+     * in the Service Planner; this is read only by the one-time import
+     * (src/app/api/cron/import-sheet-schedule), and goes when that does.
      */
     spreadsheetId: "1ei9QUOHQ8l69pIXH09d5RlE90ZKbYJjYz1dTyup7nQ0",
-    spreadsheetUrl:
-      "https://docs.google.com/spreadsheets/d/1ei9QUOHQ8l69pIXH09d5RlE90ZKbYJjYz1dTyup7nQ0/edit",
 
     /**
-     * How long (seconds) a fetched copy of the sheet is reused before refreshing.
-     * Each refresh is 2 Sheets API requests and only happens when someone visits,
-     * so 10s is at most 12 requests a minute against a 300/minute quota.
+     * How long (seconds) a rendered schedule page is reused before it is built
+     * again from the database. Publishing in the Service Planner refreshes the
+     * pages at once; this only bounds anything else.
      * Keep in step with `revalidate` in src/app/page.tsx, src/app/song-list/page.tsx and
      * src/app/song-list/archive/page.tsx, src/app/library/page.tsx and
      * src/app/library/songs/[song]/page.tsx and src/app/api/search/route.ts, which
@@ -63,14 +59,15 @@ export const siteConfig = {
      */
     revalidateSeconds: 10,
 
-    /** Maximum number of visible worksheet tabs shown on the site. */
+    /** The retired sheet's visible tabs read by the one-time import. Goes with it. */
     maxMonths: 2,
 
     /**
      * When each service starts, in church time (24-hour "HH:MM").
      *
-     * The sheet marks every date AM or PM but never gives a time, so the site
-     * supplies it here. These drive the "Next" and "Now" markers: a service is
+     * Every service is AM or PM; these are their usual times (a special
+     * service can set its own in the Service Planner). They drive the "Next"
+     * and "Now" markers: a service is
      * "Next" right up to its start time, then "Now" for `serviceDurationMinutes`.
      * "otherDay" covers Wednesdays and special meetings such as the Missions
      * Conference.
@@ -81,10 +78,10 @@ export const siteConfig = {
     },
 
     /**
-     * The services held every week (day: 0 = Sunday, 3 = Wednesday). While a
-     * month is still being planned, the dates after the last one posted are
-     * shown as these services with "Songs not posted yet", so the month never
-     * looks shorter than it is. See planMonth() in src/lib/song-list.ts.
+     * The services held every week (day: 0 = Sunday, 3 = Wednesday). They exist
+     * for any date without being created: the Service Planner lists them for
+     * planning, Availability for marking, and the song list shows those not yet
+     * published as "Songs not posted yet" (src/lib/schedule-months.ts).
      */
     regularServices: [
       { day: 0, slot: "AM" },
@@ -128,6 +125,37 @@ export const siteConfig = {
      * someone other than the main inbox.
      */
     alertEmail: "contact@faithfulwordmusic.com",
+  },
+
+  /**
+   * The Service Planner (/service-planner), where the Music Director builds
+   * the song list. See src/lib/service-planner/.
+   */
+  servicePlanner: {
+    /** Songs a new service starts with room for. Any service can have more or fewer. */
+    defaultSongs: 5,
+
+    /**
+     * The week's insert (a Psalm or other song) goes in this place (1 = first)
+     * of each service in `insertServices`, unless that service says otherwise.
+     */
+    insertPosition: 3,
+
+    /** The services a week's insert applies to (day: 0 = Sunday, 3 = Wednesday). */
+    insertServices: [
+      { day: 0, slot: "AM" },
+      { day: 0, slot: "PM" },
+      { day: 3, slot: "PM" },
+    ] as ReadonlyArray<{ day: number; slot: "AM" | "PM" }>,
+
+    /** How far ahead the planner lists services before "Plan further ahead". */
+    horizonWeeks: 6,
+
+    /** A song sung within this many days of a service is flagged as recent. */
+    recentDays: 14,
+
+    /** How many upcoming weeks the Inserts page shows before "Show more weeks". */
+    insertWeeks: 8,
   },
 
   sheetMusic: {

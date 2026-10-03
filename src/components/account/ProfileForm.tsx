@@ -7,6 +7,7 @@ import { useId, useRef, useState, useTransition } from "react";
 import { saveOwnProfile } from "@/app/profile/actions";
 import { ActionMessage, ChoiceChips, SelectField, TextField } from "@/components/account/fields";
 import { LearningScaleInput } from "@/components/account/LearningScale";
+import { useBackTarget } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { accountContent } from "@/content/account";
@@ -43,6 +44,8 @@ export function ProfileForm({
 }) {
   const ids = useId();
   const router = useRouter();
+  // Cancel goes back to wherever the form was opened from (the profile page if nowhere).
+  const back = useBackTarget("/profile");
   const [values, setValues] = useState(initial);
   const [result, setResult] = useState<Result>(null);
   const [pending, startTransition] = useTransition();
@@ -262,7 +265,7 @@ export function ProfileForm({
             type="button"
             variant="secondary"
             size="lg"
-            onClick={() => router.push(welcome ? "/dashboard" : "/profile")}
+            onClick={() => router.push(welcome ? "/dashboard" : back.href)}
           >
             {welcome ? accountContent.profile.welcome.skip : "Cancel"}
           </Button>

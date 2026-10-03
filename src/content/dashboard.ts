@@ -65,7 +65,7 @@ export const dashboardContent = {
     close: "Close",
   },
 
-  /** The row under Coming up: brush up, sheet music to finish, new sheet music. */
+  /** The row under Coming up: sheet music to finish, new sheet music, brush up. */
   gettingReady: {
     title: "Getting ready",
   },
@@ -144,6 +144,8 @@ export const dashboardContent = {
     /** The whole service's sheet music as one PDF, to print in one go. */
     packet: {
       button: "Sheet music for this service",
+      /** In place of the button, when none of the service's songs has their sheet music. */
+      none: "No sheet music for this service in your types yet",
       /** {count} songs in it. */
       count: ["{count} song · PDF", "{count} songs · PDF"],
       newTab: "(PDF, opens in a new tab)",

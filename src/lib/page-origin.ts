@@ -34,6 +34,17 @@ export function isSongPage(pathname: string): boolean {
 }
 
 /**
+ * Whether an entry is a page on this site: a path starting with exactly one
+ * "/". The history is only ever written by this site, but it lives in the
+ * browser, so anything else ("//elsewhere.example", "/\elsewhere",
+ * "https://…", "javascript:…") is ignored rather than followed - a back
+ * link can never lead off the site.
+ */
+export function isSitePath(entry: string): boolean {
+  return /^\/(?![/\\])/.test(entry) && !/[\s\u0000-\u001f]/.test(entry);
+}
+
+/**
  * The history after visiting `entry` (a path with its query).
  *
  *   same page again (a new query)  -> replaces the last entry
@@ -65,6 +76,7 @@ export function findOrigin(
   while (end > 0 && pathOf(history[end - 1]) === current) end -= 1;
 
   for (let index = end - 1; index >= 0; index -= 1) {
+    if (!isSitePath(history[index])) continue;
     const path = pathOf(history[index]);
     if (path === current) continue;
     if (options.skipSongPages && isSongPage(path)) continue;
@@ -81,10 +93,14 @@ export function backLabel(entry: string): string {
   const year = path.match(/^\/song-list\/year\/(\d{4})$/)?.[1];
   if (year) return labels.year.replace("{year}", year);
   if (isSongPage(path)) return labels.song;
+  if (/^\/(service-planner|song-list\/archive\/services)\/\d{4}-\d{2}-\d{2}-(am|pm)$/.test(path)) return labels.service;
 
   const named: Record<string, string> = {
     "/": labels.home,
     "/dashboard": labels.dashboard,
+    "/service-planner": labels.servicePlanner,
+    "/service-planner/inserts": labels.inserts,
+    "/song-list/archive/services": labels.serviceArchive,
     "/availability": labels.availability,
     "/song-list": labels.songList,
     "/song-list/archive": labels.archive,
@@ -105,6 +121,6 @@ export function backLabel(entry: string): string {
 
 /** Where a back link leads, and what it says: the origin if known, else the page's fallback. */
 export function backTarget(origin: string | null, fallback: string): { href: string; label: string } {
-  const href = origin ?? fallback;
+  const href = origin && isSitePath(origin) ? origin : fallback;
   return { href, label: backLabel(href) };
 }

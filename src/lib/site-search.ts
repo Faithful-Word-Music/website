@@ -6,7 +6,7 @@ import type { ServiceSlot } from "@/types/song-list";
 /**
  * The site search: what it can find, and how a query finds it.
  *
- * Songs, coming services, year recaps and month PDFs change with the sheet,
+ * Songs, coming services, year recaps and month PDFs change with the schedule,
  * so they come from /api/search (see src/app/api/search/route.ts). Pages and
  * actions are fixed, and are built here so they show before that arrives.
  */
@@ -21,7 +21,7 @@ export interface SearchIndex {
     anchor: string;
     /** "Wednesday Evening · Sept 30 · 7:00 PM" */
     heading: string;
-    /** The date as the sheet wrote it, "Wednesday, September 30, 2026", so a full month name finds it. */
+    /** The date written out, "Wednesday, September 30, 2026", so a full month name finds it. */
     dateLabel: string;
     songs: Array<{ number: string | null; title: string }>;
   }>;
@@ -64,7 +64,7 @@ const OPENING_SERVICES = 3;
 
 /**
  * A service's place on the song list: "2026-09-30-pm". Made from its date and
- * time of day rather than its position in the sheet, so a link keeps working
+ * time of day rather than its position in a list, so a link keeps working
  * after rows are added above it.
  */
 export function serviceAnchor(date: string, slot: ServiceSlot | null): string {

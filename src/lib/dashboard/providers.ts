@@ -11,6 +11,9 @@
 
 import { availabilityContent } from "@/content/availability";
 import { dashboardContent } from "@/content/dashboard";
+import { servicePlannerContent } from "@/content/service-planner";
+import { serviceHeadline, statusLine } from "@/lib/service-planner/format";
+import type { PlannerStatus } from "@/lib/service-planner/model";
 
 import type { AttentionItem } from "./attention";
 import type { DashboardFocus } from "./focus";
@@ -156,4 +159,54 @@ export function availabilityAttention(
       action: text.action,
     },
   ];
+}
+
+/** A service in the planner's queue, as the Dashboard needs it. */
+export interface PlannerWork {
+  anchor: string;
+  slot: "AM" | "PM";
+  startsAt: string;
+  label: string | null;
+  status: PlannerStatus;
+  filled: number;
+  target: number;
+}
+
+/** How soon an unfinished service makes planning urgent. */
+const PLANNING_URGENT_DAYS = 3;
+
+/**
+ * The Music Director: the next service still to plan, and how many more need
+ * planning soon. Links into the Service Planner - the Dashboard only points
+ * at the work, it is never another place to edit.
+ */
+export function servicePlannerAttention(
+  focus: DashboardFocus,
+  work: readonly PlannerWork[] | null,
+  now: number,
+): AttentionItem[] {
+  if (!focus.plansServices || !work || work.length === 0) return [];
+  const planner = servicePlannerContent.dashboard;
+  const [next] = work;
+  const soon = Date.parse(next.startsAt) - now < PLANNING_URGENT_DAYS * 86_400_000;
+  const items: AttentionItem[] = [
+    {
+      id: "planner:next",
+      priority: soon ? "urgent" : "normal",
+      title: `${serviceHeadline(next)} - ${statusLine(next)}`,
+      detail: next.status === "draft" ? planner.draftDetail : undefined,
+      href: `/service-planner/${next.anchor}`,
+      action: planner.continue,
+    },
+  ];
+  if (work.length > 1) {
+    items.push({
+      id: "planner:queue",
+      priority: "normal",
+      title: work.length === 1 ? planner.needPlanningOne : planner.needPlanning.replace("{count}", String(work.length)),
+      href: "/service-planner",
+      action: planner.open,
+    });
+  }
+  return items;
 }

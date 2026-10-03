@@ -120,9 +120,9 @@ export function UserMenu() {
     "flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-paper";
 
   return (
-    // From md up only: on phones the header has no room for it, and the same
-    // links sit at the foot of the mobile menu instead (MobileAccountMenu).
-    <div ref={rootRef} className="relative hidden lg:block print:hidden">
+    // Only while the header has its links in a row: otherwise it has no room,
+    // and the same links sit at the foot of the mobile menu (MobileAccountMenu).
+    <div ref={rootRef} className="relative hidden shrink-0 nav-wide:block print:hidden">
       <button
         type="button"
         aria-expanded={open}

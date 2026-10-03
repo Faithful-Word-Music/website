@@ -6,7 +6,7 @@ import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 
 /**
- * Month switcher, rendered only when the spreadsheet has two visible tabs.
+ * Month switcher, rendered only when the schedule shows more than one month.
  *
  * Follows the ARIA tabs pattern with roving tabindex: one stop in the tab
  * order, arrows move between months, Home/End jump to the ends.

@@ -66,8 +66,7 @@ describe("parseMonthGrid on the real September 2026 tab", () => {
     );
   });
 
-  it("captures the footnote without its asterisks", () => {
-    expect(month.note).toBe("Songs and Keys are subject to change");
+  it("reads the heading", () => {
     expect(month.heading).toBe("September Song List");
   });
 });

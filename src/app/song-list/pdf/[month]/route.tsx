@@ -2,27 +2,26 @@ import { renderToBuffer } from "@react-pdf/renderer";
 
 import { SongListPdf } from "@/components/song-list/SongListPdf";
 import { siteConfig } from "@/config/site";
-import { getSongList } from "@/lib/google-sheets";
+import { getSchedule } from "@/lib/schedule";
 import { monthSlug, pdfFileName } from "@/lib/song-list-pdf";
 
 /**
  * The open month as a PDF, e.g. /song-list/pdf/september.
  *
- * Built on request from the sheet, so it is always as current as the page:
- * the sheet itself is cached for siteConfig.songList.revalidateSeconds, and so
- * is the PDF at the CDN. `inline` opens it in the browser's PDF viewer, which
+ * Built on request from the published schedule, so it is always as current
+ * as the page; cached at the CDN for siteConfig.songList.revalidateSeconds. `inline` opens it in the browser's PDF viewer, which
  * has its own print and download buttons; the filename is what "save" uses.
  */
 export async function GET(_request: Request, ctx: RouteContext<"/song-list/pdf/[month]">) {
   const { month: slug } = await ctx.params;
-  const result = await getSongList();
+  const result = await getSchedule();
 
   if (!result.ok) {
     return new Response("The song list is unavailable right now.", { status: 503 });
   }
 
   const found = result.months.find((item) => monthSlug(item.title) === slug);
-  // Print only what the sheet has posted, not the services still to come.
+  // Print only what is published, not the services still to come.
   const month = found && {
     ...found,
     services: found.services.filter((service) => !service.placeholder),
@@ -32,7 +31,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/song-list/pdf/[
     return new Response("No song list for that month.", { status: 404 });
   }
 
-  const pdf = await renderToBuffer(<SongListPdf month={month} />);
+  const pdf = await renderToBuffer(<SongListPdf months={[month]} />);
   const fileName = pdfFileName(month);
   const seconds = siteConfig.songList.revalidateSeconds;
 

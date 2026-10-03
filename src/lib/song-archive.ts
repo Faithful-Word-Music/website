@@ -4,8 +4,9 @@ import { unstable_cache } from "next/cache";
 
 import { siteConfig } from "@/config/site";
 import { loadStoredServices, saveServices, type SaveSummary } from "@/lib/archive-store";
-import { getSongList } from "@/lib/google-sheets";
 import { buildLibrary, type LibrarySong } from "@/lib/library";
+import { getSchedule, publishedHistory, scheduleEnv } from "@/lib/schedule";
+import { listCatalogSongs, listPlans, plannerConfigured, type CatalogSong } from "@/lib/service-planner/store";
 import {
   type IndexSong,
   matchIndexSong,
@@ -26,13 +27,7 @@ import {
 import { datedServices, songKey, songPath, songSlug } from "@/lib/song-list";
 import { buildSongStats, type SongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap, type YearRecap } from "@/lib/year-recap";
-import type {
-  DatedService,
-  ServiceSlot,
-  SongListMonth,
-  SongListResult,
-  SongRecord,
-} from "@/types/song-list";
+import type { DatedService, ServiceSlot, SongListResult, SongRecord } from "@/types/song-list";
 
 /** Cache tag for the stored archive; the nightly sync invalidates it. */
 export const ARCHIVE_TAG = "song-archive";
@@ -47,21 +42,22 @@ const getStoredServices = unstable_cache(loadStoredServices, ["song-archive-serv
 });
 
 export interface SongHistory {
-  /** Every known service, stored and from the sheet, oldest first. */
+  /** Every known service, archived and published, oldest first. */
   services: DatedService[];
-  /** False when the archive database is unavailable and only the sheet was used. */
+  /** False when the archive could not be read and only published plans were used. */
   persistent: boolean;
 }
 
 /**
- * The complete song history: the permanent archive merged with the sheet.
+ * The complete song history: the permanent archive merged with the Service
+ * Planner's published services.
  *
- * The sheet's services are included straight away, so the history is current
- * even before the nightly sync has stored them. If the database is missing or
- * unreachable the sheet alone is used - about a year of history - and the page
- * still works.
+ * Published services are included straight away, so the history is current
+ * even before the nightly sync has archived them. Within FRESH_DAYS of a
+ * service the planner's version wins (a correction after the fact shows at
+ * once); after that the archived copy is frozen (src/lib/song-history.ts).
  */
-export async function getSongHistory(allMonths: SongListMonth[], now: number): Promise<SongHistory> {
+export async function getSongHistory(published: DatedService[], now: number): Promise<SongHistory> {
   let stored: DatedService[] | null = null;
 
   try {
@@ -74,14 +70,19 @@ export async function getSongHistory(allMonths: SongListMonth[], now: number): P
   }
 
   return {
-    services: mergeServices(stored ?? [], datedServices(allMonths), now),
+    services: mergeServices(stored ?? [], published, now),
     persistent: stored !== null,
   };
 }
 
+/** The published services of a schedule result, or none when it failed. */
+function publishedOf(result: SongListResult): DatedService[] {
+  return result.ok ? result.published : [];
+}
+
 export interface ScheduleData {
   result: SongListResult;
-  /** When each song on the visible months was sung; null if the sheet failed. */
+  /** When each song on the visible months was sung; null if the schedule failed. */
   plays: PlayIndex | null;
   /** When this data was loaded, for the first paint; the browser keeps its own clock after. */
   loadedAt: number;
@@ -90,16 +91,15 @@ export interface ScheduleData {
 /**
  * Everything the schedule page needs, in one call.
  *
- * For the hints, only PAST services come from the full history - so a hidden
- * tab being drafted for a future month never reaches the browser, not even as
- * a date. Future services come from the visible months alone.
+ * For the hints, only PAST services come from the full history; future ones
+ * come from the visible months alone. Drafts never reach here at all.
  */
 export async function getScheduleData(): Promise<ScheduleData> {
-  const result = await getSongList();
+  const result = await getSchedule();
   const loadedAt = Date.now();
   if (!result.ok) return { result, plays: null, loadedAt };
 
-  const history = await getSongHistory(result.allMonths, loadedAt);
+  const history = await getSongHistory(result.published, loadedAt);
   const known = mergeServices(
     pastServices(history.services, loadedAt),
     datedServices(result.months),
@@ -123,7 +123,7 @@ export type ArchiveData =
       serviceCount: number;
       /** Start of the earliest recorded service, or null if there are none. */
       since: string | null;
-      /** False when only the sheet could be read (no permanent archive). */
+      /** False when only published plans could be read (no permanent archive). */
       persistent: boolean;
       loadedAt: number;
     }
@@ -131,7 +131,7 @@ export type ArchiveData =
 
 /**
  * The song archive: every song sung in a service that has already happened,
- * from the permanent archive and the sheet combined.
+ * from the permanent archive and the published plans combined.
  */
 export async function getArchiveData(): Promise<ArchiveData> {
   const history = await loadPast();
@@ -149,19 +149,19 @@ export async function getArchiveData(): Promise<ArchiveData> {
 }
 
 /**
- * Every service that has already happened, from the archive and the sheet
- * combined. null when neither source is available, as there is nothing
+ * Every service that has already happened, from the archive and the published
+ * plans combined. null when neither source is available, as there is nothing
  * honest to show then.
  */
-async function loadPast(): Promise<{
+export async function loadPast(): Promise<{
   past: DatedService[];
   persistent: boolean;
   loadedAt: number;
 } | null> {
-  const sheet = await getSongList();
+  const schedule = await getSchedule();
   const loadedAt = Date.now();
-  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
-  if (!sheet.ok && !history.persistent) return null;
+  const history = await getSongHistory(publishedOf(schedule), loadedAt);
+  if (!schedule.ok && !history.persistent) return null;
 
   return {
     past: pastServices(history.services, loadedAt),
@@ -187,10 +187,10 @@ export type YearRecapData =
  * Pass no year to learn only which years exist.
  */
 export async function getYearRecapData(year?: number): Promise<YearRecapData> {
-  const sheet = await getSongList();
+  const schedule = await getSchedule();
   const loadedAt = Date.now();
-  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
-  if (!sheet.ok && !history.persistent) return { ok: false };
+  const history = await getSongHistory(publishedOf(schedule), loadedAt);
+  if (!schedule.ok && !history.persistent) return { ok: false };
 
   const past = pastServices(history.services, loadedAt);
   return {
@@ -206,19 +206,42 @@ export type LibraryData =
   | { ok: false };
 
 /**
+ * Songs added in the Service Planner's catalog - new songs that may not have
+ * been sung yet. Empty (never an error) when the planner cannot be read.
+ */
+async function catalogSongs(): Promise<CatalogSong[]> {
+  if (!plannerConfigured()) return [];
+  try {
+    return await listCatalogSongs(scheduleEnv());
+  } catch (error) {
+    console.error("[song-archive] Could not read the catalog:", error instanceof Error ? error.message : "unknown error");
+    return [];
+  }
+}
+
+/**
  * The Library, /library: every song that has a page - sung in a past
- * service, or scheduled in an upcoming one on the visible months.
+ * service, scheduled in an upcoming published one, or added to the catalog
+ * in the Service Planner.
  */
 export async function getLibraryData(): Promise<LibraryData> {
-  const [history, sheet, index] = await Promise.all([loadPast(), getSongList(), getSheetMusicIndex()]);
+  const [history, schedule, index, catalog] = await Promise.all([
+    loadPast(),
+    getSchedule(),
+    getSheetMusicIndex(),
+    catalogSongs(),
+  ]);
   if (!history) return { ok: false };
   const { past, loadedAt } = history;
 
-  const upcoming = sheet.ok
-    ? datedServices(sheet.months)
-        .filter((service) => Date.parse(service.startsAt) > loadedAt)
-        .flatMap((service) => service.songs)
-    : [];
+  const upcoming = [
+    ...(schedule.ok
+      ? datedServices(schedule.months)
+          .filter((service) => Date.parse(service.startsAt) > loadedAt)
+          .flatMap((service) => service.songs)
+      : []),
+    ...catalog.map((song) => ({ title: song.title, number: song.number })),
+  ];
 
   // Marked only when the song's page would offer a file to anyone.
   const hasSheetMusic = (song: { title: string; number: string | null }) => {
@@ -271,11 +294,12 @@ interface FoundSong {
 }
 
 /**
- * The song at /library/songs/[slug]: sung in the archive, or scheduled in
- * the sheet. null when the address matches no song at all.
+ * The song at /library/songs/[slug]: sung in the archive, scheduled in a
+ * published service, or added to the planner's catalog. null when the
+ * address matches no song at all.
  */
 async function findSong(slug: string): Promise<FoundSong | null> {
-  const [history, sheet] = await Promise.all([loadPast(), getSongList()]);
+  const [history, schedule, catalog] = await Promise.all([loadPast(), getSchedule(), catalogSongs()]);
   const loadedAt = history?.loadedAt ?? Date.now();
 
   const record = history
@@ -283,8 +307,8 @@ async function findSong(slug: string): Promise<FoundSong | null> {
     : undefined;
 
   const upcoming: FoundSong["upcoming"] = [];
-  if (sheet.ok) {
-    for (const service of datedServices(sheet.months)) {
+  if (schedule.ok) {
+    for (const service of schedule.published) {
       if (Date.parse(service.startsAt) <= loadedAt) continue;
       for (const song of service.songs) {
         if (songSlug(song.title) !== slug) continue;
@@ -300,14 +324,15 @@ async function findSong(slug: string): Promise<FoundSong | null> {
   }
   upcoming.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
 
-  if (!record && upcoming.length === 0) return null;
+  const listed = catalog.find((song) => songSlug(song.title) === slug);
+  if (!record && upcoming.length === 0 && !listed) return null;
 
   return {
     history,
     record,
     upcoming,
-    title: record?.title ?? upcoming[0].title,
-    number: record?.number ?? upcoming.find((play) => play.number)?.number ?? null,
+    title: record?.title ?? upcoming[0]?.title ?? listed!.title,
+    number: record?.number ?? upcoming.find((play) => play.number)?.number ?? listed?.number ?? null,
     loadedAt,
   };
 }
@@ -375,7 +400,7 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
         : [],
     stats: buildSongStats(
       history?.past ?? [],
-      record?.id ?? songKey(upcoming[0].title),
+      record?.id ?? songKey(title),
       upcoming.map((play) => play.startsAt),
       loadedAt,
     ),
@@ -384,24 +409,30 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
 }
 
 /**
- * Copies every service that has already happened from the sheet into the
- * archive. Run nightly by Vercel Cron (see src/app/api/cron/sync-archive).
+ * Copies every published service that has already happened into the
+ * permanent archive. Run nightly by Vercel Cron (see
+ * src/app/api/cron/sync-archive).
+ *
+ * Only Production's plans are archived: the archive tables are shared by
+ * every environment, and a test plan made locally or on a Preview must never
+ * become church history.
  */
-export async function syncArchive(now: number): Promise<SaveSummary & { sheetServices: number }> {
-  const result = await getSongList();
-  if (!result.ok) {
-    throw new Error(`The spreadsheet could not be read (${result.reason})`);
+export async function syncArchive(now: number): Promise<SaveSummary & { plannedServices: number }> {
+  if (scheduleEnv() !== "production") {
+    return { added: 0, refreshed: 0, frozen: 0, plannedServices: 0 };
   }
+  if (!plannerConfigured()) throw new Error("DATABASE_URL is not set");
 
-  const services = pastServices(datedServices(result.allMonths), now);
+  const plans = await listPlans("production", { statuses: ["published"] });
+  const services = pastServices(publishedHistory(plans), now);
   const summary = await saveServices(services, now);
-  return { ...summary, sheetServices: services.length };
+  return { ...summary, plannedServices: services.length };
 }
 
 export interface ReportInputs {
   /** Every service that has already happened. */
   past: DatedService[];
-  /** Services posted in the sheet that have not happened yet. */
+  /** Published services that have not happened yet. */
   upcoming: DatedService[];
   persistent: boolean;
   loadedAt: number;
@@ -410,18 +441,18 @@ export interface ReportInputs {
 /**
  * The raw material for the quarterly report (see src/lib/quarterly-report.ts):
  * the whole history, and what is already scheduled. null when neither the
- * sheet nor the archive can be read.
+ * planner nor the archive can be read.
  */
 export async function getReportInputs(): Promise<ReportInputs | null> {
-  const sheet = await getSongList();
+  const schedule = await getSchedule();
   const loadedAt = Date.now();
-  const history = await getSongHistory(sheet.ok ? sheet.allMonths : [], loadedAt);
-  if (!sheet.ok && !history.persistent) return null;
+  const history = await getSongHistory(publishedOf(schedule), loadedAt);
+  if (!schedule.ok && !history.persistent) return null;
 
   return {
     past: pastServices(history.services, loadedAt),
-    upcoming: sheet.ok
-      ? datedServices(sheet.months).filter((service) => Date.parse(service.startsAt) > loadedAt)
+    upcoming: schedule.ok
+      ? schedule.published.filter((service) => Date.parse(service.startsAt) > loadedAt)
       : [],
     persistent: history.persistent,
     loadedAt,

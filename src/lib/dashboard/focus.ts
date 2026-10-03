@@ -58,6 +58,8 @@ export interface DashboardFocus {
   managesAvailability: boolean;
   /** May open the admin People pages - the same permissions as that tab. */
   seesPeople: boolean;
+  /** Builds the song list in the Service Planner (manage_service_plans). */
+  plansServices: boolean;
 }
 
 export interface FocusInput {
@@ -86,6 +88,7 @@ export function buildFocus(input: FocusInput): DashboardFocus {
     tracksAvailability: input.permissions.has("view_availability"),
     managesAvailability: input.permissions.has("manage_availability"),
     seesPeople: PEOPLE_PERMISSIONS.some((permission) => input.permissions.has(permission)),
+    plansServices: input.permissions.has("manage_service_plans"),
   };
 }
 

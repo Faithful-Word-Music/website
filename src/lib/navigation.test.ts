@@ -29,10 +29,25 @@ describe("primaryNav", () => {
     expect(hrefs(primaryNav(signedIn([])))).toEqual(["/dashboard", "/song-list", "/library", "/contact"]);
   });
 
-  it("puts Availability right after the Dashboard for the music ministry's participants", () => {
-    for (const role of ["musician", "song_leader", "music_director"]) {
-      expect(hrefs(primaryNav(signedIn([role])))).toEqual(["/dashboard", "/availability", "/song-list", "/library", "/contact"]);
+  it("shows the music ministry's participants Availability, after the Song List and Library", () => {
+    for (const role of ["musician", "song_leader"]) {
+      expect(hrefs(primaryNav(signedIn([role])))).toEqual(["/dashboard", "/song-list", "/library", "/availability", "/contact"]);
     }
+  });
+
+  it("puts the Service Planner right after the Dashboard for whoever manages service plans", () => {
+    expect(hrefs(primaryNav(signedIn(["music_director"])))).toEqual([
+      "/dashboard",
+      "/service-planner",
+      "/song-list",
+      "/library",
+      "/availability",
+      "/contact",
+    ]);
+    expect(hrefs(primaryNav(signedIn(["musician"])))).not.toContain("/service-planner");
+    expect(hrefs(primaryNav(signedIn(["song_leader"])))).not.toContain("/service-planner");
+    expect(hrefs(primaryNav(signedIn([], ["manage_service_plans"])))).toContain("/service-planner");
+    expect(isMemberPath("/service-planner/2026-10-11-am")).toBe(true);
   });
 
   it("does not show Availability to a Member-only account", () => {

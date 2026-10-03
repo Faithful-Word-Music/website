@@ -13,6 +13,21 @@
   }
 }
 
+/* The header with its links in a row rather than behind the menu button. The
+   header measures whether they fit (src/components/layout/use-nav-fit.ts) and
+   marks itself data-nav="wide" or "narrow"; before it has measured ("auto"),
+   the old 1024px breakpoint decides. */
+@custom-variant nav-wide {
+  :where([data-nav="wide"]) & {
+    @slot;
+  }
+  @media (width >= 64rem) {
+    :where([data-nav="auto"]) & {
+      @slot;
+    }
+  }
+}
+
 @media (display-mode: standalone) {
   /* No rubber-band bounce: the screen sits still. */
   html:has([data-app-login]) {

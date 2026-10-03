@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getViewer } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { serviceSheets } from "@/lib/dashboard/coming-up";
-import { getSongList } from "@/lib/google-sheets";
+import { getSchedule } from "@/lib/schedule";
 import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex, openDriveFile } from "@/lib/sheet-music-index";
 import { buildServicePacket, type PacketSong } from "@/lib/service-sheet-pdf";
@@ -53,7 +53,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/dashboard/sheet
   const sheetTypes = await getSheetMusicTypes(viewer.env, viewer.userId);
   if (sheetTypes.length === 0) return jsonError(404, "no-sheet-music-type");
 
-  const [songList, sheetMusic] = await Promise.all([getSongList(), getSheetMusicIndex()]);
+  const [songList, sheetMusic] = await Promise.all([getSchedule(), getSheetMusicIndex()]);
   if (!songList.ok || !sheetMusic.ok) return jsonError(503, "unavailable");
 
   const service = songList.months

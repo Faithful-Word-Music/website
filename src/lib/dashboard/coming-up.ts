@@ -85,7 +85,7 @@ export interface ComingUpService {
   dateLabel: string;
   serviceLabel: string | null;
   startsAt: string;
-  /** In sheet order; null is a song not chosen yet. */
+  /** In order; null is a song not chosen yet. */
   slots: Array<ComingUpSong | null>;
   /** All of their sheet music for the service as one PDF, or null when no song has any. */
   packetHref: string | null;
@@ -93,6 +93,8 @@ export interface ComingUpService {
   packetSongs: Array<{ number: string | null; title: string; label: string }>;
   /** Whether to name the type used for each song: only when they have more than one. */
   showLabels: boolean;
+  /** Whether their sheet music was looked for at all (types assigned, Index read): only then is "none" worth saying. */
+  sheetMusicChecked: boolean;
 }
 
 /** One chosen song of a service, with the file of the person's first type it has - or null for none. */
@@ -105,7 +107,16 @@ export interface ServiceSheet {
   alternatives: Array<{ version: SongVersion; file: SheetFile }>;
 }
 
-type SheetOptions = { index: SheetMusicIndex; sheetTypes: readonly number[]; viewer: SheetViewer };
+export type SheetOptions = { index: SheetMusicIndex; sheetTypes: readonly number[]; viewer: SheetViewer };
+
+/** A service's sheet music for one person as one PDF: where it is, and what is in it. */
+export interface ServicePacket {
+  href: string;
+  /** The songs in it, in order, with the type used for each. */
+  songs: Array<{ number: string | null; title: string; label: string }>;
+  /** Name the type for each song: only when they have more than one. */
+  showLabels: boolean;
+}
 
 /** One song's sheet music for the person (see assignedFiles). */
 function sheetFor(
@@ -135,6 +146,19 @@ export function serviceSheets(service: Service, options: SheetOptions): ServiceS
   return serviceSlots(service)
     .filter((song) => song !== null)
     .map((song) => sheetFor(song, options));
+}
+
+/**
+ * A service's sheet music for this person as one PDF, or null when none of
+ * its songs has any of their types. The Dashboard and the song list both
+ * offer it, through the same rule as the PDF itself (serviceSheets).
+ */
+export function servicePacket(service: Service, options: SheetOptions): ServicePacket | null {
+  const href = servicePacketPath(service);
+  const songs = serviceSheets(service, options).flatMap((sheet) =>
+    sheet.found ? [{ number: sheet.number, title: sheet.title, label: sheet.found.version.label }] : [],
+  );
+  return href && songs.length > 0 ? { href, songs, showLabels: options.sheetTypes.length > 1 } : null;
 }
 
 /** Where a service's sheet music PDF is: /dashboard/sheet-music/2026-10-04-am. */
@@ -177,11 +201,7 @@ export function buildComingUp(
       const sheet = sheetOptions ? toComingUpSheet(sheetFor(song, sheetOptions)) : null;
       return { number: song.number, title: song.title, key: song.key, sheet };
     });
-    const packetSongs = slots.flatMap((song) =>
-      song?.sheet?.status === "found"
-        ? [{ number: song.number, title: song.title, label: song.sheet.shown.label }]
-        : [],
-    );
+    const packet = sheetOptions ? servicePacket(service, sheetOptions) : null;
 
     return {
       id: service.id,
@@ -190,9 +210,10 @@ export function buildComingUp(
       serviceLabel: service.serviceLabel,
       startsAt: service.startsAt!,
       slots,
-      packetHref: packetSongs.length > 0 ? servicePacketPath(service) : null,
-      packetSongs,
+      packetHref: packet?.href ?? null,
+      packetSongs: packet?.songs ?? [],
       showLabels: sheetTypes.length > 1,
+      sheetMusicChecked: sheetOptions !== null,
     };
   });
 }

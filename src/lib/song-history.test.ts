@@ -182,3 +182,19 @@ describe("buildCompanions", () => {
     expect(titles([service("2026-01-04", "AM", ["X", "Y"])], "Missing")).toEqual([]);
   });
 });
+
+describe("songHint for the week's insert", () => {
+  const plays = ["2026-05-03T10:30:00-07:00", "2026-10-04T10:30:00-07:00", "2026-10-04T18:00:00-07:00"];
+  const now = Date.parse("2026-10-02T12:00:00-07:00");
+
+  it("looks back past the insert's own week", () => {
+    expect(songHint(plays, "2026-10-04T18:00:00-07:00", now, { insert: true })).toEqual({
+      kind: "last-sung",
+      at: new Date("2026-05-03T10:30:00-07:00").toISOString(),
+    });
+  });
+
+  it("still counts the same week for any other song", () => {
+    expect(songHint(plays, "2026-10-04T18:00:00-07:00", now).kind).toBe("also-on");
+  });
+});

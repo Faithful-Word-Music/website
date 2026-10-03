@@ -10,11 +10,11 @@ import {
   sheetMusicTypesForUsers,
   titlesForUsers,
 } from "@/lib/auth/store";
-import { loadRoster, loadSongListServices } from "@/lib/availability/load";
+import { loadPlannedServices, loadRoster } from "@/lib/availability/load";
 import { addDays, churchDate, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
 import { buildAvailabilitySummary, type AvailabilitySummary } from "@/lib/availability/summary";
-import { getSongList } from "@/lib/google-sheets";
+import { getSchedule } from "@/lib/schedule";
 import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { getReportInputs } from "@/lib/song-archive";
@@ -30,18 +30,18 @@ import { invitationFollowUps, type InvitationFollowUps, type Person } from "./pe
  */
 
 export interface MusicData {
-  /** The visible months' services, placeholders included; null if the sheet failed. */
+  /** The visible months' services, placeholders included; null if the schedule failed. */
   services: Service[] | null;
-  /** Every service that has happened, from the archive and the sheet. */
+  /** Every service that has happened, from the archive and the published plans. */
   past: DatedService[];
-  /** Posted services still to come. */
+  /** Published services still to come. */
   upcoming: DatedService[];
   index: SheetMusicIndex | null;
   loadedAt: number;
 }
 
 export async function loadMusicData(): Promise<MusicData> {
-  const [songList, report, sheetMusic] = await Promise.all([getSongList(), getReportInputs(), getSheetMusicIndex()]);
+  const [songList, report, sheetMusic] = await Promise.all([getSchedule(), getReportInputs(), getSheetMusicIndex()]);
   return {
     services: songList.ok ? songList.months.flatMap((month) => month.services) : null,
     past: report?.past ?? [],
@@ -111,7 +111,7 @@ export async function loadAvailabilitySummary(viewer: Viewer): Promise<Availabil
     const [roster, exceptions, songList] = await Promise.all([
       loadRoster(viewer.env),
       listExceptions(viewer.env, today, to),
-      loadSongListServices(),
+      loadPlannedServices(viewer.env, today, to),
     ]);
     const occurrences = serviceOccurrences(today, to, songList);
     return buildAvailabilitySummary({ occurrences, roster, exceptions, viewerId: viewer.userId, now });

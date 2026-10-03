@@ -23,14 +23,14 @@ The website of **Faithful Word Music**, the music ministry of
 3. [Environment variables](#environment-variables)
 4. [Project structure](#project-structure)
 5. [How it works](#how-it-works)
-   - [The song list](#the-song-list) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
+   - [The song list](#the-song-list) · [The Service Planner](#the-service-planner) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
    - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience) · [Availability](#availability)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
-9. [Setup guides](#setup-guides): [Google Sheets](#google-sheets) · [Song archive](#song-archive) · [Sheet music (service account)](#sheet-music-service-account) · [Resend](#resend) · [Accounts (Clerk)](#accounts-clerk)
+9. [Setup guides](#setup-guides): [Retiring the Google Sheet](#retiring-the-google-sheet) · [Database (Neon)](#database-neon) · [Sheet music (service account)](#sheet-music-service-account) · [Resend](#resend) · [Accounts (Clerk)](#accounts-clerk)
 10. [Gotchas](#gotchas)
 11. [Accessibility and SEO](#accessibility-and-seo)
 
@@ -38,13 +38,14 @@ The website of **Faithful Word Music**, the music ministry of
 
 ## At a glance
 
-One Next.js app on Vercel. There's no separate backend or CMS. The song list is read live from a public Google Sheet, and nothing about it is baked into the build. The public site needs no login; invite-only [member accounts](#member-accounts) sit alongside it.
+One Next.js app on Vercel. There's no separate backend or CMS. The song list is built in the signed-in **[Service Planner](#the-service-planner)** and stored in Neon Postgres; publishing a service puts it on the public song list, and nothing about it is baked into the build. The public site needs no login; invite-only [member accounts](#member-accounts) sit alongside it.
 
 | Address | What it is |
 |---|---|
 | `/` | Home: what the ministry is, with links to the song list and contact page. Signed-in members are sent to `/dashboard` instead |
-| `/song-list` | The congregational song list, live from Google Sheets: next-service spotlight, month tabs, search, key filter, PDF and sharing |
+| `/song-list` | The congregational song list - every published service: next-service spotlight, month tabs, search, key filter, PDF and sharing, and (signed in, with sheet music types) each service's sheet music as one PDF |
 | `/song-list/archive` | Every song ever sung, searchable, with counts and dates |
+| `/song-list/archive/services` | Every past service as a complete song list, filterable by date, song, service, key and insert; `/song-list/archive/services/<date>-<am\|pm>` is one service |
 | `/library` | The Library: every song with a page, A-Z (audio and other resources to follow). Old `/song-list/archive/<song>` links redirect to `/library/songs/<song>` |
 | `/library/songs/<song>` | One song's history: times sung, keys used, upcoming services, plus its sheet music and details from the Sheet Music Index |
 | `/library/songs/<song>/sheet-music/<file>` | One sheet-music file (PDF or `.mscz`) from private Drive, served only if the song's rights allow it |
@@ -55,19 +56,23 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `POST /api/contact` | The contact form's endpoint |
 | `GET /api/cron/sync-archive` | Nightly job that saves past services to the archive database |
 | `GET /api/cron/quarterly-report` | Emails the music director a report on the quarter just ended |
+| `GET /api/cron/import-sheet-schedule` | **Temporary, run once:** copies the retired Google Sheet's upcoming services into the Service Planner (see [Retiring the Google Sheet](#retiring-the-google-sheet)) |
 | `/login` | Member log in (Clerk). Linked only from the footer, never the main navigation |
 | `/request-access` | Ask for an account. Creates a request for an administrator to review, never an account |
 | `/accept-invite` | Where Clerk invitation emails land; the only place an account can be created |
 | `/dashboard` | The signed-in home: what needs the member's attention and what is coming up for them |
+| `/service-planner` | The Music Director's Service Planner: the work queue, `/service-planner/<date>-<am\|pm>` to plan one service, `/service-planner/inserts` for the weekly inserts, and `/service-planner/export` for spreadsheets and PDFs (`manage_service_plans`) |
 | `/availability` | The music ministry's shared availability board: normal services, and dated exceptions for whole services. Musicians, song leaders and the music director only (`view_availability`) |
 | `/profile`, `/profile/edit` | A member's own profile (who they are in the ministry) and its editor |
 | `/account` | Account settings: Clerk's screen for sign-in email, password and devices. Old `/account/edit` and `/account/security` links redirect |
 | `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
 | `POST /api/account-requests` | The request form's endpoint |
+| `GET /api/account/sheet-music` | The signed-in person's sheet music PDF for each published service, for the song list's cards |
 | `/manifest.webmanifest`, `/app-icon/<variant>`, `/apple-icon` | What makes the site installable as the Faithful Word Music app, and its icons. See [Installing the app](#installing-the-app) |
 
-**Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Google Sheets API ·
-Neon Postgres (song archive) · Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) ·
+**Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 ·
+Neon Postgres (service plans, song archive, accounts) · Google Drive and Sheets APIs (sheet music only) ·
+Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) · ExcelJS (spreadsheet exports) ·
 `next/og` (pictures and link previews) · Clerk (member sign-in) · Zod · Vitest.
 
 > **Heads-up for contributors:** this is Next.js 16, which has breaking changes from older versions.
@@ -84,7 +89,7 @@ cp .env.example .env.local     # then fill in real values (see below)
 npm run dev                    # http://localhost:3000
 ```
 
-The site runs without any keys. The song list shows a "not connected" message and the contact form returns a clear error until the keys are added.
+The site runs without any keys. The song list shows a "not connected" message until `DATABASE_URL` is set, and the contact form returns a clear error until its key is added.
 
 | Command | What it does |
 |---|---|
@@ -106,12 +111,12 @@ All of these are **server-only secrets** except `NEXT_PUBLIC_CLERK_PUBLISHABLE_K
 
 | Variable | Powers | Where it's read | Needed in |
 |---|---|---|---|
-| `GOOGLE_SHEETS_API_KEY` | The song list | `src/lib/google-sheets.ts` | Development, Preview, Production |
+| `GOOGLE_SHEETS_API_KEY` | **Retired.** Only the one-time import of the old song-list sheet; delete it with that route | `src/lib/google-sheets.ts` | Production, until the import has run |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
 | `GOOGLE_PRIVATE_KEY` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
 | `RESEND_API_KEY` | The contact form and archive alerts | `src/lib/resend.ts` | Development, Preview, Production |
-| `DATABASE_URL` | The permanent song archive (optional) | `src/lib/db.ts` | All, and added automatically by the Neon integration |
-| `CRON_SECRET` | Protects the nightly archive sync | `src/app/api/cron/sync-archive/route.ts` | Production, and locally if you run the sync by hand |
+| `DATABASE_URL` | The song list (Service Planner), the permanent archive and accounts | `src/lib/db.ts` | All, and added automatically by the Neon integration |
+| `CRON_SECRET` | Protects the cron jobs (and the one-time import) | `src/lib/cron-auth.ts` | Production, and locally if you run them by hand |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Member accounts (optional). **Public**, and a **different value per environment** | Clerk SDK, `src/lib/auth/clerk-env.ts` | Local + Preview: `pk_test_…` · Production: `pk_live_…` |
 | `CLERK_SECRET_KEY` | Member accounts (optional). **Different value per environment** | Clerk SDK, `src/lib/auth/clerk.ts` | Local + Preview: `sk_test_…` · Production: `sk_live_…` |
 
@@ -124,7 +129,7 @@ The two Clerk keys are the exception to "tick every environment": see [Accounts 
 
 The files that read secrets import `server-only`, so accidentally importing one into browser code fails the build instead of leaking a key. A missing key never crashes a page; the feature just shows a friendly error.
 
-Anything **public** (the contact address, links, the spreadsheet ID, service times) lives in `src/config/site.ts`, not in environment variables.
+Anything **public** (the contact address, links, service times, the Service Planner's defaults) lives in `src/config/site.ts`, not in environment variables.
 
 ---
 
@@ -138,8 +143,8 @@ src/
 ├── app/
 │   ├── page.tsx                      Home
 │   ├── song-list/
-│   │   ├── page.tsx                  Song list (server: fetch + parse, then the interactive view)
-│   │   ├── archive/                  Archive and per-song pages
+│   │   ├── page.tsx                  Song list (server: the published schedule, then the interactive view)
+│   │   ├── archive/                  The song archive, and archive/services/ - every past service plan
 │   │   ├── pdf/[month]/route.tsx     Printable PDF of a month
 │   │   └── image/[month]/route.ts    Shareable PNG of 1–3 services
 │   ├── contact/page.tsx
@@ -147,6 +152,7 @@ src/
 │   ├── api/cron/sync-archive/        Nightly archive sync
 │   ├── login/  request-access/  accept-invite/   Member log in, account requests, invitations (Clerk)
 │   ├── dashboard/                    The signed-in home
+│   ├── service-planner/              The Service Planner: queue, one service, inserts, exports, server actions
 │   ├── availability/                 The availability board and its server actions
 │   ├── profile/                      A member's own profile and profile editor
 │   ├── account/                      Account settings (Clerk: email, password, devices)
@@ -159,6 +165,7 @@ src/
 │   ├── song-list/                    Everything on /song-list (see below)
 │   ├── account/  admin/              Account pages' forms, the account context and menu, and the admin editors
 │   ├── dashboard/                    The Dashboard's sections
+│   ├── service-planner/              The planner's queue, workspace, song picker and inserts
 │   ├── availability/                 The availability calendar, dialogs and editors
 │   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
 │   └── layout/  home/  contact/
@@ -173,8 +180,12 @@ src/
 
 | File | Job |
 |---|---|
-| `google-sheets.ts` | Fetches the spreadsheet (server-only) |
-| `song-list.ts` | Turns the sheet's grid into services and songs (pure, no I/O) |
+| `schedule.ts` | **The schedule read layer**: `getSchedule()`, the published song list every page reads (server-only) |
+| `schedule-months.ts` | Shapes published services into song-list months, with placeholders for services still being planned (pure) |
+| `service-planner/` | The Service Planner: `model` (places, inserts, locking, changes), `queue`, `intelligence` (planning facts and checks), `forms`, `format`, `export` (pure); `store.ts`, `load.ts`, `export-files.ts` (server-only) |
+| `service-archive.ts` | The service-plan archive: past services as complete song lists, and their filters (pure) |
+| `song-list.ts` | Song identity (`songKey`, `songSlug`), keys, search and filters (pure, no I/O). Still holds the old sheet parser until the import is done |
+| `google-sheets.ts` | **Retired:** reads the old song-list sheet, for the one-time import only (server-only) |
 | `service-time.ts` | Service times, Next/Now timeline, date formatting (Arizona time) |
 | `song-history.ts`, `song-archive.ts`, `archive-store.ts`, `archive-view.ts`, `db.ts` | Song history and the archive database |
 | `song-list-pdf.ts` | Fits a month onto one PDF page (row height, column split) |
@@ -211,18 +222,63 @@ Content, configuration, presentation and integrations are kept apart. Most pages
 ### The song list
 
 ```
-Google Sheet  ──►  lib/google-sheets.ts  ──►  lib/song-list.ts  ──►  the page
-                   (read-only fetch)          (grid → services)
+Service Planner  ──►  Neon (service_plans)  ──►  lib/schedule.ts  ──►  song list, home page, Dashboard, Library,
+(Music Director)      published / draft          getSchedule()        song pages, search, PDF, pictures,
+                                                 (published only)     Availability, history, quarterly report
 ```
 
-- **Two requests**, both cached for 10 seconds (`siteConfig.songList.revalidateSeconds`):
-  1. **Sheet metadata** (`fields=sheets.properties(title,index,hidden)`). Tabs are sorted by position. The **first two visible tabs** are the schedule (`maxMonths`). Hidden tabs are read only for song history.
-  2. **Cell values** (`values:batchGet`, `FORMATTED_VALUE`), so formulas like `IMPORTRANGE` arrive already worked out.
-- **Why the API and not a CSV export:** the workbook holds all twelve months, and only the current ones are visible. CSV and `gviz` exports include hidden tabs and don't say which are hidden. Only the Sheets API does.
-- **The sheet's layout:** row 1 is a heading, then repeating groups of a date row followed by its songs, in two side-by-side blocks (columns `A–C` and `E–G`). A date row has `AM` or `PM` in the number column, which names the service and, with `siteConfig.songList.serviceTimes`, gives its start time.
-  - If the layout ever stops matching, the page shows the sheet as a plain table rather than nothing.
-- **Freshness:** a sheet edit reaches the site within about 10–20 seconds, with no rebuild or redeploy.
-- **Failure:** `getSongList()` never throws. An outage or missing key shows an error message that still links to the spreadsheet.
+- **One source of truth.** The Service Planner's database is the song list. The old Google Sheet is retired (see [Retiring the Google Sheet](#retiring-the-google-sheet)); spreadsheets are now only ever an *export*.
+- **One read layer.** Every page that shows scheduled songs asks `getSchedule()` (`lib/schedule.ts`) or the history functions built on it (`lib/song-archive.ts`). They receive the shapes in `src/types/song-list.ts` and never see the planner's tables.
+- **Only published services leave the read layer with songs.** Drafts never reach the public site, search, the Dashboard's coming-up list, PDFs or pictures.
+- **Months** are calendar months: the current one, then each later month with a published service. A regular service not published yet shows as a placeholder ("Songs not posted yet"), so a month never looks shorter than it is; a cancelled one does not show. Each month can carry a short note from the planner, shown under the month and in its PDF.
+- **Service addresses** are `<date>-<am|pm>` (`serviceAnchor()`), the same identity as the archive and Availability, so links to a service keep working.
+- **Freshness:** publishing or editing a published service refreshes every page at once (`revalidatePath`); pages otherwise re-render at most every 10 seconds.
+- **Environments:** the planner's rows are tagged with the Clerk environment, like the account tables. Production shows the live plans; Local and Preview show only their own test plans, so experimenting can never reach the real song list.
+- **Failure:** `getSchedule()` never throws. Without a database the page shows a friendly error.
+- **Sheet music on the cards:** for someone signed in with assigned sheet music types, every published card (and the spotlight) offers **Sheet music for this service** - the same one-PDF button as the Dashboard's Coming up, built by the same rule (`servicePacket()` in `lib/dashboard/coming-up.ts`). A service with none of their sheet music says so in quiet text instead. The page is static, so the cards ask `/api/account/sheet-music` once the page loads (`components/song-list/ServicePackets.tsx`); the answer is remembered for the tab, so the buttons are there at once on the next visit. Visitors and people without types see nothing extra.
+
+### The Service Planner
+
+Where the Music Director builds the song list: `/service-planner`, for anyone with **`manage_service_plans`** (the Music Director role by default). Musicians and song leaders never see it - they get the published song list, the Dashboard and the archive.
+
+```
+Expected regular service ─► Draft ─► Published ─► Occurred ─► Archived (frozen after 30 days)
+Special service (created) ─┘
+```
+
+- **The work queue** answers "what do I plan next?": every service from today to six weeks ahead, soonest first, each with its status (*Not started*, *Draft · 3 of 5 songs*). Published services fold away underneath, still one click from editing; cancelled ones too. **Plan further ahead** extends the list a month at a time (`?through=2027-02`), so February can be planned in October.
+- **Regular services are never created by hand.** Sunday AM, Sunday PM and Wednesday PM (`siteConfig.songList.regularServices`) exist for any date, generated by the same code Availability uses (`lib/availability/occurrences.ts`). Nothing is stored for one until it is first saved, published or cancelled.
+- **Special services** (a conference, a holiday, an unusual weekday service) are created with **New special service**: a date, AM or PM, a name and a start time. They then work like any other service, and Availability lists them as soon as they exist. Every service is still identified by its date and AM/PM, so a date holds at most one morning and one evening service. A regular service can also be given a name or another time, or cancelled.
+- **Planning a service** (`/service-planner/<date>-<am|pm>`): an ordered list of places, five by default but any number. Each place is a song (number, title, **this service's key**) or still empty. Add, replace, remove and reorder (up/down buttons, animated), change keys (the key last used is suggested), add or remove places. Changes stay on the page until **Save draft**, **Publish** or (on a published service) **Save changes**.
+- **Choosing a song:** search by title or hymn number across everything ever sung, the planner's catalog and the Sheet Music Index. Each result shows when it was last sung, how often in the last year, other services it is planned for, recent keys, a Christmas-only flag, and whether it has sheet music. With nothing typed, it lists familiar songs not sung for the longest.
+- **New songs:** a song that isn't found can be added on the spot (title, and optionally number, collection and usual key). It goes into `catalog_songs` and gets a Library page straight away, before it is ever sung; sheet music and details can follow later.
+- **Keys belong to the service.** Each service stores its own snapshot of every song - title, number and key as planned - so a Library change years later never rewrites what was sung.
+- **Checks** beside the list follow every change (`lib/service-planner/intelligence.ts`). They inform and never block: a song twice; sung within two weeks; planned for a nearby service; a pairing repeated from the last three months; a Christmas song outside the Christmas season; songs missing from the Sheet Music Index; and, by name, the expected musicians who have none of their assigned sheet music types for a song. **Who's there** lists who is away (with notes) or coming specially, from Availability's own rules (`effectiveAvailability()`). The facts and checks are structured data, so a future song-list assistant can read the same signals.
+- **Publishing:** one service from its page, or several ticked in the queue and published together as **one publication** (`publications` row: who, when, how many). A future notification can then announce a week's services once rather than three times.
+- **Published is not frozen.** A published service can be edited and stays published; **Return to draft** takes it off the song list. Every save records what changed, song by song (added, removed, moved, key changes), in `service_plan_events`, with who and when - ready for change history and notifications.
+- **Locking:** a service more than 30 days past (`FRESH_DAYS`) is permanent history and read-only, enforced on the server - the same rule the archive keeps.
+- **Two people at once:** each save carries the revision it started from; if someone else saved first, the save is refused with a **Reload** rather than overwriting their work.
+
+**Inserts** (`/service-planner/inserts`): one insert - a Psalm or other song - per week (Sunday to Saturday). It goes into the **third place** of that week's Sunday AM, Sunday PM and Wednesday PM (`siteConfig.servicePlanner`).
+- A service follows its week until its own insert is moved, replaced or removed; from then on the service's choice wins.
+- Changing a week's insert updates its drafts and not-yet-started services straight away. Published services are never changed behind anyone's back: the week shows how many still have an older insert, with **Update them**.
+- The long-range insert plan is the Music Director's; everyone else sees an insert only as a song in a published service.
+
+**Exports** (the queue's **Export** panel, or `/service-planner/export?format=…&from=…&to=…` or `&services=…`): one-way copies, never read back.
+- **Raw data** (`.xlsx` or `.csv`): one row per song - date, weekday, service, AM/PM, start time, position, hymn number, song, key, insert, special, status - with a frozen, filterable header.
+- **Formatted song list** as **PDF** (the song list's own PDF, one page per month) or **`.xlsx`** (one sheet per month in the same two-column layout, still an ordinary editable spreadsheet).
+- Any range up to three years, chosen services, or history: dates before the planner come from the archive. Drafts only when asked.
+
+**Who can do what:**
+
+| Permission | Default roles | Gets |
+|---|---|---|
+| `manage_service_plans` | Music Director | The Service Planner: drafts, inserts, special services, publishing, editing published services, exports, the planner's Dashboard items, and the audit details on archived services |
+| `view_service_plans` | Song Leader, Musician, Music Director | Published service plans and what to prepare for them (the Dashboard's Coming up, sheet music) |
+
+Every page and every server action checks the permission on the server (`src/app/service-planner/actions.ts`, each wrapped in `withPermission("manage_service_plans")`); hiding the link is never the protection.
+
+**The tables** (created on first use, `lib/service-planner/store.ts`; each row tagged `clerk_env`): `service_plans` (one row per touched service: places as `jsonb`, status, insert mode, revision, created/updated/published by and at), `publications`, `service_plan_events`, `insert_weeks`, `catalog_songs`.
 
 ### Next and Now
 
@@ -234,12 +290,15 @@ No reload is needed. The page opens on whichever month tab holds the next servic
 
 ### Song history and the archive
 
-The sheet only keeps a rolling twelve months, so every past service is also saved to a **Neon Postgres** database by a nightly Vercel Cron job (`vercel.json` → `/api/cron/sync-archive`, 3 AM Arizona time).
+Every past service is kept in the permanent archive (`services` and `service_songs` in Neon). A nightly Vercel Cron job (`vercel.json` → `/api/cron/sync-archive`, 3 AM Arizona time) copies each published service that has taken place into it. Only Production's plans are archived, since the archive is shared by every environment. The archive's oldest rows came from the retired Google Sheet and are kept exactly as they were.
 
-- **Fresh for 30 days:** a recent service can still be corrected in the sheet, and the sheet's version wins.
-- **Frozen after that:** reusing a tab for next year never changes last year's record.
-- **Always up to date:** pages combine the database with the sheet, so the history is current even before the nightly run. Without a database, the site falls back to the sheet's twelve months.
-- **Where it's used:** `/song-list/archive` is the searchable archive, and every song has a page at `/library/songs/<song>` (address from `songSlug()`). The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
+- **Fresh for 30 days:** a recent service can still be corrected in the Service Planner, and the planner's version wins.
+- **Frozen after that:** the service becomes permanent history; the planner no longer lets it be changed.
+- **Always up to date:** pages combine the archive with the published plans, so the history is current even before the nightly run.
+- **Two views of the same history:**
+  - **By song** - `/song-list/archive`, the year in song, and every song's page at `/library/songs/<song>` (address from `songSlug()`): how often, when, in which keys. The hints under upcoming songs ("Last sung 3 weeks ago") come from the same history.
+  - **By service** - `/song-list/archive/services`: every past service as a complete song list, newest first, filtered by date range, song or hymn number, service (Sunday morning, Sunday evening, Wednesday, special), key, and inserts only. Each service has its own page with every song, number, key and insert, earlier/later links, and - for those who manage service plans - who planned, published and changed it. The planner's **Archive** tab opens here; the archive's **Songs | Service plans** switch moves between the two views.
+- **The Library** also lists songs added in the planner's catalog that have not been sung yet.
   - "First time ever / this year" hints are switched off (`showFirstTimeHints: false`) until the records, which start in October 2025, go back far enough to be trustworthy.
 - **"Often sung with":** a song's page lists up to three songs it is habitually paired with (`buildCompanions()` in `lib/song-history.ts`). A pair only counts when it was sung together at least 3 times, and in at least a third of the services where either song was sung, so a hymn that's simply sung a lot doesn't look paired with everything. Most songs have no such partner and show no section at all. Tune the rule with `siteConfig.songList.pairings`.
 - **Quarterly report:** on January 1, April 1, July 1 and October 1 at 7 AM Arizona time, a Vercel Cron job (`/api/cron/quarterly-report`) emails a report on the quarter just ended to `siteConfig.mail.to` only. It is kept short. First come four totals compared with the quarter before. Next is **Before you plan**: close repeats already scheduled, songs due to come back, forgotten favourites, and songs sung this time last year but not since. Last is a brief **Looking back**: a chart of variety by quarter, most sung, new songs, habitual pairs, and a bar chart of keys. Charts are HTML tables, since mail apps strip scripts and SVG, and every bar carries its value. Lists are capped at five songs (eight for the season ahead), sections with nothing to say are left out, and it uses the site's fonts and colours, including its dark theme where the mail app allows. The figures are in `lib/quarterly-report.ts`, the email layout in `lib/quarterly-report-email.ts`, and its thresholds are constants at the top of the first.
@@ -247,7 +306,7 @@ The sheet only keeps a rolling twelve months, so every past service is also save
   - It is sent at most once per quarter (recorded in a `report_log` table), and only from production.
   - To see it without sending, run `curl -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/cron/quarterly-report?preview=1&at=2026-10-01" > report.html`. `at` shows it as it would be sent that day. `?force=1` (with `&at=` if wanted) sends a test copy now, subject marked "[Test]". It is never recorded as sent, so the scheduled email still goes out.
 - **Links:** every song title, on the schedule, in the archive and on the year pages, links to its song page, with a faint dotted gold underline so it reads as a link (`SongLink` / `songLinkClasses`). The song page also shows the song's sheet music (see [Sheet music](#sheet-music)).
-- **Alerts:** if a nightly run fails, or finds no past services (usually a sheet layout change), an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
+- **Alerts:** if a nightly run fails, an email goes to `siteConfig.songList.alertEmail`. That happens in production only.
 
 ### The year in song
 
@@ -262,11 +321,11 @@ The sheet only keeps a rolling twelve months, so every past service is also save
 
 The **PDF** button opens the open month as a PDF in a new tab (`/song-list/pdf/september`). The browser's own PDF viewer then handles printing and downloading, so it comes out the same on every device, phones included. That's why it replaced printing the web page directly.
 
-- **Layout** (`components/song-list/SongListPdf.tsx`) mirrors the spreadsheet's own printout: the whole month, two columns reading down, on **one Letter page**.
+- **Layout** (`components/song-list/SongListPdf.tsx`) is the printed song list as it has always looked: the whole month, two columns reading down, on **one Letter page**. A special service is headed by its own name. The Service Planner's PDF export uses the same component for any range of months.
 - **Fitting** (`lib/song-list-pdf.ts`): it measures real title widths to predict wrapping, picks the tallest rows that still fit, and balances the columns.
   - A service is never split. An unusually long month moves whole services onto a second page rather than cutting any off.
 - **Nothing live** is printed: no Next/Now, no hints, no search filter.
-- Built on request from the sheet, so it's as fresh as the page.
+- Built on request from the published schedule, so it's as fresh as the page.
 
 ### Sharing services
 
@@ -451,7 +510,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 **Navigation** (`src/lib/navigation.ts`, one place for every menu):
 - Visitors: Home, Song List, Library, Contact.
-- Signed in: **Dashboard** takes Home's place, then **Availability** for the music ministry's participants (`view_availability`, never Member-only accounts), and the public music pages stay.
+- Signed in, in this order: **Dashboard** (in Home's place), **Service Planner** (`manage_service_plans`), **Song List**, **Library**, **Availability** (`view_availability`, never Member-only accounts), **Contact**. Each signed-in destination shows only to someone holding its permission.
 - The avatar menu holds Dashboard, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar. The bar gives way to the menu below 1024px (`lg`), so the links never wrap.
 - A new destination is one entry in `APP_NAV` (or `ACCOUNT_MENU`) with the `permission` that opens it. Nothing unfinished is listed.
 
@@ -472,7 +531,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
   | Section | Who sees it | What it shows |
   |---|---|---|
-  | **Needs your attention** | Everyone (items by permission) | An unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`); no normal services set (`view_availability`, low priority) |
+  | **Needs your attention** | Everyone (items by permission) | The next service to plan ("Sunday Evening · Sun, Oct 11 - Draft · 3 of 5 songs", urgent within three days) and how many services need planning in the next two weeks, linking into the Service Planner (`manage_service_plans`); an unfinished profile; account requests waiting and invitations unanswered after a week or recently expired (`manage_users`); upcoming songs with sheet-music gaps and musicians with no sheet music type (`manage_sheet_music`); musicians who list no instrument (`view_profiles`); no normal services set (`view_availability`, low priority) |
   | **Coming up** | Everyone | The next services (up to three within a week). Someone with assigned sheet music types gets each service's sheet music as one PDF to print, using for each song the first of their types it has. With more than one type, each song names the type used and links their other types it has; a song with none of their types says so |
   | **Availability** | `view_availability` | Always present, kept short: their normal services, the next service and their state for it, their upcoming exceptions, other people's changes in the next two weeks, and **View availability** |
   | **Songs to brush up on** | People who play or lead | Songs in the next two weeks not sung for six months, or not in the records at all |
@@ -494,9 +553,9 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 - The logic is in `lib/dashboard/` (pure, tested); the reads are in `lib/dashboard/load.ts`, each failing soft so one source being down never takes the page with it.
 
-**Adding a feature to the signed-in application** (Service Planner, Notifications…; Availability followed these steps):
-1. Its route, protected by `requireViewer()` and its own permission (added to `permissions.ts` when something checks it), and added to the proxy matcher.
-2. A nav entry in `lib/navigation.ts` gated on that permission.
+**Adding a feature to the signed-in application** (Notifications…; Availability and the Service Planner followed these steps):
+1. Its route, protected by `requireViewer()` and its own permission (added to `permissions.ts` when something checks it), and added to the proxy matcher, `MEMBER_SECTIONS` and `robots.ts`.
+2. A nav entry in `lib/navigation.ts` gated on that permission, an `error.tsx`, an `opengraph-image.tsx` (`renderOgCard`), and its pages named in `backLabel()` (`lib/page-origin.ts`).
 3. If it can need action, an attention provider in `lib/dashboard/providers.ts` returning `AttentionItem`s (nothing when there is nothing to do).
 4. If it belongs on the Dashboard, its data loaded in `app/dashboard/page.tsx` (failing soft) and a section shown only when the focus and data call for it.
 
@@ -582,8 +641,8 @@ Neither is protection; members' pages still check on the server.
 **The model:**
 - **Normal services** stay where they always were, in `user_profiles.service_availability` (Sunday AM, Sunday PM, Wednesday PM, special services). Existing answers carried over untouched. They're edited only on `/availability` (the Profile shows them read-only, with a link).
 - **Exceptions** (`availability_exceptions`) are one row per person per service: `(service_date, slot)`, the same identity the song archive uses, with status `available` or `unavailable` and an optional note. Only real differences are stored: choosing **Normal**, or choosing what the normal pattern already says, deletes the row. Nothing is generated per week, and past rows simply stop mattering.
-- **Effective availability** = normal + exception, worked out in one place: `effectiveAvailability()` in `lib/availability/effective.ts`. It returns the normal and effective states, the exception, and one of *normally available*, *normally unavailable*, *available by exception* or *unavailable by exception*. The calendar and the Dashboard use it, and later the Service Planner and member profiles will too.
-- **Services** come from `siteConfig.songList.regularServices` for any date range (`lib/availability/occurrences.ts`). A dated song-list service on a day or time that isn't a regular service becomes a **special** service, matched against the "Special services" normal choice. Nothing here creates events.
+- **Effective availability** = normal + exception, worked out in one place: `effectiveAvailability()` in `lib/availability/effective.ts`. It returns the normal and effective states, the exception, and one of *normally available*, *normally unavailable*, *available by exception* or *unavailable by exception*. The calendar, the Dashboard and the Service Planner's **Who's there** all use it.
+- **Services** come from `siteConfig.songList.regularServices` for any date range (`lib/availability/occurrences.ts`), adjusted by the Service Planner: a **special** service created there (draft or published) is added, matched against the "Special services" normal choice; a cancelled regular service is removed; a renamed or retimed one carries its name and time. Availability itself creates nothing.
 - **Date ranges** ("away October 15–22") are only a way of entering changes. A range becomes every service in it that hasn't started, each stored as its own exception. The range itself isn't stored.
 - **Whole services only.** There are no times, partial services or songs anywhere in the model or the forms.
 
@@ -595,7 +654,7 @@ Neither is protection; members' pages still check on the server.
 
 **Security:** every change goes through `src/app/availability/actions.ts`, wrapped in `withPermission("view_availability")`. Whose record it is comes from `availabilityTarget()`: your own always comes from the session, and anyone else's needs `manage_availability` and must be someone on the board. Each service is checked to be real and not yet started. Deleting an account removes the person's exceptions.
 
-**Later:** the Service Planner should ask `effectiveAvailability()` (or build on `buildBoard`) rather than store availability itself. Member profiles can show normal services and upcoming exceptions from the same tables. Notifications, private staff notes and creating special events aren't part of this phase.
+**Later:** member profiles can show normal services and upcoming exceptions from the same tables. Notifications and private staff notes aren't part of this phase. The Service Planner reads availability but never stores it, and never assigns people to services.
 
 ---
 
@@ -621,7 +680,10 @@ npm test
 ```
 
 Vitest covers the pure logic in `src/lib`:
-- reading the sheet (`song-list.test.ts`)
+- the Service Planner: places, inserts and overrides, the queue and planning ahead, special and cancelled services, locking, change records (`service-planner/model.test.ts`); planning facts, checks and availability (`service-planner/intelligence.test.ts`); exports (`service-planner/export.test.ts`)
+- the published schedule's months and placeholders (`schedule-months.test.ts`) and the service-plan archive's filters (`service-archive.test.ts`)
+- origin-aware back links, including refusing anything off the site (`page-origin.test.ts`)
+- the old sheet's parser, until it is deleted (`song-list.test.ts`)
 - service times and Next/Now (`service-time.test.ts`)
 - song history and the archive (`song-history.test.ts`, `archive-view.test.ts`)
 - PDF page fitting (`song-list-pdf.test.ts`)
@@ -632,11 +694,12 @@ Vitest covers the pure logic in `src/lib`:
 - the Dashboard's focus, attention list, coming services and sheet-music choice (`dashboard/dashboard.test.ts`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
-The tests run on **real sheet data** saved in `src/lib/__fixtures__/` (`september-2026.json`, `missions-conference-2025.json`). When the sheet's layout changes, save a fresh copy of the real tab as a fixture and test against that, rather than guessing the layout.
+Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.
 
-For anything visual (the page, the PDF, the pictures), run `npm run dev` and look:
-- `/song-list/pdf/september`
-- `/song-list/image/september?s=<id>,<id>` (service ids look like `1-22`)
+For anything visual (the page, the PDF, the pictures, the planner), run `npm run dev` and look:
+- `/song-list/pdf/october`
+- `/song-list/image/october?s=<id>,<id>` (service ids look like `2026-10-11-am`)
+- `/service-planner`, signed in with a role that has `manage_service_plans` (local plans stay in the Development environment)
 
 ---
 
@@ -651,12 +714,11 @@ For anything visual (the page, the PDF, the pictures), run `npm run dev` and loo
 In **Settings → Environment Variables**, tick **Production, Preview and Development** for each:
 
 ```
-GOOGLE_SHEETS_API_KEY = <your key>
 RESEND_API_KEY        = <your key>
 CRON_SECRET           = <a long random string>
 ```
 
-`DATABASE_URL` is added for you when Neon is connected (see [Song archive](#song-archive)). `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` are described under [Sheet music (service account)](#sheet-music-service-account).
+`DATABASE_URL` is added for you when Neon is connected (see [Database (Neon)](#database-neon)). `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` are described under [Sheet music (service account)](#sheet-music-service-account).
 
 **Except the Clerk keys**, which are added **twice**, with a different value for each environment (see [Accounts (Clerk)](#accounts-clerk)):
 
@@ -673,8 +735,8 @@ In **Settings → Domains**:
 4. Wait for each domain to show **Valid Configuration**.
 
 ### 4. Check it
-- [ ] All pages load, and the song list shows the current month's real data.
-- [ ] Editing a sheet cell shows up on a fresh page load within about 10–20 seconds.
+- [ ] All pages load, and the song list shows the current month's published services.
+- [ ] Publishing a service in the Service Planner shows on the song list at once.
 - [ ] The **PDF** button opens a one-page PDF.
 - [ ] On a phone, **Send as picture** and **Send as text** open the share sheet.
 - [ ] A message sent through `/contact` arrives, and **Reply** goes to the visitor.
@@ -686,32 +748,29 @@ In **Settings → Domains**:
 
 ## Setup guides
 
-### Google Sheets
-The spreadsheet is public and read-only, so a simple API key is enough.
+### Retiring the Google Sheet
 
-1. In the [Google Cloud console](https://console.cloud.google.com/), create or pick a project.
-2. **APIs & Services → Library** → **Google Sheets API** → **Enable**.
-3. **APIs & Services → Credentials → Create credentials → API key**, and copy it.
-4. **Restrict the key:**
-   - Under **API restrictions**, allow **Google Sheets API** only.
-   - Leave application restrictions as **None**. The key is only used on the server, where there's no browser address or fixed IP to restrict to.
-5. Put it in `.env.local` as `GOOGLE_SHEETS_API_KEY=...`, and add it in Vercel.
-6. Make sure the spreadsheet's sharing is **Anyone with the link → Viewer**.
-7. Open `/song-list`; it should show the current month.
+The song list used to be read from a public Google Sheet ("PUBLIC Song List"). The Service Planner replaces it. The switch happens once, on Production:
 
-### Song archive
-1. In Vercel, go to **Storage → Create Database → Neon** (free plan) and connect it to this project for all environments. That adds `DATABASE_URL`.
+1. Deploy, then preview the import: `curl -H "Authorization: Bearer <CRON_SECRET>" "https://faithfulwordmusic.com/api/cron/import-sheet-schedule?dry=1"`.
+2. Run it for real (without `?dry=1`). It saves the sheet's past services to the archive one last time, then copies every service on the visible tabs (this month's earlier ones too) into the planner as **published** (one publication) and any future services on hidden tabs as **drafts**. A service already in the planner is left alone, so running it twice is harmless. Imported services keep their songs and keys; the sheet never marked inserts, so they are not tied to a week's insert.
+3. Check `/song-list` and `/service-planner`.
+4. Then delete the retired pieces: `src/lib/google-sheets.ts`, `src/app/api/cron/import-sheet-schedule/`, the sheet parser in `src/lib/song-list.ts` (`parseMonthGrid`, `planMonth` and their helpers), `FallbackTable`, the fixtures and their tests, `siteConfig.songList.spreadsheetId` and `maxMonths`, and the `GOOGLE_SHEETS_API_KEY` variable (in Vercel too, and revoke the key in Google Cloud).
+
+**Not affected:** the private **Sheet Music Index** (a different Google Sheet) and the sheet-music Drive folders. They are read with the service account (`GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`) and stay exactly as they are.
+
+### Database (Neon)
+1. In Vercel, go to **Storage → Create Database → Neon** (free plan) and connect it to this project for all environments. That adds `DATABASE_URL`. The Service Planner, the archive and accounts all live here; their tables create themselves on first use.
 2. Add `CRON_SECRET` (any long random string), then redeploy.
-3. For local use, run `npx vercel link`, then `npx vercel env pull .env.local`.
-4. Seed it once. The tables create themselves, and running it again is harmless:
+3. For local use, run `npx vercel link`, then `npx vercel env pull .env.local`. Local and Preview share the database with Production, but every planner and account row is tagged with its Clerk environment, so they never mix.
+4. The nightly archive sync then runs on its own; check **Settings → Cron Jobs**. To run it by hand:
    ```bash
    curl -H "Authorization: Bearer <CRON_SECRET>" https://faithfulwordmusic.com/api/cron/sync-archive
    ```
    The response reports how many services were `added`, `refreshed` and `frozen`.
-5. From then on it runs nightly. Check **Settings → Cron Jobs**.
 
 ### Sheet music (service account)
-Unlike the public song list, the Sheet Music Index and the sheet-music Drive folder are **private**. The site reads them as a Google **service account**, a robot Google identity that can only see what is shared with it.
+The Sheet Music Index and the sheet-music Drive folder are **private**, and stay in Google: retiring the old song-list sheet does not touch them. The site reads them as a Google **service account**, a robot Google identity that can only see what is shared with it.
 
 1. **Google Cloud project:** in the [Google Cloud console](https://console.cloud.google.com/), select the same project as the Sheets API key.
 2. **Enable the APIs:** go to **APIs & Services → Library** and enable **Google Sheets API** (probably already on) and **Google Drive API**.
@@ -882,7 +941,8 @@ Same as the contact form. **Firewall → New Rule:** Request Path equals `/api/a
   - Next reads those paths at build time to know which files to ship with each function.
   - A helper that assembles paths from variables hides them, and Next then ships the **whole project** and warns about "dynamic filesystem access".
 - **New route, missing types?** Route handlers use Next's generated `RouteContext<"/path/[param]">` type. After adding a route, run `npx next typegen` (or start the dev server) before type-checking.
-- **A service's id** (e.g. `1-22`) comes from its position in the sheet. It's stable while the sheet is unchanged, which is all the picture addresses need, but don't store it long-term.
+- **A service's id** is its anchor, `<date>-<am|pm>` (e.g. `2026-10-11-am`): the same in the song list, the planner, the archive and picture addresses.
+- **Back links** (`BackLink`, `BackButton`, `useBackTarget`) lead to the page the visitor actually came from in this tab, or the page's own fallback when opened from outside. The history is per tab (`sessionStorage`), and only this site's own paths are ever followed. New pages should use them rather than a fixed "Back to …" link, and name themselves in `backLabel()`.
 - **Printing the web page directly** (Ctrl+P) isn't specially laid out anymore. The PDF is the printout.
 - **`AGENTS.md` / `CLAUDE.md`** are re-added by `next dev`. Committing them keeps the working tree clean.
 

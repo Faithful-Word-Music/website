@@ -10,6 +10,11 @@ import type { DatedService, ServiceSlot, Song } from "@/types/song-list";
  *
  * Two small tables: one row per service, one row per song sung in it. The
  * tables are created on first use, so there is no migration step to run.
+ *
+ * Services reach the archive from the Service Planner once they have taken
+ * place (syncArchive in src/lib/song-archive.ts). Older rows came from the
+ * retired Google Sheet; they have no label, kind or insert marks, and are
+ * kept exactly as they were.
  */
 
 const SCHEMA = [
@@ -31,18 +36,25 @@ const SCHEMA = [
      PRIMARY KEY (service_id, position)
    )`,
   `CREATE INDEX IF NOT EXISTS service_songs_title_key ON service_songs (title_key)`,
+  // Added with the Service Planner: a special service's name and kind, and
+  // which song was the week's insert. Older rows simply have none.
+  `ALTER TABLE services ADD COLUMN IF NOT EXISTS label text`,
+  `ALTER TABLE services ADD COLUMN IF NOT EXISTS kind text`,
+  `ALTER TABLE service_songs ADD COLUMN IF NOT EXISTS is_insert boolean NOT NULL DEFAULT false`,
 ];
 
 interface ServiceRow {
   date: string;
   slot: ServiceSlot;
   starts_at: Date | string;
+  label: string | null;
+  kind: string | null;
   songs: Song[] | string;
 }
 
 /**
  * Every stored service, oldest first. Returns null when the archive database
- * is not configured, so callers can carry on with the sheet alone.
+ * is not configured, so callers can carry on with published plans alone.
  */
 export async function loadStoredServices(): Promise<DatedService[] | null> {
   const sql = getSql();
@@ -54,9 +66,11 @@ export async function loadStoredServices(): Promise<DatedService[] | null> {
     SELECT s.service_date::text AS date,
            s.slot,
            s.starts_at,
+           s.label,
+           s.kind,
            COALESCE(
              json_agg(
-               json_build_object('number', ss.number, 'title', ss.title, 'key', ss.key)
+               json_build_object('number', ss.number, 'title', ss.title, 'key', ss.key, 'insert', ss.is_insert)
                ORDER BY ss.position
              ) FILTER (WHERE ss.service_id IS NOT NULL),
              '[]'
@@ -76,7 +90,14 @@ export async function loadStoredServices(): Promise<DatedService[] | null> {
         startsAt: new Date(row.starts_at).toISOString(),
         // Rows saved before placeholders were recognised may hold "#N/A" or
         // "TBD"; they are cleaned on the way out rather than deleted.
-        songs: songs.map(cleanSong).filter((song): song is Song => song !== null),
+        songs: songs
+          .map((song) => {
+            const clean = cleanSong(song);
+            return clean && song.insert ? { ...clean, insert: true } : clean;
+          })
+          .filter((song): song is Song => song !== null),
+        ...(row.label ? { label: row.label } : {}),
+        ...(row.kind === "special" ? { kind: "special" as const } : {}),
       };
     })
     .filter((service) => service.songs.length > 0);
@@ -94,7 +115,7 @@ async function ensureSchema(): Promise<void> {
 export interface SaveSummary {
   /** Services stored for the first time. */
   added: number;
-  /** Fresh services re-saved from the sheet (picks up corrections). */
+  /** Fresh services re-saved from the planner (picks up corrections). */
   refreshed: number;
   /** Stored services older than the freshness window, left untouched. */
   frozen: number;
@@ -104,12 +125,12 @@ export interface SaveSummary {
  * Saves services that have already taken place.
  *
  *   not yet stored          -> added
- *   stored and still fresh  -> replaced with the sheet's version
+ *   stored and still fresh  -> replaced with the planner's version
  *   stored and frozen       -> left alone
  *
- * Nothing is ever deleted: a service that disappears from the sheet (because
- * its tab was reused) stays in the archive. All writes happen in one
- * transaction, so a failure part-way leaves the archive as it was.
+ * Nothing is ever deleted: a service taken off the planner after the fact
+ * stays in the archive. All writes happen in one transaction, so a failure
+ * part-way leaves the archive as it was.
  */
 export async function saveServices(services: DatedService[], now: number): Promise<SaveSummary> {
   const sql = getSql();
@@ -128,8 +149,8 @@ export async function saveServices(services: DatedService[], now: number): Promi
   const summary: SaveSummary = { added: 0, refreshed: 0, frozen: 0 };
   const toWrite: DatedService[] = [];
 
-  // One row per date and slot: should the sheet ever still hold two services
-  // with the same key, the later one wins rather than both being written.
+  // One row per date and slot: should two services ever share a key, the
+  // later one wins rather than both being written.
   const unique = new Map(services.map((service) => [serviceId(service), service]));
 
   for (const service of unique.values()) {
@@ -156,26 +177,28 @@ export async function saveServices(services: DatedService[], now: number): Promi
         title: song.title,
         key: song.key,
         title_key: songKey(song.title),
+        is_insert: song.insert === true,
       }));
       const idOf = `(SELECT id FROM services WHERE service_date = $1::date AND slot = $2)`;
 
       return [
         txn.query(
-          `INSERT INTO services (service_date, slot, starts_at)
-           VALUES ($1::date, $2, $3::timestamptz)
+          `INSERT INTO services (service_date, slot, starts_at, label, kind)
+           VALUES ($1::date, $2, $3::timestamptz, $4, $5)
            ON CONFLICT (service_date, slot)
-           DO UPDATE SET starts_at = EXCLUDED.starts_at, updated_at = now()`,
-          [service.date, service.slot, service.startsAt],
+           DO UPDATE SET starts_at = EXCLUDED.starts_at, label = EXCLUDED.label, kind = EXCLUDED.kind,
+                         updated_at = now()`,
+          [service.date, service.slot, service.startsAt, service.label ?? null, service.kind ?? null],
         ),
         txn.query(`DELETE FROM service_songs WHERE service_id = ${idOf}`, [
           service.date,
           service.slot,
         ]),
         txn.query(
-          `INSERT INTO service_songs (service_id, position, number, title, key, title_key)
-           SELECT ${idOf}, x.position, x.number, x.title, x.key, x.title_key
+          `INSERT INTO service_songs (service_id, position, number, title, key, title_key, is_insert)
+           SELECT ${idOf}, x.position, x.number, x.title, x.key, x.title_key, x.is_insert
              FROM jsonb_to_recordset($3::jsonb)
-               AS x(position int, number text, title text, key text, title_key text)`,
+               AS x(position int, number text, title text, key text, title_key text, is_insert boolean)`,
           [service.date, service.slot, JSON.stringify(songs)],
         ),
       ];

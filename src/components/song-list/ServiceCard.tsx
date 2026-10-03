@@ -3,6 +3,7 @@
 import type { MouseEvent, ReactNode } from "react";
 
 import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -59,7 +60,7 @@ export function ServiceCard({
   const selected = selection?.selected ?? false;
   const blocked = selection?.blocked ?? false;
 
-  // A service the sheet has not reached yet (see planMonth): an outline with
+  // A service not published yet (see buildScheduleMonths): an outline with
   // just its date and time, so the month reads whole while the real cards,
   // with their songs, still stand out.
   if (service.placeholder) {
@@ -117,7 +118,7 @@ export function ServiceCard({
       // panel, muted header), so upcoming ones are the only cards in colour.
       barline={!past}
       className={cn(
-        "h-full p-5 transition-[box-shadow,opacity] duration-300 sm:p-6",
+        "flex h-full flex-col p-5 transition-[box-shadow,opacity] duration-300 sm:p-6",
         animateIn && "animate-enter",
         // One gold edge and a soft glow - not a ring, whose offset gap left
         // the card's own hairline showing inside it as a second border.
@@ -213,7 +214,7 @@ export function ServiceCard({
             }
             const hint =
               !past && plays && service.startsAt
-                ? songHint(plays[songKey(song.title)], service.startsAt, now)
+                ? songHint(plays[songKey(song.title)], service.startsAt, now, { insert: song.insert })
                 : null;
 
             return (
@@ -244,7 +245,7 @@ export function ServiceCard({
             );
           })}
           {/* Nothing under it yet: a date written with no rows, or a regular
-              service the sheet has not reached (see planMonth). */}
+              service not published yet (see buildScheduleMonths). */}
           {service.songs.length === 0 && service.pendingSongs === 0 ? (
             <tr>
               <td className="py-2.5 pr-3" />
@@ -255,6 +256,11 @@ export function ServiceCard({
           ) : null}
         </tbody>
       </table>
+      {/* Their own sheet music for the service, as on the Dashboard (signed in, with types). */}
+      <ServicePacketSlot
+        serviceId={service.id}
+        label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
+      />
     </Card>
   );
 

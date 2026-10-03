@@ -9,10 +9,16 @@
  *   regular   the services held every week (siteConfig.songList.regularServices),
  *             generated for any date range - they exist whether or not the
  *             song list has reached them yet.
- *   special   a dated service in the song list on a day and time that is not a
- *             regular service (a conference meeting, a holiday service). It is
- *             matched against the "special" normal-availability choice. Nothing
- *             here creates special services; they come from the song list.
+ *   special   a service created in the Service Planner on a day and time that
+ *             is not a regular service (a conference meeting, a holiday
+ *             service). It is matched against the "special" normal-availability
+ *             choice. Nothing here creates special services; they come from
+ *             the planner's stored services (see scheduledServices() in
+ *             src/lib/service-planner/store.ts).
+ *
+ * The planner can also give a regular service a name ("Easter Sunday") or a
+ * different start time, and can cancel one; those reach every occurrence
+ * list the same way.
  *
  * Pure - no server-only import - so it can be unit tested.
  */
@@ -33,6 +39,22 @@ export interface Occurrence {
   startsAt: string;
   /** Which normal-availability choice covers this service. */
   normalKey: ServiceAvailability;
+  /** A name the planner gave it ("Missions Conference"); absent for an ordinary service. */
+  label?: string | null;
+}
+
+/**
+ * A service the planner knows about, as the occurrence lists need it. Any
+ * stored service will do: a special one adds an occurrence, a regular one can
+ * rename or retime its occurrence, and a cancelled one removes it.
+ */
+export interface ScheduledService {
+  date: string | null;
+  slot: ServiceSlot | null;
+  label?: string | null;
+  /** Overrides the usual start time when set. */
+  startsAt?: string | null;
+  cancelled?: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -108,41 +130,55 @@ export function regularOccurrences(from: string, to: string): Occurrence[] {
 }
 
 /**
- * Adds the song list's special services (dated services that are not regular
- * ones) to `occurrences`, within the same range. A regular service in the song
- * list is already there and is not repeated.
+ * Applies the planner's services to `occurrences`, within the same range:
+ *
+ *   cancelled                      -> its occurrence is removed
+ *   on a regular service's time    -> that occurrence takes its name and start time
+ *   anything else                  -> added as a special service, once
  */
 export function withSpecialServices(
   occurrences: readonly Occurrence[],
-  services: ReadonlyArray<{ date: string | null; slot: ServiceSlot | null }>,
+  services: ReadonlyArray<ScheduledService>,
   range: { from: string; to: string },
 ): Occurrence[] {
-  const seen = new Set(occurrences.map((occ) => occurrenceKey(occ.date, occ.slot)));
-  const result = [...occurrences];
+  const byKey = new Map(occurrences.map((occ) => [occurrenceKey(occ.date, occ.slot), occ] as const));
   for (const service of services) {
     if (!service.date || !service.slot) continue;
     if (service.date < range.from || service.date > range.to) continue;
     const key = occurrenceKey(service.date, service.slot);
-    if (seen.has(key) || isRegular(service.date, service.slot)) continue;
-    seen.add(key);
-    result.push({
+    if (service.cancelled) {
+      byKey.delete(key);
+      continue;
+    }
+    const known = byKey.get(key);
+    if (known) {
+      byKey.set(key, {
+        ...known,
+        label: service.label ?? known.label,
+        startsAt: service.startsAt ?? known.startsAt,
+      });
+      continue;
+    }
+    if (isRegular(service.date, service.slot)) continue;
+    byKey.set(key, {
       date: service.date,
       slot: service.slot,
       kind: "special",
-      startsAt: startsAtFor(service.date, service.slot),
+      startsAt: service.startsAt ?? startsAtFor(service.date, service.slot),
       normalKey: "special",
+      label: service.label ?? null,
     });
   }
-  return sortOccurrences(result);
+  return sortOccurrences([...byKey.values()]);
 }
 
-/** The services from `from` to `to`: every regular one, plus the song list's special ones. */
+/** The services from `from` to `to`: every regular one, adjusted by the planner's services. */
 export function serviceOccurrences(
   from: string,
   to: string,
-  songListServices: ReadonlyArray<{ date: string | null; slot: ServiceSlot | null }> = [],
+  scheduled: ReadonlyArray<ScheduledService> = [],
 ): Occurrence[] {
-  return withSpecialServices(regularOccurrences(from, to), songListServices, { from, to });
+  return withSpecialServices(regularOccurrences(from, to), scheduled, { from, to });
 }
 
 /** Finds one service by its date and slot, or null when no service is held then. */

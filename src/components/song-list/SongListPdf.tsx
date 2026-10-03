@@ -6,7 +6,7 @@ import { Document, Font, Link, Page, StyleSheet, Text, View } from "@react-pdf/r
 
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
-import { formatChurchTime, splitDateLabel } from "@/lib/service-time";
+import { formatChurchTime } from "@/lib/service-time";
 import { serviceSlots } from "@/lib/song-list";
 import {
   COLUMN_WIDTH_PT,
@@ -14,17 +14,19 @@ import {
   layoutMonth,
   PDF_METRICS,
   PDF_PAGE,
+  printedServiceDate,
 } from "@/lib/song-list-pdf";
 import type { Service, SongListMonth } from "@/types/song-list";
 
 /**
- * The song list as a PDF: the month laid out like the spreadsheet's own
- * printout, on one Letter page. Served by /song-list/pdf/[month].
+ * The song list as a PDF: each month laid out as the printed song list has
+ * always been, on one Letter page. Served by /song-list/pdf/[month], and by
+ * the Service Planner's export for any range of months.
  *
  *   - Every service in the month, in date order - earlier ones included.
  *   - Nothing live: no Next/Now, no hints, no search or key filter. A printout
  *     is the month, not the moment.
- *   - Services run down the left column and then the right, as in the sheet.
+ *   - Services run down the left column and then the right, as the printed list always has.
  *
  * Why a PDF rather than the browser's print: every browser prints HTML its own
  * way (iOS Safari rescales and re-margins it onto two pages), while a PDF is
@@ -168,16 +170,6 @@ const styles = StyleSheet.create({
     fontWeight: 500,
     fontFeatureSettings: ["tnum"],
   },
-  note: {
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 0.5,
-    borderTopColor: RULE_LIGHT,
-    textAlign: "center",
-    fontSize: 8,
-    fontStyle: "italic",
-    color: MUTED,
-  },
   footer: {
     position: "absolute",
     bottom: PDF_PAGE.paddingY,
@@ -197,12 +189,13 @@ const styles = StyleSheet.create({
 // "faithfulwordmusic.com", as printed in the footer.
 const SITE_LABEL = siteConfig.url.replace(/^https?:\/\//, "");
 
-export function SongListPdf({ month }: { month: SongListMonth }) {
-  const { rowPt, gapPt, left, right } = layoutMonth(month);
-  const year = firstYear(month);
-  const heading = month.heading ?? month.title;
-  const subtitle = `${siteConfig.church.name}${year ? ` · ${year}` : ""}`;
-
+/**
+ * The song list as a PDF: one page per month (a very full month runs on),
+ * laid out like the song list itself. The public month PDF passes one month;
+ * the Service Planner's export passes as many as the range covers.
+ */
+export function SongListPdf({ months, title }: { months: SongListMonth[]; title?: string }) {
+  const heading = title ?? months[0]?.heading ?? months[0]?.title ?? songListContent.title;
   return (
     <Document
       title={heading}
@@ -212,32 +205,44 @@ export function SongListPdf({ month }: { month: SongListMonth }) {
       producer={siteConfig.name}
       language="en-US"
     >
-      <Page size="LETTER" style={styles.page}>
-        <View style={styles.header}>
-          <Text style={styles.heading}>{heading}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
-        </View>
-
-        <View style={styles.columns}>
-          <Column services={left} rowPt={rowPt} gapPt={gapPt} />
-          {right.length > 0 ? <View style={styles.divider} /> : null}
-          <Column services={right} rowPt={rowPt} gapPt={gapPt} />
-        </View>
-
-        {month.note ? <Text style={styles.note}>{month.note}</Text> : null}
-
-        {/* Where the printout came from, and who to ask - on every page. */}
-        <Text fixed style={styles.footer}>
-          <Link src={siteConfig.url} style={styles.footerLink}>
-            {SITE_LABEL}
-          </Link>
-          {"  ·  "}
-          <Link src={`mailto:${siteConfig.contactEmail}`} style={styles.footerLink}>
-            {siteConfig.contactEmail}
-          </Link>
-        </Text>
-      </Page>
+      {months.map((month) => (
+        <MonthPage key={month.title} month={month} />
+      ))}
     </Document>
+  );
+}
+
+function MonthPage({ month }: { month: SongListMonth }) {
+  const { rowPt, gapPt, left, right } = layoutMonth(month);
+  const year = firstYear(month);
+  const heading = month.heading ?? month.title;
+  const subtitle = `${siteConfig.church.name}${year ? ` · ${year}` : ""}`;
+
+  return (
+    <Page size="LETTER" style={styles.page}>
+      <View style={styles.header}>
+        <Text style={styles.heading}>{heading}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </View>
+
+      <View style={styles.columns}>
+        <Column services={left} rowPt={rowPt} gapPt={gapPt} />
+        {right.length > 0 ? <View style={styles.divider} /> : null}
+        <Column services={right} rowPt={rowPt} gapPt={gapPt} />
+      </View>
+
+
+      {/* Where the printout came from, and who to ask - on every page. */}
+      <Text fixed style={styles.footer}>
+        <Link src={siteConfig.url} style={styles.footerLink}>
+          {SITE_LABEL}
+        </Link>
+        {"  ·  "}
+        <Link src={`mailto:${siteConfig.contactEmail}`} style={styles.footerLink}>
+          {siteConfig.contactEmail}
+        </Link>
+      </Text>
+    </Page>
   );
 }
 
@@ -265,8 +270,7 @@ function ServiceBlock({
   rowPt: number;
   gapAfter: number;
 }) {
-  const { weekday, day } = splitDateLabel(service.dateLabel);
-  const date = weekday && day ? `${weekday}, ${day}` : service.dateLabel;
+  const date = printedServiceDate(service);
   const lineHeight = `${rowPt}pt`;
   const rows = service.songs.length + service.pendingSongs;
 

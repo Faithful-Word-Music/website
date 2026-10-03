@@ -5,6 +5,7 @@
  */
 export const navigationContent = {
   dashboard: "Dashboard",
+  servicePlanner: "Service Planner",
   availability: "Availability",
   profile: "Profile",
   accountSettings: "Account settings",
@@ -17,6 +18,10 @@ export const navigationContent = {
    */
   back: {
     dashboard: "Back to Dashboard",
+    servicePlanner: "Back to the Service Planner",
+    inserts: "Back to Inserts",
+    serviceArchive: "Back to service plans",
+    service: "Back to the service",
     availability: "Back to Availability",
     home: "Back to Home",
     songList: "Back to the song list",

@@ -211,7 +211,6 @@ export function parseMonthGrid(title: string, grid: string[][]): SongListMonth {
   return {
     title,
     heading,
-    note: findNote(grid),
     services: labelUnmarkedServices(populated).map(withStartTime),
     fallbackRows: populated.length === 0 ? buildFallbackRows(grid) : null,
   };
@@ -221,26 +220,6 @@ function withStartTime(service: Service): Service {
   return service.date && service.slot
     ? { ...service, startsAt: startsAtFor(service.date, service.slot) }
     : service;
-}
-
-/**
- * A footnote in column A with nothing beside it, such as
- * "**Songs and Keys are subject to change**". Markdown-style asterisks are
- * stripped; the last such line in the sheet wins.
- */
-function findNote(grid: string[][]): string | null {
-  let note: string | null = null;
-
-  for (let rowIndex = 1; rowIndex < grid.length; rowIndex += 1) {
-    const row = grid[rowIndex];
-    const text = cell(row, 0);
-    const restEmpty = [1, 2, 4, 5, 6].every((index) => cell(row, index) === "");
-    if (text !== "" && restEmpty && /[a-z]/i.test(text) && parseSlot(text) === null) {
-      note = text.replace(/^[*_\s]+|[*_\s]+$/g, "") || null;
-    }
-  }
-
-  return note;
 }
 
 /**

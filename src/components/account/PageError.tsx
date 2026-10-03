@@ -1,6 +1,7 @@
 "use client";
 
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { BackButton } from "@/components/ui/BackLink";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 
 /**
@@ -21,9 +22,7 @@ export function PageError({ reset }: { error: Error & { digest?: string }; reset
           <Button type="button" onClick={reset}>
             Try again
           </Button>
-          <ButtonLink href="/dashboard" variant="secondary">
-            Back to Dashboard
-          </ButtonLink>
+          <BackButton fallback="/dashboard" variant="secondary" />
         </div>
       </Card>
     </div>

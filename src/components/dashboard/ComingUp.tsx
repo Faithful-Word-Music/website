@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
+import { NoServiceSheetMusic } from "@/components/song-list/ServicePackets";
 import { ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
@@ -109,6 +110,10 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
             showLabels={service.showLabels}
             label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
           />
+        </div>
+      ) : service.sheetMusicChecked && hasSongs ? (
+        <div className="mt-auto pt-5">
+          <NoServiceSheetMusic />
         </div>
       ) : null}
     </Card>

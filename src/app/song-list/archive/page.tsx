@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { ArchiveSwitch } from "@/components/song-list/ArchiveSwitch";
 import { ArchiveView } from "@/components/song-list/ArchiveView";
 import { buttonClasses } from "@/components/ui/Button";
 import { BackLink } from "@/components/ui/BackLink";
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * The archive includes the sheet's services straight away (not only once the
+ * The archive includes published services straight away (not only once the
  * nightly sync has stored them), so it refreshes on the same 10-second cadence
  * as the schedule (siteConfig.songList.revalidateSeconds). The database read
  * behind it is cached for an hour.
@@ -59,7 +60,11 @@ export default async function SongArchivePage() {
           </Link>
         ) : null}
 
-        <div className="mt-12">
+        <div className="mt-10">
+          <ArchiveSwitch />
+        </div>
+
+        <div className="mt-10">
           {!data.ok ? (
             <Notice title={archive.errorTitle} body={archive.errorBody} />
           ) : data.records.length === 0 ? (

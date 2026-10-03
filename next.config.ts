@@ -8,16 +8,23 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingIncludes: {
     "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
+    // The Service Planner's PDF export draws the same song list.
+    "/service-planner/export": ["./assets/fonts/*.ttf"],
   },
 
   /**
    * Song pages moved from /song-list/archive/<song> to /library/songs/<song>.
    * Links already shared (and the quarterly emails) keep working. The archive
-   * itself stays at /song-list/archive.
+   * itself stays at /song-list/archive, and /song-list/archive/services (the
+   * service-plan archive) is its own page, never a song.
    */
   async redirects() {
     return [
-      { source: "/song-list/archive/:song", destination: "/library/songs/:song", permanent: true },
+      {
+        source: "/song-list/archive/:song((?!services$)[^/]+)",
+        destination: "/library/songs/:song",
+        permanent: true,
+      },
       {
         source: "/song-list/archive/:song/sheet-music/:file",
         destination: "/library/songs/:song/sheet-music/:file",

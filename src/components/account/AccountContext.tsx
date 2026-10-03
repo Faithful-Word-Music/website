@@ -1,9 +1,10 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { usePagePath } from "@/components/ui/use-page-path";
+import { NAV_CACHE_KEY, parseCachedNav, serializeCachedNav } from "@/lib/auth/nav-cache";
 import { isPermission, type Permission } from "@/lib/auth/permissions";
 import { SIGNED_OUT, isMemberPath, type NavContext } from "@/lib/navigation";
 
@@ -66,10 +67,54 @@ function parseMe(data: unknown): Me {
   };
 }
 
+/*
+ * The last permissions seen in this browser (src/lib/auth/nav-cache.ts), so
+ * the gated links show at once rather than after Clerk and /api/account/me.
+ * Storage can be missing or blocked; the navigation then just waits as before.
+ */
+const navCacheListeners = new Set<() => void>();
+
+function subscribeNavCache(listener: () => void) {
+  navCacheListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    navCacheListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+function readNavCache(): string | null {
+  try {
+    return window.localStorage.getItem(NAV_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeNavCache(value: string | null) {
+  if (readNavCache() === value) return;
+  try {
+    if (value === null) window.localStorage.removeItem(NAV_CACHE_KEY);
+    else window.localStorage.setItem(NAV_CACHE_KEY, value);
+  } catch {
+    return;
+  }
+  navCacheListeners.forEach((listener) => listener());
+}
+
 /** Inside ClerkProvider: only rendered when accounts are switched on. */
 export function AccountProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const [result, setResult] = useState<{ userId: string; me: Me | null } | null>(null);
+  // Null on the server and while hydrating, so the first render matches it.
+  const cachedRaw = useSyncExternalStore(subscribeNavCache, readNavCache, () => null);
+  const cached = useMemo(() => parseCachedNav(cachedRaw), [cachedRaw]);
+
+  // Forget them on sign-out, or when someone else has signed in here.
+  useEffect(() => {
+    if (!isLoaded || !cached) return;
+    if (!isSignedIn || cached.userId !== userId) writeNavCache(null);
+  }, [isLoaded, isSignedIn, userId, cached]);
 
   useEffect(() => {
     if (!isSignedIn || !userId) return;
@@ -77,7 +122,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     fetch("/api/account/me", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: unknown) => {
-        if (!cancelled) setResult({ userId, me: data ? parseMe(data) : null });
+        if (cancelled) return;
+        const me = data ? parseMe(data) : null;
+        setResult({ userId, me });
+        // Only a real answer replaces what is remembered - never a failure.
+        if (me) writeNavCache(serializeCachedNav({ userId, permissions: me.permissions }));
       })
       .catch(() => {
         if (!cancelled) setResult({ userId, me: null });
@@ -95,15 +144,20 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const signedIn = Boolean(isLoaded && isSignedIn && userId);
     const current = signedIn && result?.userId === userId ? result : null;
     const me = current?.me ?? null;
+    // The navigation may go ahead on the remembered permissions - this
+    // person's, or before Clerk loads on a members' page (only someone signed
+    // in can be there). `me` itself always waits for the real answer.
+    const useCached = signedIn ? cached?.userId === userId : !isLoaded && onMemberPage;
+    const permissions = me?.permissions ?? (useCached ? cached?.permissions : undefined) ?? [];
     return {
       isLoaded,
       isSignedIn: signedIn,
       userId: signedIn ? (userId ?? null) : null,
       me,
       meSettled: !signedIn || current !== null,
-      nav: { signedIn: isLoaded ? signedIn : onMemberPage, permissions: new Set(me?.permissions ?? []) },
+      nav: { signedIn: isLoaded ? signedIn : onMemberPage, permissions: new Set(permissions) },
     };
-  }, [isLoaded, isSignedIn, userId, result, onMemberPage]);
+  }, [isLoaded, isSignedIn, userId, result, onMemberPage, cached]);
 
   return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 }

@@ -99,6 +99,15 @@ export function startsAtFor(date: string, slot: ServiceSlot): string {
   return `${date}T${times[slot]}:00${utcOffset}`;
 }
 
+/**
+ * An instant written in church time, the same form startsAtFor() gives:
+ * 1792949400000 -> "2026-10-25T10:30:00-07:00". Lets an instant read back
+ * from the database compare equal to one generated here.
+ */
+export function toChurchIso(instant: number): string {
+  return `${new Date(instant + CHURCH_OFFSET_MS).toISOString().slice(0, 19)}${utcOffset}`;
+}
+
 /** Whole days since the epoch, counted on the church's calendar. */
 export function churchDay(instant: number): number {
   return Math.floor((instant + CHURCH_OFFSET_MS) / DAY_MS);

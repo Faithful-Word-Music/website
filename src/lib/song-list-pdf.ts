@@ -1,3 +1,5 @@
+import { songListContent } from "@/content/song-list";
+import { splitDateLabel } from "@/lib/service-time";
 import { monthSlug } from "@/lib/song-list";
 import { interLines } from "@/lib/text-measure";
 import type { Service, SongListMonth } from "@/types/song-list";
@@ -19,8 +21,6 @@ export const PDF_PAGE = {
 export const PDF_METRICS = {
   /** Heading, subtitle, their rule and the space under it. */
   headerPt: 53.5, // measured 52.6 in the rendered PDF
-  /** The footnote, its rule and the space above it. */
-  notePt: 25, // measured 24.2
   /** The site and contact line at the foot of every page, and the space above it. */
   footerPt: 14,
   /** A service's date line, its rule, and the air above its first song. */
@@ -99,14 +99,13 @@ export function splitColumns(
   return best;
 }
 
-/** Height the two columns have once the heading, footer (and any footnote) are placed. */
-export function columnSpace(month: SongListMonth): number {
+/** Height the two columns have once the heading and footer are placed. */
+export function columnSpace(): number {
   return (
     PDF_PAGE.height -
     PDF_PAGE.paddingY * 2 -
     PDF_METRICS.headerPt -
-    PDF_METRICS.footerPt -
-    (month.note ? PDF_METRICS.notePt : 0)
+    PDF_METRICS.footerPt
   );
 }
 
@@ -126,7 +125,7 @@ export interface PdfLayout {
  */
 export function layoutMonth(month: SongListMonth): PdfLayout {
   const services = month.services;
-  const available = columnSpace(month);
+  const available = columnSpace();
   // Clear air between services, so each reads as its own block: rows give
   // way to it, not the other way round.
   const gapPt = Math.ceil(services.length / 2) >= 7 ? 12 : 14;
@@ -159,4 +158,16 @@ export function monthPdfPath(title: string): string {
 export function pdfFileName(month: SongListMonth): string {
   const name = (month.heading ?? `${month.title} Song List`).replace(/[\\/:*?"<>|]+/g, "").trim();
   return `${name || "Song List"}.pdf`;
+}
+
+/**
+ * A service's heading in print: "Sunday, October 4" - or, for a special
+ * service, its own name in the weekday's place ("Missions Conference,
+ * October 16"). Shared by the PDF and the formatted spreadsheet export.
+ */
+export function printedServiceDate(service: Pick<Service, "dateLabel" | "serviceLabel">): string {
+  const { weekday, day } = splitDateLabel(service.dateLabel);
+  const usual = Object.values(songListContent.serviceMarkerLabels) as string[];
+  const special = service.serviceLabel !== null && !usual.includes(service.serviceLabel);
+  return weekday && day ? `${special ? service.serviceLabel : weekday}, ${day}` : service.dateLabel;
 }

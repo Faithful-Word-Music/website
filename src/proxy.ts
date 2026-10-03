@@ -7,8 +7,8 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * Runs before the account routes and the home page only - the rest of the
  * public site never passes through here (see the matcher below).
  *
- * - The signed-in pages (/dashboard, /availability, /profile, /account,
- *   /admin) need a signed-in person - anyone else is sent to /login and brought back
+ * - The signed-in pages (/dashboard, /service-planner, /availability,
+ *   /profile, /account, /admin) need a signed-in person - anyone else is sent to /login and brought back
  *   afterwards. WHAT a signed-in person may do is not decided here: every
  *   protected page and server action checks permissions itself on the server
  *   (src/lib/auth/session.ts).
@@ -24,6 +24,7 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
 
 const isAccountRoute = createRouteMatcher([
   "/dashboard(.*)",
+  "/service-planner(.*)",
   "/availability(.*)",
   "/profile(.*)",
   "/account(.*)",
@@ -66,6 +67,7 @@ export const config = {
   matcher: [
     "/",
     "/dashboard/:path*",
+    "/service-planner/:path*",
     "/availability/:path*",
     "/profile/:path*",
     "/account/:path*",
@@ -75,5 +77,7 @@ export const config = {
     "/api/account/:path*",
     // Sheet-music files: members-only ones are served after a session check.
     "/library/songs/:song/sheet-music/:file",
+    // One archived service: who planned and published it shows to planners only.
+    "/song-list/archive/services/:service",
   ],
 };

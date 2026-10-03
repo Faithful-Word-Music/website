@@ -54,7 +54,7 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
   return (
     <PageTransition>
       <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <BackLink fallback="/song-list" skipSongPages />
+        <BackLink fallback="/library" skipSongPages />
 
         <SectionHeading
           as="h1"

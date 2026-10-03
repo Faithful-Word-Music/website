@@ -8,8 +8,8 @@ import { withPermission, type ActionResult, type Viewer } from "@/lib/auth/sessi
 import { availabilityTarget, isEditable, PARTICIPANT_PERMISSION } from "@/lib/availability/access";
 import { planExceptionWrites, type AvailabilityChoice } from "@/lib/availability/effective";
 import { normalAvailabilitySchema, rangeSchema, serviceExceptionSchema } from "@/lib/availability/forms";
-import { loadSongListServices } from "@/lib/availability/load";
-import { findOccurrence, regularKeyFor, serviceOccurrences, type Occurrence } from "@/lib/availability/occurrences";
+import { loadPlannedServices } from "@/lib/availability/load";
+import { findOccurrence, serviceOccurrences, type Occurrence } from "@/lib/availability/occurrences";
 import { occurrencesInRange } from "@/lib/availability/range";
 import {
   deleteExceptions,
@@ -85,9 +85,9 @@ export async function setServiceAvailability(input: unknown): Promise<ActionResu
     const target = await resolveTarget(viewer, userId);
     if (!target.ok) return target;
 
-    // Special services come from the song list; a regular one never needs it.
-    const songList = regularKeyFor(date, slot) ? [] : await loadSongListServices();
-    const occurrence = findOccurrence(serviceOccurrences(date, date, songList), date, slot);
+    // Special services (and cancellations) come from the Service Planner.
+    const planned = await loadPlannedServices(viewer.env, date, date);
+    const occurrence = findOccurrence(serviceOccurrences(date, date, planned), date, slot);
     if (!occurrence) return { ok: false, error: messages.noService };
     if (!isEditable(occurrence, Date.now())) return { ok: false, error: messages.started };
 
@@ -108,7 +108,7 @@ export async function setRangeAvailability(input: unknown): Promise<ActionResult
     if (!target.ok) return target;
 
     const occurrences = occurrencesInRange(
-      serviceOccurrences(from, to, await loadSongListServices()),
+      serviceOccurrences(from, to, await loadPlannedServices(viewer.env, from, to)),
       from,
       to,
       Date.now(),

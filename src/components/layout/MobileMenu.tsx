@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { MobileSearchBar } from "@/components/search/CommandPalette";
 import { cn } from "@/components/ui/cn";
@@ -36,23 +36,10 @@ export function MobileMenu({
   /** The signed-in person's account section, when accounts are on. */
   account?: ReactNode;
 }) {
-  // Lock the page while the menu is open.
+  // Lock the page while the menu is open. (The header closes it once its
+  // links fit in the bar again - otherwise `nav-wide:hidden` would hide the
+  // overlay while the page stayed pinned and unscrollable.)
   useScrollLock(open);
-
-  /**
-   * Close if the viewport grows past the breakpoint. Without this, `lg:hidden`
-   * would hide the overlay while the body stayed pinned - the page would
-   * silently become unscrollable after a rotate or a resize.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const wide = window.matchMedia("(min-width: 1024px)");
-    function onChange() {
-      if (wide.matches) onClose();
-    }
-    wide.addEventListener("change", onChange);
-    return () => wide.removeEventListener("change", onChange);
-  }, [open, onClose]);
 
   return (
     <div
@@ -60,7 +47,7 @@ export function MobileMenu({
       inert={!open}
       className={cn(
         // Fixed to the viewport, starting below the 64px header bar.
-        "fixed inset-x-0 bottom-0 top-16 z-30 lg:hidden",
+        "fixed inset-x-0 bottom-0 top-16 z-30 nav-wide:hidden",
         // The menu scrolls itself if the list ever outgrows the screen;
         // overscroll-contain stops a flick chaining through to the page.
         "overflow-y-auto overscroll-contain bg-paper",

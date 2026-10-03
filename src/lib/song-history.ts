@@ -1,4 +1,4 @@
-import { churchYear } from "@/lib/service-time";
+import { churchDay, churchYear, dayOfWeek } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { DatedService, SongRecord } from "@/types/song-list";
 
@@ -8,16 +8,16 @@ import type { DatedService, SongRecord } from "@/types/song-list";
  * ---------------------------------------------------------------------------
  * WHERE HISTORY COMES FROM
  * ---------------------------------------------------------------------------
- * The spreadsheet keeps a rolling twelve months - each month's tab is reused
- * the following year. So the permanent record is the archive database, topped
- * up from the sheet (see syncArchive in src/lib/song-archive.ts). The two are combined here
- * with one rule, used identically when saving and when reading:
+ * The permanent record is the archive database, topped up nightly from the
+ * Service Planner's published services (see syncArchive in
+ * src/lib/song-archive.ts); its oldest rows came from the retired Google
+ * Sheet. The two are combined here with one rule, used identically when
+ * saving and when reading:
  *
  *   A service is FRESH for 30 days after it takes place. While fresh, the
- *   sheet's version wins, so corrections made after the fact are picked up.
- *   After that the stored version is FROZEN: the sheet can no longer change
- *   it. That protects last year's October from being overwritten while
- *   someone rewrites the October tab for this year.
+ *   planner's version wins, so corrections made after the fact are picked
+ *   up. After that the stored version is FROZEN: the planner can no longer
+ *   change it (and stops offering to). History settles, and stays settled.
  */
 
 export const FRESH_DAYS = 30;
@@ -27,13 +27,13 @@ export function serviceId(service: Pick<DatedService, "date" | "slot">): string 
   return `${service.date}|${service.slot}`;
 }
 
-/** Whether the sheet may still overwrite this service's stored copy. */
+/** Whether the planner may still change this service (and overwrite its stored copy). */
 export function isFresh(service: Pick<DatedService, "startsAt">, now: number): boolean {
   return Date.parse(service.startsAt) > now - FRESH_DAYS * 86_400_000;
 }
 
 /**
- * Combines stored services with the sheet's, following the freshness rule.
+ * Combines stored services with the planner's, following the freshness rule.
  * The result is sorted oldest first.
  */
 export function mergeServices(
@@ -214,12 +214,17 @@ export function songHint(
   plays: readonly string[] | undefined,
   serviceStartsAt: string,
   now: number,
+  options: { insert?: boolean } = {},
 ): SongHint {
   const start = Date.parse(serviceStartsAt);
+  // The week's insert is sung in each of the week's services on purpose:
+  // for it, "last sung" looks back past its own week.
+  const weekStart = options.insert ? churchDay(start) - dayOfWeek(serviceStartsAt.slice(0, 10)) : null;
   let previous: number | null = null;
 
   for (const play of plays ?? []) {
     const at = Date.parse(play);
+    if (weekStart !== null && churchDay(at) >= weekStart) continue;
     if (at < start && (previous === null || at > previous)) previous = at;
   }
 

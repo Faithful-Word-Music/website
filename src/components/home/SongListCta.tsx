@@ -10,7 +10,7 @@ import type { Service } from "@/types/song-list";
 
 /**
  * The song list is the primary function of the site, so it gets the most
- * visual weight on the home page. When the sheet can be read and a service is
+ * visual weight on the home page. When the schedule can be read and a service is
  * coming up, the next service and its songs sit beside the introduction;
  * otherwise it is just the introduction and the button.
  */

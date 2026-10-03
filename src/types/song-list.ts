@@ -1,9 +1,11 @@
 /**
  * Application-level shapes for the congregational song list.
  *
- * These types deliberately describe the SONG SCHEDULE, not a spreadsheet. The
- * presentation layer only ever sees these types, so the data could later come
- * from a database, a CMS or an internal API without touching the UI.
+ * These types deliberately describe the SONG SCHEDULE, not where it is kept.
+ * The schedule is built in the Service Planner and stored in the database
+ * (src/lib/service-planner/), and reaches every page through the schedule
+ * read layer (src/lib/schedule.ts) - the presentation layer only ever sees
+ * these types.
  */
 
 /** A single song in a service. */
@@ -11,20 +13,22 @@ export interface Song {
   /** Hymnal number, or null for songs printed without one (Psalms, choruses). */
   number: string | null;
   title: string;
-  /** Musical key as written in the sheet, e.g. "Ab", "C Dorian". */
+  /** Musical key chosen for this service, e.g. "Ab", "C Dorian". */
   key: string | null;
+  /** The week's insert (a Psalm or other song) rather than one of the service's own picks. */
+  insert?: boolean;
 }
 
-/** Morning or evening. The sheet writes one of these beside every date. */
+/** Morning or evening. Every service is one of these on its date. */
 export type ServiceSlot = "AM" | "PM";
 
 /** One service (one date and time) and the songs sung in it. */
 export interface Service {
-  /** Stable key for rendering. Derived from position in the sheet. */
+  /** Stable key: the service's anchor, "2026-09-06-am" (see serviceAnchor()). */
   id: string;
-  /** The date exactly as written in the sheet, e.g. "Sunday, September 6, 2026". */
+  /** The date written out, e.g. "Sunday, September 6, 2026". */
   dateLabel: string;
-  /** "Morning Service" / "Evening Service", or null when it cannot be told. */
+  /** "Morning Service" / "Evening Service", or a special service's own name ("Missions Conference"). */
   serviceLabel: string | null;
   slot: ServiceSlot | null;
   /** Calendar date in church time, "2026-09-06". null if the label has no readable date. */
@@ -33,37 +37,34 @@ export interface Service {
   startsAt: string | null;
   songs: Song[];
   /**
-   * Song slots not filled in yet - rows holding only "TBD" or a formula error
-   * such as "#N/A". Shown as "To be announced" on upcoming services; never
-   * counted as songs.
+   * Song places published but not filled in yet. Shown as "To be announced"
+   * on upcoming services; never counted as songs.
    */
   pendingSongs: number;
   /**
-   * Where those unfilled slots sit among the service's rows (0-based, songs
-   * and slots counted together), so a song already chosen for the third slot
+   * Where those unfilled places sit among the service's songs (0-based, songs
+   * and places counted together), so a song already chosen for the third place
    * shows third. Missing means "after the songs". Read through serviceSlots().
    */
   pendingPositions?: number[];
   /**
-   * Not in the sheet yet: a regular service on a date after the last one
-   * posted, shown so a month being planned still lists every service. Has no
-   * songs; never shared, printed or counted as history. See planMonth().
+   * Not published yet: a regular service whose songs are still being
+   * planned, shown so a month always lists every service. Has no songs;
+   * never shared, printed or counted as history. See buildScheduleMonths().
    */
   placeholder?: boolean;
 }
 
-/** One worksheet tab, normalized. */
+/** One calendar month of the schedule. */
 export interface SongListMonth {
-  /** The worksheet tab's real title, e.g. "September". Used as the UI label. */
+  /** The tab label, e.g. "September" ("January 2027" for another year). */
   title: string;
-  /** The in-sheet heading from row 1, e.g. "September Song List". */
+  /** The printed heading, e.g. "September Song List". */
   heading: string | null;
-  /** A footnote written in the sheet, e.g. "Songs and Keys are subject to change". */
-  note: string | null;
   services: Service[];
   /**
-   * Populated only when the sheet's layout could not be understood, so the page
-   * can still show the data as a plain table instead of showing nothing.
+   * Rows to show as a plain table when a month cannot be laid out as
+   * services. Only the retired spreadsheet ever produced these.
    */
   fallbackRows: string[][] | null;
 }
@@ -74,21 +75,25 @@ export interface DatedService {
   slot: ServiceSlot;
   startsAt: string;
   songs: Song[];
+  /** A special service's name ("Missions Conference"); absent for a regular service. */
+  label?: string | null;
+  /** "special" for a service outside the weekly pattern; absent or "regular" otherwise. */
+  kind?: "regular" | "special";
 }
 
 export type SongListErrorReason =
-  /** GOOGLE_SHEETS_API_KEY is not set in this environment. */
+  /** DATABASE_URL is not set in this environment. */
   | "not-configured"
-  /** Google Sheets could not be reached, or returned something unusable. */
+  /** The database could not be reached. */
   | "unavailable";
 
 export type SongListResult =
   | {
       ok: true;
-      /** Visible tabs only, in tab order: what the schedule shows. */
+      /** What the schedule shows: this month, then each later month with a published service. */
       months: SongListMonth[];
-      /** Every tab, hidden ones included: the raw material for song history. */
-      allMonths: SongListMonth[];
+      /** Every published service, past and future: the raw material for song history. */
+      published: DatedService[];
     }
   | { ok: false; reason: SongListErrorReason };
 

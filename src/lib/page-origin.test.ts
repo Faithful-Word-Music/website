@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { backLabel, backTarget, findOrigin, isSongPage, recordVisit } from "@/lib/page-origin";
+import { backLabel, backTarget, findOrigin, isSitePath, isSongPage, recordVisit } from "@/lib/page-origin";
 
 /** The history after visiting each page in turn. */
 const visit = (...pages: string[]) => pages.reduce<string[]>((history, page) => recordVisit(history, page), []);
@@ -83,5 +83,37 @@ describe("backTarget", () => {
 
   it("says just Back for a page without a name", () => {
     expect(backLabel("/request-access")).toBe("Back");
+  });
+});
+
+describe("origin-aware back links across the site", () => {
+  it("leads back to wherever the page was opened from", () => {
+    expect(findOrigin(visit("/service-planner", "/song-list/archive/services/2026-10-11-am"), "/song-list/archive/services/2026-10-11-am")).toBe(
+      "/service-planner",
+    );
+    expect(findOrigin(visit("/song-list", "/library/songs/a"), "/library/songs/a", { skipSongPages: true })).toBe("/song-list");
+    expect(findOrigin(visit("/library", "/library/songs/a"), "/library/songs/a", { skipSongPages: true })).toBe("/library");
+  });
+
+  it("names the planner's pages", () => {
+    expect(backLabel("/service-planner?through=2027-02")).toBe("Back to the Service Planner");
+    expect(backLabel("/service-planner/inserts")).toBe("Back to Inserts");
+    expect(backLabel("/service-planner/2026-10-11-am")).toBe("Back to the service");
+    expect(backLabel("/song-list/archive/services")).toBe("Back to service plans");
+  });
+});
+
+describe("never leaves the site", () => {
+  it("accepts only this site's own paths", () => {
+    expect(isSitePath("/song-list?q=grace")).toBe(true);
+    for (const outside of ["//evil.example", "/\\evil.example", "https://evil.example", "javascript:alert(1)", "evil", "/a b", "/\nx"]) {
+      expect(isSitePath(outside)).toBe(false);
+    }
+  });
+
+  it("skips a tampered history entry, and falls back instead of following one", () => {
+    expect(findOrigin(["/dashboard", "//evil.example", "/library/songs/a"], "/library/songs/a")).toBe("/dashboard");
+    expect(backTarget("//evil.example", "/song-list")).toEqual({ href: "/song-list", label: "Back to the song list" });
+    expect(backTarget("https://evil.example/x", "/library").href).toBe("/library");
   });
 });

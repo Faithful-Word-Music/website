@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useSyncExternalStore } from "react";
 
+import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { PAGE_HISTORY_KEY, backTarget, findOrigin, recordVisit } from "@/lib/page-origin";
@@ -55,9 +56,38 @@ export function PageHistoryTracker() {
 }
 
 /**
+ * Where "back" leads from this page, and what to call it: the page the
+ * visitor came from in this tab, or `fallback` when there is none (a link
+ * opened from outside, a bookmark, a typed address). The server can't know
+ * where someone came from, so it renders the fallback.
+ */
+export function useBackTarget(fallback: string, options: { skipSongPages?: boolean } = {}): { href: string; label: string } {
+  const pathname = usePagePath();
+  const raw = useSyncExternalStore(subscribe, readHistory, () => "[]");
+  return backTarget(findOrigin(parse(raw), pathname, options), fallback);
+}
+
+/** The same, as a button-styled link - for pages whose main way on is back (no access, not found). */
+export function BackButton({
+  fallback,
+  variant = "primary",
+  size = "md",
+}: {
+  fallback: string;
+  variant?: "primary" | "secondary";
+  size?: "md" | "lg";
+}) {
+  const { href, label } = useBackTarget(fallback);
+  return (
+    <Link href={href} className={buttonClasses(variant, size)}>
+      {label}
+    </Link>
+  );
+}
+
+/**
  * "← Back to …", leading to the page the visitor came from in this tab, or
- * to `fallback` (the page's natural parent) when there is none. The server
- * can't know where someone came from, so its HTML shows the fallback.
+ * to `fallback` (the page's natural parent) when there is none.
  */
 export function BackLink({
   fallback,
@@ -70,9 +100,7 @@ export function BackLink({
   skipSongPages?: boolean;
   className?: string;
 }) {
-  const pathname = usePagePath();
-  const raw = useSyncExternalStore(subscribe, readHistory, () => "[]");
-  const { href, label } = backTarget(findOrigin(parse(raw), pathname, { skipSongPages }), fallback);
+  const { href, label } = useBackTarget(fallback, { skipSongPages });
 
   return (
     <Link

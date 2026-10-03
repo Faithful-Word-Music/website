@@ -1,3 +1,4 @@
+import { BackButton } from "@/components/ui/BackLink";
 import { ButtonLink } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -16,9 +17,8 @@ export default function NotFound() {
           The page you were looking for has moved or never existed.
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <ButtonLink href="/" size="lg">
-            Back to Home
-          </ButtonLink>
+          {/* Back to the page that linked here; Home when the address came from outside. */}
+          <BackButton fallback="/" size="lg" />
           <ButtonLink href="/song-list" variant="secondary" size="lg">
             View Song List
           </ButtonLink>
