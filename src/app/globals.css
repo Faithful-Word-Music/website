@@ -395,6 +395,24 @@
   animation: none;
 }
 
+/* The loading screen (section 4) stays on top of a page arriving beneath it.
+   Unnamed, it would be flattened into the root snapshot, and the header,
+   footer and page - each drawn in this overlay - would show over it for the
+   length of the transition. Only its live image is shown, so its glow and
+   its fade carry on. */
+::view-transition-group(splash) {
+  animation: none;
+  z-index: 200;
+}
+
+::view-transition-old(splash) {
+  display: none;
+}
+
+::view-transition-new(splash) {
+  animation: none;
+}
+
 /* --- 2. Scroll reveal ----------------------------------------------------
    Applied by src/components/ui/Reveal.tsx to content below the fold. */
 .reveal {
@@ -523,8 +541,10 @@ html[data-packets] .packet-slot {
   display: none;
 }
 
+/* Named, so a page transition runs beneath it (see ::view-transition-group(splash)). */
 html[data-splash] .splash {
   display: flex;
+  view-transition-name: splash;
 }
 
 .splash[data-leaving] {

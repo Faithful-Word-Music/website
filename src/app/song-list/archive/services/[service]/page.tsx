@@ -15,7 +15,7 @@ import { scheduleEnv } from "@/lib/schedule";
 import { toArchive } from "@/lib/service-archive";
 import { serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
 import { namesFor } from "@/lib/service-planner/load";
-import { isLocked, parseAnchor } from "@/lib/service-planner/model";
+import { isInsert, isLocked, parseAnchor } from "@/lib/service-planner/model";
 import { getPlan, listPlanEvents, plannerConfigured } from "@/lib/service-planner/store";
 import { formatChurchTime, formatLongDate } from "@/lib/service-time";
 import { loadPast } from "@/lib/song-archive";
@@ -80,7 +80,7 @@ export default async function ArchivedServicePage(props: PageProps<"/song-list/a
               <span className="w-10 shrink-0 text-sm tabular-nums text-muted">{song.number ?? ""}</span>
               <span className="min-w-0 flex-1 text-lg text-ink">
                 <SongLink title={song.title} />
-                {song.insert ? (
+                {isInsert(song) ? (
                   <span className="ml-2 align-middle text-[0.7rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span>
                 ) : null}
               </span>

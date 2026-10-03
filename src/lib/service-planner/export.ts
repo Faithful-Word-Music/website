@@ -14,7 +14,7 @@ import { serviceAnchor } from "@/lib/site-search";
 import type { SongListMonth } from "@/types/song-list";
 
 import { churchTimeOf, serviceTitle } from "./format";
-import { emptyPositions, slotSongs, type PlanSlots } from "./model";
+import { emptyPositions, isInsert, slotSongs, type PlanSlots } from "./model";
 
 /** One service to export, from the planner or (before it existed) the archive. */
 export interface ExportService {
@@ -66,7 +66,7 @@ export function exportRows(services: readonly ExportService[]): RawRow[] {
                 number: song.number ?? "",
                 title: song.title,
                 key: song.key ?? "",
-                insert: song.insert ? "Yes" : "No",
+                insert: isInsert(song) ? "Yes" : "No",
                 special: service.special ? "Yes" : "No",
                 status: service.status,
               },

@@ -74,7 +74,7 @@ export const servicePlannerContent = {
     empty: "Empty",
     addSong: "Add song",
     chooseSong: "Choose a song",
-    replace: "Replace",
+    replace: "Change song",
     remove: "Remove",
     moveUp: "Move up",
     moveDown: "Move down",

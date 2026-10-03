@@ -126,6 +126,15 @@ export function takesWeekInsert(date: string, slot: ServiceSlot): boolean {
   return insertServices.some((service) => service.day === day && service.slot === slot);
 }
 
+/**
+ * Whether a song shows as an insert: marked as its service's insert, and
+ * without a hymnal number. A hymn from the hymnal is never an insert, even in
+ * the insert's place - the mark alone only says which place follows the week.
+ */
+export function isInsert(song: Pick<Song, "number" | "insert">): boolean {
+  return song.insert === true && song.number === null;
+}
+
 /** `count` empty places. */
 export function emptySlots(count: number = defaultSongs): PlanSlots {
   return Array.from({ length: Math.max(0, count) }, () => null);

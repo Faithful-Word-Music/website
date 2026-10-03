@@ -91,7 +91,8 @@ export async function GET(request: Request) {
   for (const [weekStart, services] of byWeek) {
     const songs = services.map((service) => serviceSlots(service)[insertPlace] ?? null);
     const first = songs[0];
-    if (services.length < 2 || !first || songs.some((song) => !song || songKey(song.title) !== songKey(first.title))) continue;
+    // A hymn from the hymnal is never an insert, even in the insert's place.
+    if (services.length < 2 || !first || first.number !== null || songs.some((song) => !song || songKey(song.title) !== songKey(first.title))) continue;
     weekInserts.set(weekStart, { weekStart, title: first.title, number: first.number, key: first.key });
   }
 

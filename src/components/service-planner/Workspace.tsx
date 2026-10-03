@@ -24,7 +24,7 @@ import {
   type PlanningSignal,
   type ServiceAvailability,
 } from "@/lib/service-planner/intelligence";
-import type { PlannerService, PlanSlots } from "@/lib/service-planner/model";
+import { isInsert, type PlannerService, type PlanSlots } from "@/lib/service-planner/model";
 import type { PlanEvent } from "@/lib/service-planner/store";
 import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time";
 import type { DatedService } from "@/types/song-list";
@@ -115,8 +115,9 @@ export function Workspace(props: WorkspaceProps) {
   };
   const choose = (index: number, song: ChosenSong) => {
     const next = [...slots];
-    // Replacing the insert keeps it the service's insert.
-    next[index] = { ...song, insert: slots[index]?.insert ?? false };
+    // Replacing the insert keeps it the service's insert - unless a hymn from
+    // the hymnal takes its place, which is never an insert.
+    next[index] = { ...song, insert: (slots[index]?.insert ?? false) && song.number === null };
     update(next);
     setPicker(null);
   };
@@ -203,10 +204,10 @@ export function Workspace(props: WorkspaceProps) {
                   // it is all one line.
                   className={cn(
                     "relative grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2.5 sm:flex sm:gap-4 sm:px-5",
-                    song?.insert && "bg-paper/40",
+                    song && isInsert(song) && "bg-paper/40",
                   )}
                 >
-                  {song?.insert ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
+                  {song && isInsert(song) ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
                   <span className="tnum w-6 shrink-0 text-center text-sm text-muted">{index + 1}</span>
 
                   {song ? (
@@ -217,7 +218,7 @@ export function Workspace(props: WorkspaceProps) {
                         </span>
                         <span className="min-w-0">
                           <SongLink title={song.title} className="text-[0.98rem] font-medium text-ink" />
-                          {song.insert ? (
+                          {isInsert(song) ? (
                             <span className="ml-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-gold-dark">
                               {ws.insert}
                             </span>
@@ -279,7 +280,8 @@ export function Workspace(props: WorkspaceProps) {
                         {song ? (
                           <>
                             <IconButton label={ws.replace} onClick={() => setPicker({ index, replacing: song.title })}>
-                              <path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13" />
+                              {/* The pencil of the admin editors (PencilIcon, OptionListEditor.tsx). */}
+                              <path d="M10.5 2.5l3 3L6 13H3v-3l7.5-7.5z" />
                             </IconButton>
                             <IconButton label={ws.remove} onClick={() => update(slots.map((item, at) => (at === index ? null : item)))}>
                               <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />

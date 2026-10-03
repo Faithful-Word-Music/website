@@ -6,6 +6,7 @@ import {
   diffSlots,
   emptySlots,
   followsWeek,
+  isInsert,
   isLocked,
   parseAnchor,
   placeInsert,
@@ -63,6 +64,13 @@ describe("weeks and inserts", () => {
     expect(slots.filter(Boolean)).toHaveLength(1);
     expect(startingSlots("2026-10-16", "PM", psalm120).filter(Boolean)).toHaveLength(0);
     expect(startingSlots("2026-10-14", "PM", null).filter(Boolean)).toHaveLength(0);
+  });
+
+  it("shows a song as an insert only when it has no hymnal number", () => {
+    expect(isInsert(song("Psalm 120", "D", true))).toBe(true);
+    expect(isInsert({ ...song("Amazing Grace", "G", true), number: "236" })).toBe(false);
+    expect(isInsert(song("Psalm 120", "D", false))).toBe(false);
+    expect(isInsert({ number: null })).toBe(false);
   });
 
   it("replaces an insert where it stands, even after it was moved", () => {

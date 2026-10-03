@@ -261,6 +261,7 @@ Special service (created) ─┘
 
 **Inserts** (`/service-planner/inserts`): one insert - a Psalm or other song - per week (Sunday to Saturday). It goes into the **third place** of that week's Sunday AM, Sunday PM and Wednesday PM (`siteConfig.servicePlanner`).
 - A service follows its week until its own insert is moved, replaced or removed; from then on the service's choice wins.
+- **A song is shown as an insert only when it has no hymnal number** (`isInsert` in `lib/service-planner/model.ts`). A hymn from the hymnal chosen for the insert's place is a regular song: no Insert tag in the planner, the archive or the exports.
 - Changing a week's insert updates its drafts and not-yet-started services straight away. Published services are never changed behind anyone's back: the week shows how many still have an older insert, with **Update them**.
 - The page lists only what needs planning: no week that has already begun (the week of Sep 27 is gone by its Monday), the month being planned, and the next month on the same rule as the work queue (a week before it starts, or **Start planning <month>** / **Not yet**). Once a later month is up, a fully planned month folds to one line, and goes once the month after it is planned too (`lib/service-planner/inserts.ts`).
 - The long-range insert plan is the Music Director's; everyone else sees an insert only as a song in a published service.
@@ -621,6 +622,7 @@ Neither is protection; members' pages still check on the server.
 - On iPhone and iPad the installed app opens straight onto a picture of it: launch screens for every current screen size, light and dark (`lib/launch-screens.ts`, drawn by `/app-launch/<theme>-<w>x<h>`). Android draws its own from the manifest.
 - It has to be up from the first frame, before React or Clerk load, and public pages are static. So `splashInitScript` in `lib/splash.ts` runs in `<head>`. It reads Clerk's `__client_uat` cookie, which holds a sign-in time or 0, and `sessionStorage` for "already shown here", then sets `data-splash` on `<html>`.
 - `components/app/Splash.tsx` is always in the page, hidden by CSS until that attribute appears, and takes it away. The styles are `.splash` in `globals.css`.
+- It is its own view-transition group (`view-transition-name: splash`), drawn above the header's. Without that, a page transition running while it is up (the Dashboard arriving) draws the header, footer and page over it for a moment.
 - The cookie only decides whether to show a loading screen, never what anyone may see. An 8-second failsafe takes it down if a script fails.
 
 **No service worker.** Chromium no longer needs one to install a site, and Safari never did. Offline use, caching and notifications are a later phase. Adding a service worker then doesn't change any of the above.

@@ -81,7 +81,8 @@ export function MobileMenu({
                       transitionDelay: open ? `${90 + index * 60}ms` : "0ms",
                     }}
                     className={cn(
-                      "flex items-center gap-4 py-5 font-display text-3xl",
+                      // About 60px a row: well over a finger's 44px, without filling the screen.
+                      "flex items-center gap-4 py-3.5 font-display text-2xl",
                       "transition-[opacity,transform] duration-300 ease-out",
                       open
                         ? "translate-y-0 opacity-100"
@@ -93,7 +94,7 @@ export function MobileMenu({
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "h-8 w-0.5 rounded-full",
+                        "h-7 w-0.5 rounded-full",
                         isActive(item.href) ? "bg-gold" : "bg-transparent",
                       )}
                     />
