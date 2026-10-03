@@ -541,6 +541,15 @@ html[data-packets] .packet-slot {
   display: none;
 }
 
+/* The page beneath does not scroll, so its scrollbar never shows beside (or,
+   on a phone, over) the screen as the page arrives. The scrollbar's width is
+   kept, so nothing shifts sideways when it comes back; that strip is the
+   page's own paper, like the screen. Only <html> - see use-scroll-lock.ts. */
+html[data-splash] {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
 /* Named, so a page transition runs beneath it (see ::view-transition-group(splash)). */
 html[data-splash] .splash {
   display: flex;

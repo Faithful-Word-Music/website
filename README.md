@@ -623,6 +623,7 @@ Neither is protection; members' pages still check on the server.
 - It has to be up from the first frame, before React or Clerk load, and public pages are static. So `splashInitScript` in `lib/splash.ts` runs in `<head>`. It reads Clerk's `__client_uat` cookie, which holds a sign-in time or 0, and `sessionStorage` for "already shown here", then sets `data-splash` on `<html>`.
 - `components/app/Splash.tsx` is always in the page, hidden by CSS until that attribute appears, and takes it away. The styles are `.splash` in `globals.css`.
 - It is its own view-transition group (`view-transition-name: splash`), drawn above the header's. Without that, a page transition running while it is up (the Dashboard arriving) draws the header, footer and page over it for a moment.
+- While it is up the page beneath does not scroll (`html[data-splash]` in `globals.css`), so the scrollbar never shows beside or over it; the scrollbar's width is kept, so nothing shifts when it returns.
 - The cookie only decides whether to show a loading screen, never what anyone may see. An 8-second failsafe takes it down if a script fails.
 
 **No service worker.** Chromium no longer needs one to install a site, and Safari never did. Offline use, caching and notifications are a later phase. Adding a service worker then doesn't change any of the above.
