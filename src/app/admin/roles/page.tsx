@@ -28,7 +28,7 @@ export default async function RolesPage() {
           </p>
         </SectionHeading>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
+        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
           {roles.map((role) => {
             const count = role.key === ADMIN_ROLE ? ALL_PERMISSIONS.length : role.permissions.length;
             const holders =

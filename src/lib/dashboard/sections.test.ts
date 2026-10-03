@@ -177,9 +177,9 @@ describe("newSheetMusic", () => {
   const indexWith = (target: SheetFile): SheetMusicIndex => ({ songs: [song([version(STANDARD, [target])])], types: TYPES });
   const songs = [{ title: "Like a River Glorious", number: "233" }];
 
-  it("lists songs whose files changed in the last two weeks", () => {
+  it("lists songs whose files changed in the last two weeks, with their numbers", () => {
     expect(newSheetMusic(songs, new Set(["like a river glorious"]), indexWith(recent), HYMNAL, () => true, NOW)).toEqual([
-      { title: "Like a River Glorious", slug: "like-a-river-glorious", changedAt: "2026-09-28T12:00:00Z", upcoming: true },
+      { title: "Like a River Glorious", number: "233", slug: "like-a-river-glorious", changedAt: "2026-09-28T12:00:00Z", upcoming: true },
     ]);
   });
 

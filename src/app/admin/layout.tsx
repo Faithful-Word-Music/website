@@ -58,7 +58,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         ) : null}
       </div>
       <div className="mt-4">
-        <AdminNav items={items} />
+        <AdminNav items={items} overflow="scroll" />
       </div>
       <div className="mt-8">{children}</div>
     </Container>

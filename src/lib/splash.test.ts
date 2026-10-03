@@ -6,6 +6,7 @@ import {
   MIN_VISIBLE_MS,
   readyToHide,
   SPLASH_ATTRIBUTE,
+  SPLASH_CONTINUE_KEY,
   SPLASH_SEEN_KEY,
   splashInitScript,
 } from "./splash";
@@ -36,14 +37,18 @@ function runScript({
   cookie,
   pathname = "/dashboard",
   seen = false,
+  handoff,
 }: {
   standalone?: boolean;
   cookie: string;
   pathname?: string;
   seen?: boolean;
+  /** A SPLASH_CONTINUE_KEY left by the page before. */
+  handoff?: number;
 }) {
   const attributes = new Map<string, string>();
   const storage = new Map<string, string>(seen ? [[SPLASH_SEEN_KEY, "1"]] : []);
+  if (handoff !== undefined) storage.set(SPLASH_CONTINUE_KEY, String(handoff));
   const window: { matchMedia: () => { matches: boolean }; __splashFailsafe?: number } = {
     matchMedia: () => ({ matches: standalone }),
   };
@@ -51,8 +56,12 @@ function runScript({
     cookie,
     documentElement: { setAttribute: (name: string, value: string) => attributes.set(name, value), removeAttribute: () => {} },
   };
-  const sessionStorage = { getItem: (key: string) => storage.get(key) ?? null, setItem: (k: string, v: string) => storage.set(k, v) };
-  new Function("window", "navigator", "document", "location", "sessionStorage", "performance", "setTimeout", splashInitScript)(
+  const sessionStorage = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (k: string, v: string) => storage.set(k, v),
+    removeItem: (k: string) => storage.delete(k),
+  };
+  new Function("window", "navigator", "document", "location", "sessionStorage", "performance", "setTimeout", "Date", splashInitScript)(
     window,
     {},
     document,
@@ -60,13 +69,22 @@ function runScript({
     sessionStorage,
     { now: () => 123.4 },
     () => 7,
+    { now: () => NOW },
   );
-  return { splash: attributes.get(SPLASH_ATTRIBUTE), failsafe: window.__splashFailsafe, seen: storage.has(SPLASH_SEEN_KEY) };
+  return {
+    splash: attributes.get(SPLASH_ATTRIBUTE),
+    failsafe: window.__splashFailsafe,
+    seen: storage.has(SPLASH_SEEN_KEY),
+    handoff: storage.get(SPLASH_CONTINUE_KEY),
+  };
 }
+
+/** Date.now() on the pretend page. */
+const NOW = 1_790_000_000_000;
 
 describe("splashInitScript on a page", () => {
   it("puts the screen up once per tab for a signed-in member, stamped with the time", () => {
-    expect(runScript({ cookie: "__client_uat=1759300000" })).toEqual({ splash: "123", failsafe: 7, seen: true });
+    expect(runScript({ cookie: "__client_uat=1759300000" })).toEqual({ splash: "123", failsafe: 7, seen: true, handoff: undefined });
     expect(runScript({ cookie: "__client_uat=1759300000", seen: true }).splash).toBeUndefined();
     expect(runScript({ cookie: "__client_uat=0" }).splash).toBeUndefined();
   });
@@ -75,6 +93,21 @@ describe("splashInitScript on a page", () => {
     expect(runScript({ standalone: true, cookie: "", pathname: "/login/sso-callback", seen: true }).splash).toBe("123");
     expect(runScript({ standalone: false, cookie: "", pathname: "/login/sso-callback" }).splash).toBeUndefined();
     expect(runScript({ standalone: true, cookie: "", pathname: "/login" }).splash).toBeUndefined();
+  });
+});
+
+describe("splashInitScript carrying on from the page before", () => {
+  it("keeps a fresh screen up from the first frame, counted from when it first went up", () => {
+    // Up 600ms ago on the page before; this page is 123.4ms old.
+    const result = runScript({ cookie: "__client_uat=1759300000", seen: true, handoff: NOW - 600 });
+    expect(result.splash).toBe(String(Math.round(123.4 - 600)));
+    expect(result.handoff).toBe(String(NOW - 600));
+  });
+
+  it("ignores and clears a stale handoff", () => {
+    const result = runScript({ cookie: "__client_uat=1759300000", seen: true, handoff: NOW - 60_000 });
+    expect(result.splash).toBeUndefined();
+    expect(result.handoff).toBeUndefined();
   });
 });
 
@@ -87,10 +120,12 @@ describe("isSignInCallback", () => {
 });
 
 describe("readyToHide", () => {
-  it("waits for the minimum time, any placeholder, and the next page", () => {
-    expect(readyToHide({ shownFor: MIN_VISIBLE_MS, held: false, waitingForPage: false })).toBe(true);
-    expect(readyToHide({ shownFor: MIN_VISIBLE_MS - 1, held: false, waitingForPage: false })).toBe(false);
-    expect(readyToHide({ shownFor: 5000, held: true, waitingForPage: false })).toBe(false);
-    expect(readyToHide({ shownFor: 5000, held: false, waitingForPage: true })).toBe(false);
+  it("waits for the minimum time, any placeholder, the fonts and the next page", () => {
+    const ready = { shownFor: MIN_VISIBLE_MS, held: false, fontsReady: true, waitingForPage: false };
+    expect(readyToHide(ready)).toBe(true);
+    expect(readyToHide({ ...ready, shownFor: MIN_VISIBLE_MS - 1 })).toBe(false);
+    expect(readyToHide({ ...ready, shownFor: 5000, held: true })).toBe(false);
+    expect(readyToHide({ ...ready, shownFor: 5000, fontsReady: false })).toBe(false);
+    expect(readyToHide({ ...ready, shownFor: 5000, waitingForPage: true })).toBe(false);
   });
 });

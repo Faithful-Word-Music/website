@@ -17,7 +17,7 @@ import { cn } from "@/components/ui/cn";
  */
 
 export function DashboardGrid({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("grid gap-4 md:grid-cols-2 xl:grid-cols-3", className)}>{children}</div>;
+  return <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3", className)}>{children}</div>;
 }
 
 /** Rows shown before "Show all". */

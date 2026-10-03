@@ -23,12 +23,17 @@ export function Footer() {
       className="mt-24 border-t border-line bg-surface app-login:mt-0 app-login:border-t-0 app-login:bg-transparent"
     >
       {/* Extra bottom padding from tablet width until the page gutter is wide
-          enough: otherwise the fixed "Back to top" button (48px, 32px from
-          the corner) sits on top of the right-hand "Log in!" link when the
-          page is scrolled to the end. On phones the row stacks to the left,
-          clear of the button; from 1440px the gutter itself clears it. */}
-      <Container size="wide" className="py-14 sm:max-[1439px]:pb-24 app-login:py-4">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 app-login:hidden">
+          enough, and only while the "Back to top" button is showing:
+          otherwise the fixed button (48px, 32px from the corner) sits on top
+          of the right-hand account link when the page is scrolled to the end.
+          On a page too short for the button, nothing moves. On phones the row
+          stacks to the left, clear of the button; from 1440px the gutter
+          itself clears it. */}
+      <Container
+        size="wide"
+        className="py-14 transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:max-[1439px]:back-to-top:pb-24 app-login:py-4"
+      >
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 app-login:hidden">
           {/* Identification */}
           <Reveal className="lg:pr-6">
             <p className="flex items-center gap-2.5 font-display text-lg text-ink">

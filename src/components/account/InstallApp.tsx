@@ -216,7 +216,7 @@ export function InstallAppCard({ className }: { className?: string }) {
                 setHiddenHere(true);
                 dismissCard();
               }}
-              className="min-h-11 text-sm text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
+              className="min-h-11 text-sm text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current"
             >
               {copy.dismiss}
             </button>

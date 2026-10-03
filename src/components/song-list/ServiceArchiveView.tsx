@@ -44,7 +44,7 @@ export function ServiceArchiveView({ services }: { services: ArchivedService[] }
 
   return (
     <div>
-      <form className="grid gap-3 rounded-card border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-6" role="search" onSubmit={(event) => event.preventDefault()}>
+      <form className="grid grid-cols-1 gap-3 rounded-card border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-6" role="search" onSubmit={(event) => event.preventDefault()}>
         <label className="lg:col-span-2">
           <span className="mb-1 block text-xs font-medium text-muted">{copy.filters.song}</span>
           <input
@@ -103,7 +103,7 @@ export function ServiceArchiveView({ services }: { services: ArchivedService[] }
       {matches.length === 0 ? (
         <p className="mt-8 text-center text-muted">{copy.noResults}</p>
       ) : (
-        <ul className="mt-6 grid gap-4 md:grid-cols-2">
+        <ul className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           {matches.slice(0, limit).map((service) => (
             <li key={service.anchor}>
               <ServiceSummary service={service} highlight={filter} />

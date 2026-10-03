@@ -7,32 +7,33 @@ import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
 import type { ServicePacket } from "@/lib/dashboard/coming-up";
+import { PACKETS_ATTRIBUTE, PACKETS_STORAGE_KEY } from "@/lib/service-packets";
 
 /**
  * "Sheet music for this service" on the song list's cards - the same button
  * (and PDF) the Dashboard's Coming up offers, for every published service.
  *
  * The song list is static and the same for everyone, so the signed-in
- * person's own sheet music is asked for once the page has loaded
- * (/api/account/sheet-music), once for the whole page. Visitors, and people
- * with no sheet music types assigned, see nothing here; for everyone else a
- * service with none of their sheet music says so, quietly.
+ * person's own sheet music cannot come with the page. It is remembered in
+ * this browser instead (src/lib/service-packets.ts): the last answer, with
+ * whose it is, is shown the moment the page renders - from before Clerk has
+ * even finished loading - while a fresh one is fetched once for the whole
+ * page (/api/account/sheet-music). The Dashboard hands over its own answer as
+ * well (ServicePacketsSeed), so the song list opened from it is complete at
+ * once. A stored answer for anyone else is never shown.
  *
- * So the buttons are there at once rather than after a round trip, the last
- * answer is kept for the tab (sessionStorage, with whose it is) and shown
- * straight away - from before Clerk has even finished loading - while a fresh
- * one is fetched. A stored answer for anyone else is never shown.
+ * Visitors, and people with no sheet music types assigned, see nothing here;
+ * for everyone else a service with none of their sheet music says so, quietly.
  */
 
-type Packets = { assigned: false } | { assigned: true; packets: Record<string, ServicePacket | null> };
+export type Packets = { assigned: false } | { assigned: true; packets: Record<string, ServicePacket | null> };
 type Stored = { userId: string; packets: Packets };
 
-const STORAGE_KEY = "fwm:service-packets";
 const CHANGED = "fwm:service-packets-changed";
 
 function readRaw(): string {
   try {
-    return sessionStorage.getItem(STORAGE_KEY) ?? "";
+    return localStorage.getItem(PACKETS_STORAGE_KEY) ?? "";
   } catch {
     return "";
   }
@@ -48,18 +49,27 @@ function parseStored(raw: string): Stored | null {
 }
 
 function writeStored(value: Stored | null) {
+  const raw = value ? JSON.stringify(value) : "";
+  if (readRaw() === raw) return;
   try {
-    if (value) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-    else sessionStorage.removeItem(STORAGE_KEY);
+    if (value) localStorage.setItem(PACKETS_STORAGE_KEY, raw);
+    else localStorage.removeItem(PACKETS_STORAGE_KEY);
   } catch {
-    // Storage blocked: nothing is remembered, and the buttons stay hidden.
+    // Storage blocked: nothing is remembered, and the buttons wait for the fetch.
   }
+  // Keep the <head> script's reserved space in step (see .packet-slot in globals.css).
+  document.documentElement.toggleAttribute(PACKETS_ATTRIBUTE, value?.packets.assigned === true);
   window.dispatchEvent(new Event(CHANGED));
 }
 
 function subscribe(onChange: () => void) {
   window.addEventListener(CHANGED, onChange);
-  return () => window.removeEventListener(CHANGED, onChange);
+  // Another tab (or the app) signed in, out or fetched.
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(CHANGED, onChange);
+    window.removeEventListener("storage", onChange);
+  };
 }
 
 function parse(data: unknown): Packets | null {
@@ -72,7 +82,18 @@ function parse(data: unknown): Packets | null {
   return null;
 }
 
+/** On the Dashboard: remembers the answer it has just worked out, for the song list. Renders nothing. */
+export function ServicePacketsSeed({ userId, packets }: { userId: string; packets: Packets }) {
+  useEffect(() => {
+    writeStored({ userId, packets });
+  }, [userId, packets]);
+  return null;
+}
+
 const PacketsContext = createContext<Packets | null>(null);
+
+/** For the placeholder's "5 songs · PDF" line: a typical service. */
+const PLACEHOLDER_SONGS = Array.from({ length: 5 }, () => ({ number: null, title: "", label: "" }));
 
 export function ServicePacketsProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, userId } = useAccount();
@@ -84,7 +105,7 @@ export function ServicePacketsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn || !userId) {
-      if (readRaw()) writeStored(null);
+      writeStored(null);
       return;
     }
     const controller = new AbortController();
@@ -107,7 +128,13 @@ export function ServicePacketsProvider({ children }: { children: ReactNode }) {
   return <PacketsContext.Provider value={packets}>{children}</PacketsContext.Provider>;
 }
 
-/** One card's sheet music: the button, a quiet "none" line, or nothing (visitors, no types, still loading). */
+/**
+ * One card's sheet music: the button, a quiet "none" line, or nothing
+ * (visitors, no types). While the answer is not known yet it is a
+ * .packet-slot: an invisible copy of the button, so it takes exactly the
+ * button's height at this width - shown only when this browser expects a
+ * button (globals.css), so the card does not grow when it arrives.
+ */
 export function ServicePacketSlot({
   serviceId,
   label,
@@ -119,7 +146,14 @@ export function ServicePacketSlot({
   className?: string;
 }) {
   const packets = useContext(PacketsContext);
-  if (!packets || !packets.assigned || !(serviceId in packets.packets)) return null;
+  if (!packets) {
+    return (
+      <div aria-hidden="true" className={cn("packet-slot invisible mt-auto pt-5", className)}>
+        <ServiceSheetMusic href="#" songs={PLACEHOLDER_SONGS} showLabels={false} label={label} />
+      </div>
+    );
+  }
+  if (!packets.assigned || !(serviceId in packets.packets)) return null;
   const packet = packets.packets[serviceId];
 
   return (

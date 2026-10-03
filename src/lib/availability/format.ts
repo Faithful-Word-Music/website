@@ -10,6 +10,7 @@ import { siteConfig } from "@/config/site";
 import { availabilityContent } from "@/content/availability";
 import type { ServiceAvailability } from "@/lib/auth/profile-options";
 import { SERVICE_AVAILABILITY } from "@/lib/auth/profile-options";
+import { plural } from "@/lib/plural";
 import { formatChurchTime } from "@/lib/service-time";
 
 import type { BoardView } from "./board";
@@ -65,7 +66,7 @@ export function normalServicesLabel(normal: readonly ServiceAvailability[]): str
 
 /** "1 change" / "3 changes". */
 export function changeCount(count: number): string {
-  return (count === 1 ? copy.changeCount[0] : copy.changeCount[1]).replace("{count}", String(count));
+  return plural(copy.changeCount, count);
 }
 
 /** The /availability address for a month, view and (for leaders) the person being managed. */

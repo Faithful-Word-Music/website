@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { serviceOccurrences } from "@/lib/availability/occurrences";
 import type { StoredPlan } from "@/lib/service-planner/model";
 
-import { buildScheduleMonths, monthTitle, planToDated, visibleMonths } from "./schedule-months";
+import { buildScheduleMonths, monthTitle, plannedInserts, planToDated, visibleMonths } from "./schedule-months";
 
 const song = (title: string, insert = false) => ({ title, number: null, key: "G", insert });
 
@@ -102,5 +102,30 @@ describe("planToDated", () => {
       kind: "special",
       label: "Missions Conference",
     });
+  });
+});
+
+describe("plannedInserts", () => {
+  const weeks = [{ weekStart: "2026-10-18", title: "Psalm 19:7-10", number: null, key: "Eb" }];
+
+  it("gives a service the week's insert", () => {
+    const insertFor = plannedInserts(weeks, []);
+    expect(insertFor("2026-10-18", "AM")).toEqual({ title: "Psalm 19:7-10", number: null, key: "Eb", insert: true });
+    expect(insertFor("2026-10-21", "PM")).toMatchObject({ title: "Psalm 19:7-10" });
+    expect(insertFor("2026-10-25", "AM")).toBeNull(); // no insert planned that week
+  });
+
+  it("leaves out a service whose draft has an insert of its own", () => {
+    const insertFor = plannedInserts(weeks, [{ date: "2026-10-18", slot: "PM", insertMode: "custom" }]);
+    expect(insertFor("2026-10-18", "PM")).toBeNull();
+    expect(insertFor("2026-10-18", "AM")).not.toBeNull();
+  });
+
+  it("puts it on the song list's placeholders", () => {
+    const [october] = buildScheduleMonths({ published: [], expected, now, plannedInsert: plannedInserts(weeks, []) });
+    const sunday = october.services.find((item) => item.id === "2026-10-18-am")!;
+    expect(sunday.placeholder).toBe(true);
+    expect(sunday.plannedInsert?.title).toBe("Psalm 19:7-10");
+    expect(october.services.find((item) => item.id === "2026-10-25-am")!.plannedInsert).toBeUndefined();
   });
 });

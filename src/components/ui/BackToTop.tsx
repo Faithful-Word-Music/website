@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { cn } from "./cn";
 
@@ -26,6 +26,14 @@ const isScrolledDown = () => window.scrollY > window.innerHeight;
 
 export function BackToTop({ label = "Back to top" }: { label?: string }) {
   const visible = useSyncExternalStore(subscribe, isScrolledDown, () => false);
+
+  // Lets the footer make room for the button, only while it shows (the
+  // back-to-top variant in globals.css).
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-back-to-top", visible);
+    return () => root.removeAttribute("data-back-to-top");
+  }, [visible]);
 
   function toTop() {
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;

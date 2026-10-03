@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createSong } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
-import { Dialog } from "@/components/availability/Dialog";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Modal } from "@/components/ui/Modal";
 import { servicePlannerContent } from "@/content/service-planner";
 import { siteConfig } from "@/config/site";
 import type { ActionResult } from "@/lib/auth/session";
@@ -70,9 +70,11 @@ export function SongPicker({
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  // After the dialog opens (showModal moves focus to its first control), straight into the search box.
+  // Straight into the search box once the dialog has opened (and back from
+  // adding a song) - with a mouse and keyboard. On a touch screen that would
+  // throw up the keyboard over the suggestions before anyone asked for it.
   useEffect(() => {
-    if (!adding) searchRef.current?.focus();
+    if (!adding && window.matchMedia("(pointer: fine)").matches) searchRef.current?.focus({ preventScroll: true });
   }, [adding]);
 
   const results = useMemo(() => {
@@ -94,7 +96,7 @@ export function SongPicker({
   }, [candidates, query, serviceStartsAt]);
 
   return (
-    <Dialog title={adding ? copy.newSong.title : title} closeLabel={copy.picker.close} onClose={onClose}>
+    <Modal title={adding ? copy.newSong.title : title} closeLabel={copy.picker.close} onClose={onClose}>
       {adding ? (
         <NewSongForm
           initialTitle={/^\s*#?\d/.test(query) ? "" : query.trim()}
@@ -177,7 +179,7 @@ export function SongPicker({
           ) : null}
         </>
       )}
-    </Dialog>
+    </Modal>
   );
 }
 
@@ -213,7 +215,7 @@ function NewSongForm({
     >
       <p className="text-sm text-muted">{copy.newSong.lead}</p>
       <TextField id="new-song-title" label={copy.newSong.songTitle} value={title} maxLength={200} onChange={setTitle} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
           id="new-song-number"
           label={copy.newSong.number}

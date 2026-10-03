@@ -23,12 +23,12 @@ export function CardGrid({
   const placements = placeCards(
     services.map((service) => ({
       full: !service.placeholder,
-      rows: service.songs.length + service.pendingSongs,
+      rows: service.placeholder ? (service.plannedInsert ? 1 : 0) : service.songs.length + service.pendingSongs,
     })),
   );
 
   return (
-    <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
       {services.map((service, index) => {
         const { column, row, span } = placements[index];
         return (

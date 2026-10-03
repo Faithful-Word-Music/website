@@ -170,7 +170,7 @@ export function Workspace(props: WorkspaceProps) {
         </Pill>
       </header>
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_21rem]">
+      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0">
           {locked ? <Notice className="mb-6">{ws.locked}</Notice> : null}
           {status === "cancelled" ? <Notice className="mb-6">{ws.cancelledNotice}</Notice> : null}
@@ -198,7 +198,13 @@ export function Workspace(props: WorkspaceProps) {
                 <li
                   key={song ? `${song.title}-${index}` : `empty-${index}`}
                   data-flip={song ? `song-${song.title}` : `empty-${index}`}
-                  className={cn("relative flex items-center gap-3 px-3 py-2.5 sm:gap-4 sm:px-5", song?.insert && "bg-paper/40")}
+                  // On a phone a song's key and buttons take a second line
+                  // under its title, so the title keeps the width; from `sm`
+                  // it is all one line.
+                  className={cn(
+                    "relative grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2.5 sm:flex sm:gap-4 sm:px-5",
+                    song?.insert && "bg-paper/40",
+                  )}
                 >
                   {song?.insert ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
                   <span className="tnum w-6 shrink-0 text-center text-sm text-muted">{index + 1}</span>
@@ -237,48 +243,56 @@ export function Workspace(props: WorkspaceProps) {
                     <span className="min-w-0 flex-1 py-2.5 text-[0.95rem] italic text-muted">{ws.empty}</span>
                   )}
 
-                  {song ? (
-                    <>
-                      <label htmlFor={`key-${index}`} className="sr-only">
-                        {ws.keyFor.replace("{title}", song.title)}
-                      </label>
-                      <input
-                        id={`key-${index}`}
-                        list="planner-keys"
-                        value={song.key ?? ""}
-                        disabled={!editable}
-                        placeholder={ws.key}
-                        autoComplete="off"
-                        onChange={(event) => setKey(index, event.target.value)}
-                        className="tnum h-9 w-16 shrink-0 rounded-md border border-line bg-surface px-2 text-center text-sm font-medium text-ink transition-colors placeholder:text-muted hover:border-muted/50 disabled:opacity-70"
-                      />
-                    </>
-                  ) : null}
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 sm:contents",
+                      // Under the title, from where the title starts.
+                      song && "col-span-2 col-start-2 justify-between pl-[2.875rem]",
+                    )}
+                  >
+                    {song ? (
+                      <>
+                        <label htmlFor={`key-${index}`} className="sr-only">
+                          {ws.keyFor.replace("{title}", song.title)}
+                        </label>
+                        <input
+                          id={`key-${index}`}
+                          list="planner-keys"
+                          value={song.key ?? ""}
+                          disabled={!editable}
+                          placeholder={ws.key}
+                          autoComplete="off"
+                          onChange={(event) => setKey(index, event.target.value)}
+                          className="tnum h-9 w-16 shrink-0 rounded-md border border-line bg-surface px-2 text-center text-sm font-medium text-ink transition-colors placeholder:text-muted hover:border-muted/50 disabled:opacity-70"
+                        />
+                      </>
+                    ) : null}
 
-                  {editable ? (
-                    <div className="flex shrink-0 items-center">
-                      <IconButton label={ws.moveUp} disabled={index === 0} onClick={() => move(index, -1)}>
-                        <path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7" />
-                      </IconButton>
-                      <IconButton label={ws.moveDown} disabled={index === slots.length - 1} onClick={() => move(index, 1)}>
-                        <path d="M8 3.5v9M4.5 9 8 12.5 11.5 9" />
-                      </IconButton>
-                      {song ? (
-                        <>
-                          <IconButton label={ws.replace} onClick={() => setPicker({ index, replacing: song.title })}>
-                            <path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13" />
-                          </IconButton>
-                          <IconButton label={ws.remove} onClick={() => update(slots.map((item, at) => (at === index ? null : item)))}>
-                            <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
-                          </IconButton>
-                        </>
-                      ) : (
-                        <IconButton label={ws.removePlace} onClick={() => update(slots.filter((_, at) => at !== index))}>
-                          <path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8.5h5l.5-8.5" />
+                    {editable ? (
+                      <div className="flex shrink-0 items-center">
+                        <IconButton label={ws.moveUp} disabled={index === 0} onClick={() => move(index, -1)}>
+                          <path d="M8 12.5v-9M4.5 7 8 3.5 11.5 7" />
                         </IconButton>
-                      )}
-                    </div>
-                  ) : null}
+                        <IconButton label={ws.moveDown} disabled={index === slots.length - 1} onClick={() => move(index, 1)}>
+                          <path d="M8 3.5v9M4.5 9 8 12.5 11.5 9" />
+                        </IconButton>
+                        {song ? (
+                          <>
+                            <IconButton label={ws.replace} onClick={() => setPicker({ index, replacing: song.title })}>
+                              <path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13" />
+                            </IconButton>
+                            <IconButton label={ws.remove} onClick={() => update(slots.map((item, at) => (at === index ? null : item)))}>
+                              <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                            </IconButton>
+                          </>
+                        ) : (
+                          <IconButton label={ws.removePlace} onClick={() => update(slots.filter((_, at) => at !== index))}>
+                            <path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8.5h5l.5-8.5" />
+                          </IconButton>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ol>
@@ -305,7 +319,8 @@ export function Workspace(props: WorkspaceProps) {
           {editable ? (
             <div className="sticky bottom-4 z-10 mt-6">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-card border border-line bg-surface px-4 py-3 shadow-lift sm:px-5">
-                <div className="min-w-0 flex-1 text-sm">
+                {/* Its own line on a phone, so it is never squeezed behind the buttons. */}
+                <div className="min-w-0 basis-full text-sm sm:basis-auto sm:flex-1">
                   {result ? (
                     <ActionMessage result={result} />
                   ) : dirty ? (
@@ -319,7 +334,7 @@ export function Workspace(props: WorkspaceProps) {
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex w-full gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
                   {status === "published" ? (
                     <Button type="button" onClick={() => save(false)} disabled={pending || !dirty}>
                       {ws.saveChanges}

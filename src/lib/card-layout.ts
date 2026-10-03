@@ -15,7 +15,7 @@
 export interface CardSlot {
   /** A full card (songs or slots), rather than a short placeholder. */
   full: boolean;
-  /** Song rows on the card, which sets its height. */
+  /** Song rows on the card, which sets its height. A placeholder's planned insert is one. */
   rows: number;
 }
 
@@ -26,12 +26,19 @@ export interface CardPlacement {
   span: number;
 }
 
-/**
- * How many placeholders fit beside a full card: its header plus ~50px a song
- * row, against ~105px a placeholder, gaps included.
- */
+/** A full card's rough height: its header plus ~50px a song row. */
+function fullHeight(rows: number): number {
+  return 170 + 50 * Math.max(rows, 1);
+}
+
+/** A placeholder's, gap included: ~125px, and ~50px more for a planned insert. */
+function placeholderHeight(rows: number): number {
+  return 125 + 50 * rows;
+}
+
+/** How many plain placeholders (no planned insert) fit beside a full card. */
 export function stackSize(rows: number): number {
-  return Math.max(1, Math.floor((170 + 50 * Math.max(rows, 1)) / 125));
+  return Math.max(1, Math.floor(fullHeight(rows) / placeholderHeight(0)));
 }
 
 export function placeCards(cards: CardSlot[]): CardPlacement[] {
@@ -58,13 +65,16 @@ export function placeCards(cards: CardSlot[]): CardPlacement[] {
     }
 
     // A full card and a placeholder: the placeholder, and those right after
-    // it, stack beside the full card.
+    // it, stack beside the full card - as many as its height holds.
     const fullIndex = left.full ? index : index + 1;
     const fullColumn = left.full ? 1 : 2;
-    const stack = [left.full ? index + 1 : index];
+    const first = left.full ? index + 1 : index;
+    const stack = [first];
+    const room = fullHeight(cards[fullIndex].rows);
+    let used = placeholderHeight(cards[first].rows);
     let next = index + 2;
-    const capacity = stackSize(cards[fullIndex].rows);
-    while (stack.length < capacity && next < cards.length && !cards[next].full) {
+    while (next < cards.length && !cards[next].full && used + placeholderHeight(cards[next].rows) <= room) {
+      used += placeholderHeight(cards[next].rows);
       stack.push(next);
       next += 1;
     }

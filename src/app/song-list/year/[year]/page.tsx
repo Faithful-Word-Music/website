@@ -6,7 +6,6 @@ import {
   MostSung,
   KeyChart,
   MonthChart,
-  plural,
   RecapFacts,
   RecapLead,
 } from "@/components/song-list/YearRecapView";
@@ -17,6 +16,7 @@ import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
+import { plural } from "@/lib/plural";
 import { getYearRecapData } from "@/lib/song-archive";
 
 const { yearRecap: copy } = songListContent;
@@ -100,7 +100,7 @@ export default async function YearRecapPage({ params }: PageProps<"/song-list/ye
               <MostSung songs={data.recap.topSongs} />
             </div>
 
-            <div className="mt-8 grid gap-5 lg:grid-cols-[3fr_2fr] lg:gap-6">
+            <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-[3fr_2fr] lg:gap-6">
               <MonthChart months={data.recap.months} busiest={data.recap.busiestMonths} />
               <KeyChart keys={data.recap.keys} />
             </div>

@@ -11,6 +11,7 @@ import {
   isSignInCallback,
   readyToHide,
   SPLASH_ATTRIBUTE,
+  SPLASH_CONTINUE_KEY,
   SPLASH_FAILSAFE_MS,
   SPLASH_HOLD_ATTRIBUTE,
   SPLASH_SHOW_EVENT,
@@ -33,8 +34,27 @@ const RECHECK_MS = 100;
  * - First load: the <head> script put it up. Once React has taken over, it
  *   holds until it has been seen and the page has arrived, then fades away.
  * - showSplash() (after signing in, in the app), or back from signing in with
- *   Google: it stays until a page beyond the login pages has arrived.
+ *   Google: it stays until a page beyond the login pages has arrived - on
+ *   this page, or (through the handoff in sessionStorage) the next one.
+ *
+ * Asked to show while it is already up, it carries on as it is; asked while
+ * fading, it simply stops fading. It never starts over: going off and coming
+ * back on is exactly what it must not do.
  */
+
+function writeHandoff(since: number | null) {
+  try {
+    if (since === null) sessionStorage.removeItem(SPLASH_CONTINUE_KEY);
+    else sessionStorage.setItem(SPLASH_CONTINUE_KEY, String(Math.round(Date.now() - (performance.now() - since))));
+  } catch {
+    // Storage blocked: a full page load just starts its own screen.
+  }
+}
+
+function fontsReady(): boolean {
+  return !document.fonts || document.fonts.status === "loaded";
+}
+
 export function Splash() {
   const ref = useRef<HTMLDivElement>(null);
   const path = usePagePath();
@@ -50,6 +70,8 @@ export function Splash() {
     let recheck = 0;
     let fade = 0;
     let failsafe = 0;
+    /** When the screen last went up - kept while it fades, in case it is asked back. */
+    let lastSince = 0;
 
     function clearTimers() {
       window.clearTimeout(recheck);
@@ -60,6 +82,7 @@ export function Splash() {
     function hide() {
       shown.current = null;
       clearTimers();
+      writeHandoff(null);
       splash!.setAttribute("data-leaving", "");
       fade = window.setTimeout(() => {
         html.removeAttribute(SPLASH_ATTRIBUTE);
@@ -75,6 +98,7 @@ export function Splash() {
       const ready = readyToHide({
         shownFor,
         held: document.querySelector(`[${SPLASH_HOLD_ATTRIBUTE}]`) !== null,
+        fontsReady: fontsReady(),
         waitingForPage: current.from !== null && (pathRef.current === current.from || isOpenInApp(pathRef.current)),
       });
       if (ready) hide();
@@ -82,10 +106,21 @@ export function Splash() {
     };
 
     function show(since: number, from: string | null) {
+      // Already up: the same screen carries on, now (also) waiting for `from` to be left.
+      if (shown.current) {
+        shown.current = { since: shown.current.since, from: from ?? shown.current.from };
+        if (from !== null) writeHandoff(shown.current.since);
+        check.current();
+        return;
+      }
+      // Fading: it stops fading, still counted from when it first went up.
+      if (splash!.hasAttribute("data-leaving") && html.hasAttribute(SPLASH_ATTRIBUTE)) since = lastSince;
       clearTimers();
       splash!.removeAttribute("data-leaving");
       html.setAttribute(SPLASH_ATTRIBUTE, String(Math.round(since)));
       shown.current = { since, from };
+      lastSince = since;
+      if (from !== null) writeHandoff(since);
       failsafe = window.setTimeout(hide, Math.max(0, SPLASH_FAILSAFE_MS - (performance.now() - since)));
       check.current();
     }
@@ -102,6 +137,8 @@ export function Splash() {
 
     const onShow = () => show(performance.now(), pathRef.current);
     window.addEventListener(SPLASH_SHOW_EVENT, onShow);
+    // The fonts arriving may be the last thing it was waiting for.
+    document.fonts?.ready.then(() => check.current());
     return () => {
       window.removeEventListener(SPLASH_SHOW_EVENT, onShow);
       clearTimers();
@@ -116,12 +153,12 @@ export function Splash() {
 
   return (
     <div ref={ref} aria-hidden="true" className="splash fixed inset-0 z-[100] flex-col items-center justify-center bg-paper">
-      <span className="splash-mark block">
+      <span className="block">
         <span className="splash-glow block rounded-[21px]">
           <Logo size={96} className="block" />
         </span>
       </span>
-      <p className="splash-name mt-7 font-display text-3xl tracking-tight text-ink">{siteConfig.name}</p>
+      <p className="mt-7 font-display text-3xl tracking-tight text-ink">{siteConfig.name}</p>
     </div>
   );
 }

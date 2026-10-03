@@ -8,6 +8,7 @@ import { dashboardContent } from "@/content/dashboard";
 import type { NewSheetSong } from "@/lib/dashboard/new-sheet-music";
 import type { BrushUpSong, QuarterGlance as Glance } from "@/lib/dashboard/repertoire";
 import type { SheetGap, SongSheetGaps } from "@/lib/dashboard/sheet-gaps";
+import { plural } from "@/lib/plural";
 import { formatAgo, formatLongDate, formatShortDate } from "@/lib/service-time";
 import { songPath } from "@/lib/song-list";
 
@@ -118,30 +119,29 @@ export function NewSheetMusic({ songs, now, className }: { songs: NewSheetSong[]
 /** One line about the quarter, for people who see the statistics. */
 export function QuarterGlance({ glance, className }: { glance: Glance; className?: string }) {
   const { quarter } = copy;
-  const counted = (forms: readonly [string, string], count: number) =>
-    (count === 1 ? forms[0] : forms[1]).replace("{count}", String(count));
 
   return (
     <Card
       barline
-      className={cn("flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between", className)}
+      className={cn("flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6", className)}
     >
-      <p className="text-sm text-ink">
-        <span className="mr-3 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
+      <div className="min-w-0">
+        <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
           {(glance.current ? quarter.titleCurrent : quarter.titlePrevious).replace("{label}", glance.label)}
-        </span>
-        {counted(quarter.services, glance.services)} · {counted(quarter.songs, glance.differentSongs)}
+        </p>
+        <p className="mt-1.5 text-sm text-ink">
+          {plural(quarter.services, glance.services)} · {plural(quarter.songs, glance.differentSongs)}
+        </p>
         {glance.mostSung ? (
-          <>
-            {" · "}
+          <p className="mt-0.5 text-sm text-muted">
             {quarter.mostSung.split("{title}")[0]}
-            <Link href={songPath(glance.mostSung.slug)} className={songLinkClasses}>
+            <Link href={songPath(glance.mostSung.slug)} className={cn(songLinkClasses, "text-ink")}>
               {glance.mostSung.title}
             </Link>
             {quarter.mostSung.split("{title}")[1].replace("{count}", String(glance.mostSung.count))}
-          </>
+          </p>
         ) : null}
-      </p>
+      </div>
       <Link
         href={`/song-list/year/${glance.quarter.year}`}
         className="group inline-flex shrink-0 items-center gap-1 text-sm text-muted transition-colors hover:text-ink"

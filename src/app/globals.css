@@ -28,6 +28,15 @@
   }
 }
 
+/* While the floating "Back to top" button is showing (BackToTop marks <html>
+   with data-back-to-top) - and not stepped aside for the song list's share
+   bar. The footer makes room for it only then. */
+@custom-variant back-to-top {
+  :where(:root[data-back-to-top]:not([data-share-bar])) & {
+    @slot;
+  }
+}
+
 @media (display-mode: standalone) {
   /* No rubber-band bounce: the screen sits still. */
   html:has([data-app-login]) {
@@ -334,6 +343,26 @@
     380ms cubic-bezier(0.22, 1, 0.36, 1) both page-lift;
 }
 
+/* A month joining or leaving a planner list ("Start planning" / "Not yet",
+   src/components/service-planner/MonthTransition.tsx): the same rhythm as a
+   page, on a smaller stage. What sits below slides to its new place. */
+::view-transition-old(.month-exit) {
+  animation:
+    150ms ease-in both page-fade reverse,
+    150ms ease-in both page-lift reverse;
+}
+
+::view-transition-new(.month-enter) {
+  animation:
+    220ms ease-out 120ms both page-fade,
+    380ms cubic-bezier(0.22, 1, 0.36, 1) both page-lift;
+}
+
+::view-transition-group(.month-move) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 @keyframes page-fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -419,6 +448,19 @@ html.motion-ready .reveal {
   box-shadow: var(--shadow-card-next);
 }
 
+/* A song-list card's "Sheet music for this service" while the person's
+   answer is still on its way (ServicePackets.tsx, src/lib/service-packets.ts):
+   an invisible copy of the button. Nothing for visitors; for someone this
+   browser expects a button for, its exact space, so the card never grows
+   when the real one arrives. */
+.packet-slot {
+  display: none;
+}
+
+html[data-packets] .packet-slot {
+  display: block;
+}
+
 /* --- 3. Content that appears on request ---------------------------------
    Song-list cards and archive rows that come into view because the visitor
    searched, filtered or switched month fade up briefly instead of snapping
@@ -473,8 +515,10 @@ html.motion-ready .reveal {
 /* --- 4. The loading screen ----------------------------------------------
    Signed-in members' first load in a tab or app launch (src/lib/splash.ts,
    src/components/app/Splash.tsx). Hidden unless the <head> script has put
-   data-splash on <html>. The mark settles in, the name follows, and the
-   whole screen fades away once the page is ready. */
+   data-splash on <html>. Complete from its first frame - the mark and the
+   name never fade or scale in, so it never reads as a blank screen first, and
+   a page that re-renders it cannot make it blink - and the whole screen
+   fades away once the page is ready. */
 .splash {
   display: none;
 }
@@ -488,19 +532,11 @@ html[data-splash] .splash {
   transition: opacity 400ms ease;
 }
 
-.splash-mark {
-  animation: splash-mark 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.splash-name {
-  animation: enter-fade-up 500ms cubic-bezier(0.22, 1, 0.36, 1) 250ms both;
-}
-
 /* While it is up, a soft gold glow breathes around the mark: loading. One
-   full pulse fits the screen's minimum time (MIN_VISIBLE_MS in Splash.tsx);
-   keep the two in step. */
+   full pulse fits the screen's minimum time (MIN_VISIBLE_MS in splash.ts);
+   keep the two in step. It starts from rest, so it begins invisibly. */
 .splash-glow {
-  animation: splash-glow 1.6s ease-in-out 300ms infinite;
+  animation: splash-glow 2s ease-in-out infinite;
 }
 
 @keyframes splash-glow {
@@ -510,17 +546,6 @@ html[data-splash] .splash {
   }
   50% {
     box-shadow: 0 0 36px 6px color-mix(in srgb, var(--color-gold) 45%, transparent);
-  }
-}
-
-@keyframes splash-mark {
-  from {
-    opacity: 0;
-    transform: scale(0.86);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 

@@ -18,6 +18,8 @@ import { clerkAppearance, clerkLocalization } from "@/lib/auth/appearance";
 import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
 import { appOnlyInitScript } from "@/lib/app-only";
 import { installPromptCaptureScript } from "@/lib/install";
+import { launchScreenLinks } from "@/lib/launch-screens";
+import { packetsInitScript } from "@/lib/service-packets";
 import { splashInitScript } from "@/lib/splash";
 import { themeInitScript } from "@/lib/theme";
 
@@ -68,12 +70,14 @@ export const metadata: Metadata = {
     follow: true,
   },
   // Added to an iPhone or iPad Home Screen, the site opens as its own app
-  // under its full name. The manifest (src/app/manifest.ts) does the same
-  // everywhere else.
+  // under its full name, straight onto a picture of the loading screen
+  // (src/lib/launch-screens.ts). The manifest (src/app/manifest.ts) does the
+  // same everywhere else.
   appleWebApp: {
     capable: true,
     title: siteConfig.name,
     statusBarStyle: "default",
+    startupImage: launchScreenLinks(),
   },
 };
 
@@ -146,6 +150,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Puts up the loading screen for a signed-in member's first load in
             this tab or app launch. See src/lib/splash.ts. */}
         <script dangerouslySetInnerHTML={{ __html: splashInitScript }} />
+        {/* Holds open the song list's sheet music buttons for a member this
+            browser has seen, so they do not push the cards about as they
+            arrive. See src/lib/service-packets.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: packetsInitScript }} />
         {/* The installed app is members-only: signed out, it goes straight
             to log in. See src/lib/app-only.ts. */}
         {authEnabled ? <script dangerouslySetInnerHTML={{ __html: appOnlyInitScript }} /> : null}

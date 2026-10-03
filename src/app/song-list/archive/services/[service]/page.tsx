@@ -91,14 +91,14 @@ export default async function ArchivedServicePage(props: PageProps<"/song-list/a
 
         <nav className="mt-6 flex justify-between gap-4 text-sm" aria-label={copy.title}>
           {earlier ? (
-            <Link href={`/song-list/archive/services/${earlier.anchor}`} className="text-muted hover:text-ink hover:underline">
+            <Link href={`/song-list/archive/services/${earlier.anchor}`} className="text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current">
               ← {copy.detail.before}
             </Link>
           ) : (
             <span />
           )}
           {later ? (
-            <Link href={`/song-list/archive/services/${later.anchor}`} className="text-muted hover:text-ink hover:underline">
+            <Link href={`/song-list/archive/services/${later.anchor}`} className="text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current">
               {copy.detail.after} →
             </Link>
           ) : null}

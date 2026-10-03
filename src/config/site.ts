@@ -148,14 +148,16 @@ export const siteConfig = {
       { day: 3, slot: "PM" },
     ] as ReadonlyArray<{ day: number; slot: "AM" | "PM" }>,
 
-    /** How far ahead the planner lists services before "Plan further ahead". */
-    horizonWeeks: 6,
 
     /** A song sung within this many days of a service is flagged as recent. */
     recentDays: 14,
 
-    /** How many upcoming weeks the Inserts page shows before "Show more weeks". */
-    insertWeeks: 8,
+    /**
+     * Plan and Inserts show the month being planned, and bring in the next
+     * month this many days before it starts - never further ahead unless
+     * "Start planning" asks (src/lib/service-planner/planning-window.ts).
+     */
+    planningLeadDays: 7,
   },
 
   sheetMusic: {

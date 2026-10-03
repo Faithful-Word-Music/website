@@ -86,7 +86,7 @@ export default async function AvailabilityPage(props: PageProps<"/availability">
           />
         </div>
 
-        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div>
             <AvailabilityCalendar
               month={data.month}

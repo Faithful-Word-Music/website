@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { NoServiceSheetMusic } from "@/components/song-list/ServicePackets";
-import { ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
+import { PlannedInsert, ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -53,7 +53,7 @@ export function ComingUp({
       {services.length === 0 ? (
         <p className="mt-4 text-muted">{unavailable ? copy.unavailable : copy.none}</p>
       ) : (
-        <ol className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ol className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {services.map((service) => (
             <li key={service.id}>
               <ServiceSummary service={service} now={now} />
@@ -99,6 +99,11 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
           <SongRow key={index} song={song} showLabel={service.showLabels} />
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
+        {service.plannedInsert ? (
+          <li className="py-2">
+            <PlannedInsert song={service.plannedInsert} />
+          </li>
+        ) : null}
       </ol>
 
       {service.packetHref ? (

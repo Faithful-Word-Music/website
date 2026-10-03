@@ -48,7 +48,7 @@ export default async function RequestPage({ params }: PageProps<"/admin/requests
           {request.message || <span className="text-muted">No message.</span>}
         </p>
 
-        <dl className="mt-6 grid gap-4 border-t border-line pt-6 text-sm sm:grid-cols-2">
+        <dl className="mt-6 grid grid-cols-1 gap-4 border-t border-line pt-6 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-muted">Requested</dt>
             <dd className="text-ink">{formatDateTime(request.createdAt)}</dd>

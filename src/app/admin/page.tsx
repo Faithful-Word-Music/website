@@ -41,7 +41,7 @@ export default async function AdminOverviewPage() {
   return (
     <div>
       <SectionHeading as="h1" title="Overview" />
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => (
           <Link key={tile.href} href={tile.href} className="group">
             <Card className="h-full p-6 transition-shadow group-hover:shadow-lift">

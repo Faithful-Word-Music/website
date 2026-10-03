@@ -12,6 +12,7 @@
 import { availabilityContent } from "@/content/availability";
 import { dashboardContent } from "@/content/dashboard";
 import { servicePlannerContent } from "@/content/service-planner";
+import { plural } from "@/lib/plural";
 import { serviceHeadline, statusLine } from "@/lib/service-planner/format";
 import type { PlannerStatus } from "@/lib/service-planner/model";
 
@@ -41,11 +42,6 @@ export function profileAttention(missing: readonly string[]): AttentionItem[] {
   ];
 }
 
-/** "1 thing" / "2 things": picks the wording for a count and fills it in. */
-function counted(forms: readonly [string, string], count: number): string {
-  return (count === 1 ? forms[0] : forms[1]).replace("{count}", String(count));
-}
-
 /** People who look after sheet music: upcoming songs with gaps (see sheet-gaps.ts). */
 export function sheetGapAttention(focus: DashboardFocus, gaps: readonly unknown[] | null): AttentionItem[] {
   if (!focus.managesSheetMusic || !gaps || gaps.length === 0) return [];
@@ -53,7 +49,7 @@ export function sheetGapAttention(focus: DashboardFocus, gaps: readonly unknown[
     {
       id: "music:sheet-gaps",
       priority: "normal",
-      title: counted(copy.sheetGaps.title, gaps.length),
+      title: plural(copy.sheetGaps.title, gaps.length),
       detail: copy.sheetGaps.detail,
       href: "#sheet-music-gaps",
       action: copy.sheetGaps.action,
@@ -70,14 +66,14 @@ export function invitationAttention(
   const total = followUps.unanswered.length + followUps.expired.length;
   if (total === 0) return [];
   const parts = [
-    followUps.unanswered.length > 0 ? counted(copy.invitations.unanswered, followUps.unanswered.length) : null,
-    followUps.expired.length > 0 ? counted(copy.invitations.expired, followUps.expired.length) : null,
+    followUps.unanswered.length > 0 ? plural(copy.invitations.unanswered, followUps.unanswered.length) : null,
+    followUps.expired.length > 0 ? plural(copy.invitations.expired, followUps.expired.length) : null,
   ].filter(Boolean);
   return [
     {
       id: "admin:invitations",
       priority: "normal",
-      title: counted(copy.invitations.title, total),
+      title: plural(copy.invitations.title, total),
       detail: parts.join(" · "),
       href: "/admin/invitations",
       action: copy.invitations.action,
@@ -96,7 +92,7 @@ export function sheetTypeAttention(
     {
       id: "music:sheet-types",
       priority: "normal",
-      title: counted(copy.sheetTypes.title, missing.length),
+      title: plural(copy.sheetTypes.title, missing.length),
       detail: copy.sheetTypes.detail.replace("{names}", listOf(missing.map((person) => person.name))),
       href: one ? `/admin/users/${missing[0].id}` : "#people",
       action: one ? copy.sheetTypes.action[0] : copy.sheetTypes.action[1],
@@ -115,7 +111,7 @@ export function instrumentAttention(
     {
       id: "admin:musician-instruments",
       priority: "low",
-      title: counted(copy.instruments.title, missing.length),
+      title: plural(copy.instruments.title, missing.length),
       detail: copy.instruments.detail.replace("{names}", listOf(missing.map((person) => person.name))),
       href: one ? `/admin/users/${missing[0].id}` : "/admin/users",
       action: one ? copy.instruments.action[0] : copy.instruments.action[1],
@@ -130,7 +126,7 @@ export function accountRequestAttention(focus: DashboardFocus, pending: number |
     {
       id: "admin:account-requests",
       priority: "normal",
-      title: counted(copy.requests.title, pending),
+      title: plural(copy.requests.title, pending),
       detail: copy.requests.detail,
       href: "/admin/requests?status=pending",
       action: copy.requests.action,

@@ -6,7 +6,7 @@ import { listAccounts } from "@/lib/auth/clerk";
 import type { Viewer } from "@/lib/auth/session";
 import { sheetMusicTypesForUsers } from "@/lib/auth/store";
 import { loadRoster } from "@/lib/availability/load";
-import { addDays, churchDate, findOccurrence, isMonthString, monthRange, serviceOccurrences } from "@/lib/availability/occurrences";
+import { addDays, churchDate, findOccurrence, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { toArchive } from "@/lib/service-archive";
@@ -15,6 +15,7 @@ import { loadPast } from "@/lib/song-archive";
 import type { DatedService } from "@/types/song-list";
 
 import type { ExportService } from "./export";
+import { insertMonths, insertRange, nextInsertMonth, type InsertMonth } from "./inserts";
 import {
   buildCandidates,
   serviceAvailability,
@@ -23,7 +24,6 @@ import {
   type ServiceAvailability,
 } from "./intelligence";
 import {
-  defaultHorizon,
   isLocked,
   parseAnchor,
   plannerService,
@@ -33,6 +33,7 @@ import {
   type InsertWeek,
   type PlannerService,
 } from "./model";
+import { monthAfter, monthEnd, planningMonths } from "./planning-window";
 import { buildQueue, plannerServices, type PlannerQueue } from "./queue";
 import { listCatalogSongs, listInsertWeeks, listPlanEvents, listPlans, type PlanEvent } from "./store";
 
@@ -50,20 +51,24 @@ const PAIR_LOOKBACK_DAYS = 120;
 export interface QueueData {
   now: number;
   today: string;
-  /** The last day listed. */
+  /** The last day listed: the end of the last month in view. */
   through: string;
-  /** The month "Plan further ahead" extends to. */
-  nextThrough: string;
+  /** The last month in view ("Not yet" sends it away), and the one "Start planning" brings in. */
+  lastMonth: string;
+  nextMonth: string;
   queue: PlannerQueue;
 }
 
-/** The queue: every service from today to the horizon (or to the end of `throughMonth`). */
-export async function loadQueue(viewer: Viewer, throughMonth: string | null): Promise<QueueData> {
+/**
+ * The queue: every service from today to the end of the months in view - this
+ * month, the next once it is near, and `ahead` more brought in early
+ * (src/lib/service-planner/planning-window.ts).
+ */
+export async function loadQueue(viewer: Viewer, ahead: number): Promise<QueueData> {
   const now = Date.now();
   const today = churchDate(now);
-  const horizon = defaultHorizon(today);
-  const requested = throughMonth && isMonthString(throughMonth) ? monthRange(throughMonth).to : null;
-  const through = requested && requested > horizon ? requested : horizon;
+  const lastMonth = planningMonths(today.slice(0, 7), today, siteConfig.servicePlanner.planningLeadDays, ahead).at(-1)!;
+  const through = monthEnd(lastMonth);
 
   const [plans, weeks] = await Promise.all([
     listPlans(viewer.env, { from: today, to: through }),
@@ -71,15 +76,12 @@ export async function loadQueue(viewer: Viewer, throughMonth: string | null): Pr
   ]);
   const services = plannerServices({ from: today, to: through }, plans, weeks);
 
-  const lastMonth = through.slice(0, 7);
-  const [year, number] = lastMonth.split("-").map(Number);
-  const nextThrough = number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, "0")}`;
-
   return {
     now,
     today,
     through,
-    nextThrough,
+    lastMonth,
+    nextMonth: monthAfter(lastMonth),
     queue: buildQueue(services, now),
   };
 }
@@ -216,45 +218,55 @@ export async function namesFor(ids: ReadonlyArray<string | null>): Promise<Map<s
   ]);
 }
 
-export interface InsertsData {
-  now: number;
-  weeks: Array<{
-    weekStart: string;
-    insert: InsertWeek | null;
-    /** The week's services that take its insert. */
-    services: PlannerService[];
-  }>;
-  candidates: CandidateSong[];
-  nextCount: number;
+export interface InsertsWeek {
+  weekStart: string;
+  insert: InsertWeek | null;
+  /** The week's services that take its insert. */
+  services: PlannerService[];
 }
 
-/** The Inserts page: `count` weeks from this one. */
-export async function loadInserts(viewer: Viewer, count: number): Promise<InsertsData> {
+export interface InsertsData {
+  now: number;
+  /** Only what needs planning (src/lib/service-planner/inserts.ts). */
+  months: Array<Omit<InsertMonth, "weekStarts"> & { weeks: InsertsWeek[] }>;
+  /** What "Start planning" would bring in: "2026-11". */
+  nextMonth: string;
+  candidates: CandidateSong[];
+}
+
+/**
+ * The Inserts page: the month being planned, the next one when it is near,
+ * and `ahead` more brought in early with "Start planning".
+ */
+export async function loadInserts(viewer: Viewer, ahead: number): Promise<InsertsData> {
   const now = Date.now();
-  const firstWeek = weekStartOf(churchDate(now));
-  const lastDay = addDays(firstWeek, count * 7 - 1);
+  const today = churchDate(now);
+  const { planningLeadDays } = siteConfig.servicePlanner;
+  const range = insertRange(today, planningLeadDays, ahead);
 
   const [plans, weeks, history, catalog, index] = await Promise.all([
-    listPlans(viewer.env, { from: firstWeek, to: lastDay }),
-    listInsertWeeks(viewer.env, firstWeek, lastDay),
+    listPlans(viewer.env, range),
+    listInsertWeeks(viewer.env, range.from, range.to),
     loadPast(),
     listCatalogSongs(viewer.env),
     getSheetMusicIndex(),
   ]);
-  const services = plannerServices({ from: firstWeek, to: lastDay }, plans, weeks);
+  const services = plannerServices(range, plans, weeks);
+  const months = insertMonths(today, new Set(weeks.map((week) => week.weekStart)), planningLeadDays, ahead);
 
   return {
     now,
-    weeks: Array.from({ length: count }, (_, offset) => {
-      const weekStart = addDays(firstWeek, offset * 7);
-      return {
+    months: months.map(({ weekStarts, ...month }) => ({
+      ...month,
+      weeks: weekStarts.map((weekStart) => ({
         weekStart,
         insert: weeks.find((week) => week.weekStart === weekStart) ?? null,
         services: services.filter(
           (service) => weekStartOf(service.date) === weekStart && takesWeekInsert(service.date, service.slot),
         ),
-      };
-    }),
+      })),
+    })),
+    nextMonth: nextInsertMonth(today, planningLeadDays, ahead),
     candidates: buildCandidates({
       past: history?.past ?? [],
       planned: [],
@@ -262,10 +274,8 @@ export async function loadInserts(viewer: Viewer, count: number): Promise<Insert
       index: index.ok ? index.index : null,
       hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
     }),
-    nextCount: count + siteConfig.servicePlanner.insertWeeks,
   };
 }
-
 
 /** How far ahead the Dashboard looks for services needing planning. */
 const DASHBOARD_DAYS = 14;

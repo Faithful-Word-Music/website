@@ -43,7 +43,7 @@ export default async function ConfigurationPage() {
   return (
     <div>
       <SectionHeading as="h1" title="Configuration" />
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {sheetTypes ? (
           <section id="sheet-music" className="min-w-0 scroll-mt-24 lg:col-span-2">
             <Card className="h-full p-4 sm:p-6">

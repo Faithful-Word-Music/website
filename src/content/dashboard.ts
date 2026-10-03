@@ -6,8 +6,8 @@
 export const dashboardContent = {
   eyebrow: "Dashboard",
   /** {name} is replaced with their preferred or first name. */
-  greeting: "Welcome back, {name}",
-  greetingFallback: "Welcome back",
+  greeting: "Welcome back, {name}!",
+  greetingFallback: "Welcome back!",
   profileLink: "Your profile",
 
   attention: {

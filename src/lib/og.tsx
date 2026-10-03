@@ -46,6 +46,9 @@ export const LINE = "#e5e5e2";
 export const GOLD = "#b08d57";
 export const GOLD_DARK = "#84683f";
 const STAFF = "#d2d1ca";
+/** Dark mode's paper and ink (globals.css, DARK MODE). */
+const DARK_PAPER = "#141412";
+const DARK_INK = "#f2f0ea";
 
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 630;
@@ -91,6 +94,70 @@ export async function loadPictureFonts() {
     { name: "Inter", data: medium, style: "normal" as const, weight: 500 as const },
     { name: "Inter", data: semibold, style: "normal" as const, weight: 600 as const },
   ];
+}
+
+/**
+ * One of the installed app's iOS launch screens (src/lib/launch-screens.ts):
+ * the loading screen as it first appears - the 96px mark, and the name 28px
+ * beneath it in the 30px display face - drawn at the device's own pixels,
+ * centred in the part of the screen below the status bar, as the page is.
+ */
+export async function renderLaunchScreen({
+  width,
+  height,
+  ratio,
+  statusBar,
+  theme,
+}: {
+  /** CSS pixels, as the device is held. */
+  width: number;
+  height: number;
+  ratio: number;
+  statusBar: number;
+  theme: "light" | "dark";
+}) {
+  const [mark, serif] = await Promise.all([
+    loadMark(),
+    readFile(join(process.cwd(), "assets/fonts/SourceSerif4-Regular.ttf")),
+  ]);
+  const px = (value: number) => Math.round(value * ratio);
+
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: px(width),
+          height: px(height),
+          paddingTop: px(statusBar),
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: theme === "dark" ? DARK_PAPER : PAPER,
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={mark} width={px(96)} height={px(96)} alt="" />
+        <div
+          style={{
+            marginTop: px(28),
+            fontFamily: "SourceSerif",
+            fontSize: px(30),
+            lineHeight: 1.2,
+            letterSpacing: `${-0.025 * px(30)}px`,
+            color: theme === "dark" ? DARK_INK : INK,
+          }}
+        >
+          {siteConfig.name}
+        </div>
+      </div>
+    ),
+    {
+      width: px(width),
+      height: px(height),
+      fonts: [{ name: "SourceSerif", data: serif, style: "normal", weight: 400 }],
+    },
+  );
 }
 
 /**

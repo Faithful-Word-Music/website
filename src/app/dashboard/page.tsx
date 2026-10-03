@@ -9,6 +9,7 @@ import { ComingUp } from "@/components/dashboard/ComingUp";
 import { DashboardGrid } from "@/components/dashboard/DashboardSection";
 import { BrushUp, NewSheetMusic, QuarterGlance, SheetGaps } from "@/components/dashboard/MusicSections";
 import { PeopleOverview } from "@/components/dashboard/PeopleOverview";
+import { ServicePacketsSeed, type Packets } from "@/components/song-list/ServicePackets";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -26,7 +27,7 @@ import {
   getUserTitles,
 } from "@/lib/auth/store";
 import { collectAttention } from "@/lib/dashboard/attention";
-import { buildComingUp } from "@/lib/dashboard/coming-up";
+import { buildComingUp, servicePackets } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
 import { loadAvailabilitySummary, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
 import { loadPlannerWork } from "@/lib/service-planner/load";
@@ -121,6 +122,14 @@ export default async function DashboardPage() {
   const glance = focus.seesAnalytics ? quarterGlance(music.past, now) : null;
 
   const viewerKind = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
+  // The song list's sheet music buttons, worked out here anyway - handed to
+  // it so it opens complete (src/lib/service-packets.ts).
+  const packetSeed: Packets | null =
+    sheetTypes.length === 0
+      ? { assigned: false }
+      : music.services && music.index
+        ? { assigned: true, packets: servicePackets(music.services, { index: music.index, sheetTypes, viewer: viewerKind }) }
+        : null;
   const upcomingKeys = new Set(music.upcoming.flatMap((service) => service.songs.map((song) => songKey(song.title))));
   const recentSheets = music.index
     ? newSheetMusic(
@@ -202,6 +211,7 @@ export default async function DashboardPage() {
         {attention.length > 0 ? <AttentionList items={attention} className="mt-10" /> : null}
 
         <ComingUp services={comingUp} unavailable={!music.services} now={now} className="mt-10" />
+        {packetSeed ? <ServicePacketsSeed userId={viewer.userId} packets={packetSeed} /> : null}
 
         {focus.tracksAvailability ? <AvailabilitySummary summary={availability} now={now} className="mt-14" /> : null}
 

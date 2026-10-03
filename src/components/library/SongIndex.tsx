@@ -9,6 +9,7 @@ import { cn } from "@/components/ui/cn";
 import { useFlip } from "@/components/ui/use-flip";
 import { libraryContent } from "@/content/library";
 import { libraryLetter, type LibrarySong } from "@/lib/library";
+import { plural } from "@/lib/plural";
 import { matchesSong, songPath } from "@/lib/song-list";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -114,7 +115,7 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
               key={letter}
               data-flip={`letter-${letter}`}
               aria-labelledby={anchor(letter)}
-              className="grid gap-x-8 border-b border-line py-8 last:border-b-0 md:grid-cols-[6rem_minmax(0,1fr)] md:py-10"
+              className="grid grid-cols-1 gap-x-8 border-b border-line py-8 last:border-b-0 md:grid-cols-[6rem_minmax(0,1fr)] md:py-10"
             >
               <h3
                 id={anchor(letter)}
@@ -199,10 +200,6 @@ function groupByLetter(songs: LibrarySong[]): Array<[string, LibrarySong[]]> {
 
 function anchor(letter: string): string {
   return `letter-${letter === "#" ? "0-9" : letter}`;
-}
-
-function plural(forms: readonly [string, string], count: number): string {
-  return forms[count === 1 ? 0 : 1].replace("{count}", format(count));
 }
 
 function format(count: number): string {

@@ -3,6 +3,7 @@
 import { cn } from "@/components/ui/cn";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
+import { SongLink } from "@/components/song-list/SongLink";
 import { useHydrated } from "@/components/song-list/use-now";
 import {
   formatAgo,
@@ -12,6 +13,7 @@ import {
   isDifferentClock,
 } from "@/lib/service-time";
 import type { SongHint } from "@/lib/song-history";
+import type { Song } from "@/types/song-list";
 
 /**
  * "10:30 AM Arizona time", plus "· 1:30 PM your time" for visitors whose clock
@@ -93,5 +95,30 @@ export function StatusPill({ status }: { status: "next" | "now" }) {
     <span className="inline-flex items-center rounded-full bg-ink px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-paper">
       {badges.next}
     </span>
+  );
+}
+
+/**
+ * A service not posted yet whose week's insert is already planned: that one
+ * song, labelled, so it can be learned ahead (src/lib/schedule-months.ts,
+ * plannedInserts). Number, title and key read as on a posted service.
+ */
+export function PlannedInsert({ song, className }: { song: Song; className?: string }) {
+  return (
+    <p className={cn("flex items-baseline gap-3", className)}>
+      <span className="shrink-0 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-gold-dark">
+        {songListContent.states.plannedInsert}
+      </span>
+      <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink sm:text-base">
+        {song.number ? <span className="tnum mr-2 text-sm font-medium text-muted sm:text-base">{song.number}</span> : null}
+        <SongLink title={song.title} />
+      </span>
+      {song.key ? (
+        <span className="tnum shrink-0 text-sm font-medium text-gold-dark sm:text-base">
+          <span className="sr-only">Key of </span>
+          {song.key}
+        </span>
+      ) : null}
+    </p>
   );
 }

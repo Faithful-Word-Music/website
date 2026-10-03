@@ -108,7 +108,7 @@ export function RequestAccessForm() {
         </div>
       ) : null}
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <TextField
           id={`${ids}-name`}
           label={form.name.label}

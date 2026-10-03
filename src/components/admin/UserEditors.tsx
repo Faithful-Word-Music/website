@@ -69,7 +69,7 @@ export function RoleEditor({
 
   return (
     <div className="space-y-3">
-      <ul className="divide-y divide-line rounded-card border border-line">
+      <ul className="divide-y divide-line overflow-hidden rounded-card border border-line">
         {roles.map((role) => {
           const isMember = role.key === MEMBER_ROLE;
           const checked = isMember || chosen.includes(role.key);
@@ -148,7 +148,7 @@ export function OverrideEditor({
   return (
     <div className="space-y-4">
       {overrides.length > 0 ? (
-        <ul className="divide-y divide-line rounded-card border border-line">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line">
           {overrides.map((override) => (
             <li key={override.permission} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
@@ -180,7 +180,7 @@ export function OverrideEditor({
       {!isSelf ? (
         <div className="space-y-3 rounded-card border border-line p-4">
           <p className="text-sm font-medium text-ink">Add an exception</p>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
             <SelectField id={`${ids}-perm`} label="Permission" value={permission} options={permissionOptions} onChange={setPermission} />
             <SelectField
               id={`${ids}-effect`}
@@ -254,7 +254,7 @@ export function SheetMusicTypeEditor({
   return (
     <div className="space-y-3">
       {chosen.length > 0 ? (
-        <ol className="divide-y divide-line rounded-card border border-line">
+        <ol className="divide-y divide-line overflow-hidden rounded-card border border-line">
           {chosen.map((id, index) => {
             const label = labelOf.get(id) ?? "";
             return (
@@ -365,7 +365,7 @@ export function TitleEditor({
       {visible.length === 0 ? (
         <p className="text-sm text-muted">There are no titles yet. Add some under Configuration.</p>
       ) : (
-        <ul className="divide-y divide-line rounded-card border border-line">
+        <ul className="divide-y divide-line overflow-hidden rounded-card border border-line">
           {visible.map((title) => {
             const checked = chosen.includes(title.id);
             return (

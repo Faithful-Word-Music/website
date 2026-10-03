@@ -69,7 +69,7 @@ export function LearningScaleInput({
           <button
             type="button"
             onClick={() => onChange(null)}
-            className="shrink-0 text-xs text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
+            className="shrink-0 text-xs text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current"
           >
             Clear
           </button>

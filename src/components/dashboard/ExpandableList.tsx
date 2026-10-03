@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import { useScrollLock } from "@/components/ui/use-scroll-lock";
+import { Modal } from "@/components/ui/Modal";
 import { dashboardContent } from "@/content/dashboard";
 
 /**
@@ -47,11 +47,7 @@ export function ExpandableList({
   );
 }
 
-/**
- * Built on <dialog>, like the search palette: showModal() keeps focus inside
- * and the page behind inert; Escape, the close button or a click outside the
- * panel closes it, and focus returns to "Show all".
- */
+/** Every row, in the site's dialog (Modal); focus returns to "Show all". */
 function ListDialog({
   title,
   lead,
@@ -63,60 +59,9 @@ function ListDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const headingId = useId();
-  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
-
-  useScrollLock(true);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
-    };
-  }, [opener]);
-
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={headingId}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-        }
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-transparent p-4 backdrop:bg-black/45 backdrop:backdrop-blur-[2px] sm:px-6 sm:pt-[10vh]"
-    >
-      <div className="animate-enter mx-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift sm:max-h-[75vh]">
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 pb-4 pt-5">
-          <div className="min-w-0">
-            <h2 id={headingId} className="font-display text-2xl text-ink">
-              {title}
-            </h2>
-            {lead ? <p className="mt-1 text-sm text-muted">{lead}</p> : null}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={dashboardContent.lists.close}
-            className="-mr-2 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink"
-          >
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        </header>
-        <ul className="divide-y divide-line overflow-y-auto overscroll-contain">{children}</ul>
-      </div>
-    </dialog>
+    <Modal title={title} subtitle={lead} closeLabel={dashboardContent.lists.close} onClose={onClose} size="lg" bare>
+      <ul className="divide-y divide-line">{children}</ul>
+    </Modal>
   );
 }

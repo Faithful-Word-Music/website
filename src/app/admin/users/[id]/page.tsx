@@ -104,7 +104,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
         />
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {viewer.can("manage_roles") ? (
           <Section title="Roles" description="What this person may do on the site. Their permissions add up across roles.">
             <RoleEditor
@@ -177,7 +177,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
 
         {viewer.can("manage_users") ? (
           <Section title="Account" description="Sign-in details are managed by Clerk.">
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="text-muted">Created</dt>
                 <dd className="text-ink">{formatDateTime(person.createdAt)}</dd>

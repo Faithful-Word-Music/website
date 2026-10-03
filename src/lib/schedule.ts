@@ -3,11 +3,14 @@ import "server-only";
 import { cache } from "react";
 
 import { currentClerkConfig, type ClerkEnv } from "@/lib/auth/clerk-env";
-import { serviceOccurrences } from "@/lib/availability/occurrences";
-import { buildScheduleMonths, planToDated } from "@/lib/schedule-months";
-import type { StoredPlan } from "@/lib/service-planner/model";
-import { listPlans, plannerConfigured } from "@/lib/service-planner/store";
+import { addDays, churchDate, monthRange, serviceOccurrences } from "@/lib/availability/occurrences";
+import { buildScheduleMonths, plannedInserts, planToDated } from "@/lib/schedule-months";
+import { weekStartOf, type StoredPlan } from "@/lib/service-planner/model";
+import { listInsertWeeks, listPlans, plannerConfigured } from "@/lib/service-planner/store";
 import type { DatedService, SongListResult } from "@/types/song-list";
+
+/** How far ahead planned inserts are read: past any month the song list could show. */
+const INSERT_HORIZON_DAYS = 400;
 
 /**
  * THE SCHEDULE READ LAYER - the one way the rest of the site learns which
@@ -53,8 +56,16 @@ export const getSchedule = cache(async (): Promise<SongListResult> => {
   try {
     const env = scheduleEnv();
     const now = Date.now();
+    // From the Sunday before this month starts: the first week the list can show.
+    const fromWeek = weekStartOf(monthRange(churchDate(now).slice(0, 7)).from);
     // Cancelled services are read too: they take regular services off the list.
-    const plans = await listPlans(env, { statuses: ["published", "cancelled"] });
+    // Drafts are read only for their insert mode (plannedInserts) - their songs never leave here.
+    const [rows, weeks] = await Promise.all([
+      listPlans(env, { statuses: ["published", "cancelled", "draft"] }),
+      listInsertWeeks(env, fromWeek, addDays(fromWeek, INSERT_HORIZON_DAYS)),
+    ]);
+    const drafts = rows.filter((plan) => plan.status === "draft");
+    const plans = rows.filter((plan) => plan.status !== "draft");
     const published = plans.filter((plan) => plan.status === "published");
     const scheduled = plans.map((plan) => ({
       date: plan.date,
@@ -71,6 +82,7 @@ export const getSchedule = cache(async (): Promise<SongListResult> => {
         published,
         expected: (range) => serviceOccurrences(range.from, range.to, scheduled),
         now,
+        plannedInsert: plannedInserts(weeks, drafts),
       }),
       published: publishedHistory(published),
     };

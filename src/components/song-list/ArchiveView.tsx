@@ -257,7 +257,7 @@ function ArchiveRow({
   return (
     <tr
       className={cn(
-        "border-b border-line align-top transition-colors duration-150 last:border-0 hover:bg-paper/60",
+        "border-b border-line align-top transition-colors duration-150 last:border-0 hover:bg-paper/60 [&:last-child>td:first-child]:rounded-bl-card [&:last-child>td:last-child]:rounded-br-card",
         animateIn && "animate-enter",
       )}
     >

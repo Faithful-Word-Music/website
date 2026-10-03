@@ -6,16 +6,12 @@ import { songLinkClasses, songLinkGroupClasses } from "@/components/song-list/So
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
+import { plural } from "@/lib/plural";
 import { churchMonth, formatDayDate, formatLongDate } from "@/lib/service-time";
 import { songPath, songSlug } from "@/lib/song-list";
 import { ONCE_EXAMPLES, type RecapSong, type YearRecap } from "@/lib/year-recap";
 
 const { yearRecap: copy } = songListContent;
-
-/** "{count} songs", choosing the singular or plural form. */
-export function plural(forms: readonly [string, string], count: number): string {
-  return forms[count === 1 ? 0 : 1].replace("{count}", count.toLocaleString("en-US"));
-}
 
 const monthName = new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" });
 const monthLetter = new Intl.DateTimeFormat("en-US", { month: "narrow", timeZone: "UTC" });
@@ -232,7 +228,7 @@ export function RecapFacts({ recap }: { recap: YearRecap }) {
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
       {items.map((item) => (
         <Card key={item.label} className="flex flex-col px-5 py-5 sm:px-6">
           <h3 className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted">

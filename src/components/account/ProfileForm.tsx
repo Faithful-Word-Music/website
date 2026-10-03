@@ -99,7 +99,7 @@ export function ProfileForm({
         <div className="mt-6">
           <PhotoField />
         </div>
-        <div className="mt-6 grid gap-5 sm:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <TextField
             id={`${ids}-first`}
             label="First name"
@@ -126,7 +126,7 @@ export function ProfileForm({
             onChange={(value) => set("lastName", value)}
           />
         </div>
-        <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
           <TextField
             id={`${ids}-preferred`}
             label="Preferred name"
@@ -177,7 +177,7 @@ export function ProfileForm({
           <fieldset>
             <legend className="mb-1.5 text-sm font-medium text-ink">Instruments you play</legend>
             <p className="-mt-1 text-xs text-muted">Choose each one, then how well you play it:</p>
-            <dl className="mb-3 mt-1.5 grid gap-x-4 gap-y-0.5 text-xs text-muted sm:grid-cols-2">
+            <dl className="mb-3 mt-1.5 grid grid-cols-1 gap-x-4 gap-y-0.5 text-xs text-muted sm:grid-cols-2">
               {PROFICIENCIES.map((level) => (
                 <div key={level.value}>
                   <dt className="inline font-medium text-ink">{level.label}:</dt> <dd className="inline">{level.description}</dd>

@@ -51,3 +51,11 @@ describe("placeCards", () => {
     expect(stackSize(8)).toBeGreaterThan(3);
   });
 });
+
+describe("placeCards with planned inserts", () => {
+  it("stacks fewer placeholders when they carry a planned insert", () => {
+    const withInsert = { full: false, rows: 1 };
+    // Room for three plain placeholders beside five songs, but only two with an insert line.
+    expect(at([full(), withInsert, withInsert, withInsert])).toEqual(["1:1+2", "2:1+1", "2:2+1", "1:3+1"]);
+  });
+});

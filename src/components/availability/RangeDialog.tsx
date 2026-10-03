@@ -6,13 +6,14 @@ import { useId, useState, useTransition } from "react";
 import { setRangeAvailability } from "@/app/availability/actions";
 import { ActionMessage, ChoiceChips, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { availabilityContent } from "@/content/availability";
 import { NOTE_LIMIT, type AvailabilityChoice } from "@/lib/availability/effective";
 import { serviceShort } from "@/lib/availability/format";
 import { addDays, type Occurrence } from "@/lib/availability/occurrences";
 import { occurrencesInRange } from "@/lib/availability/range";
+import { plural } from "@/lib/plural";
 
-import { Dialog } from "./Dialog";
 import type { Subject } from "./ServiceDialog";
 
 const copy = availabilityContent;
@@ -95,7 +96,7 @@ function RangeDialog({
   }
 
   return (
-    <Dialog
+    <Modal
       title={copy.range.title}
       subtitle={subject.isSelf ? copy.range.lead : copy.managing.banner.replace("{name}", subject.name)}
       closeLabel={copy.service.close}
@@ -114,7 +115,7 @@ function RangeDialog({
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <DateField id={`${ids}-from`} label={copy.range.from} value={from} min={today} onChange={setFrom} />
         <DateField id={`${ids}-to`} label={copy.range.to} value={to} min={from || today} onChange={setTo} />
       </div>
@@ -148,11 +149,9 @@ function RangeDialog({
       <p role="status" className="rounded-lg border-l-2 border-gold bg-[color-mix(in_srgb,var(--color-gold)_8%,transparent)] px-3 py-2 text-sm text-ink">
         {covered.length === 0
           ? copy.range.none
-          : (covered.length === 1 ? copy.range.covers[0] : copy.range.covers[1])
-              .replace("{count}", String(covered.length))
-              .replace("{list}", preview)}
+          : plural(copy.range.covers, covered.length).replace("{list}", preview)}
       </p>
-    </Dialog>
+    </Modal>
   );
 }
 

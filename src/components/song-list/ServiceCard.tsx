@@ -2,7 +2,7 @@
 
 import type { MouseEvent, ReactNode } from "react";
 
-import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
@@ -69,38 +69,43 @@ export function ServiceCard({
     return (
       <div
         className={cn(
-          "flex h-full items-center justify-between gap-4 rounded-card border border-dashed bg-staff/25 px-5 py-4 sm:px-6",
+          "flex h-full flex-col justify-center gap-3 rounded-card border border-dashed bg-staff/25 px-5 py-4 sm:px-6",
           // `staff`, not `line`: a dashed hairline in the lightest rule colour
           // all but vanishes on light paper.
           highlighted ? "border-gold" : "border-staff",
           animateIn && "animate-enter",
         )}
       >
-        <div className="min-w-0">
-          {weekday ? (
-            <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted">
-              {weekday}
-              {service.serviceLabel ? <span> · {service.serviceLabel}</span> : null}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-x-3">
-            <h3 id={headingId} className="font-display text-xl text-ink-soft sm:text-2xl">
-              {day || service.dateLabel}
-            </h3>
-            {highlighted ? <StatusPill status={status} /> : null}
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            {weekday ? (
+              <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted">
+                {weekday}
+                {service.serviceLabel ? <span> · {service.serviceLabel}</span> : null}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-x-3">
+              <h3 id={headingId} className="font-display text-xl text-ink-soft sm:text-2xl">
+                {day || service.dateLabel}
+              </h3>
+              {highlighted ? <StatusPill status={status} /> : null}
+            </div>
+            {service.startsAt ? (
+              <ServiceTime startsAt={service.startsAt} className="mt-0.5 block text-sm text-muted" />
+            ) : null}
           </div>
-          {service.startsAt ? (
-            <ServiceTime startsAt={service.startsAt} className="mt-0.5 block text-sm text-muted" />
-          ) : null}
+          {/* A solid chip on the dashed card, so it reads crisply in both themes. */}
+          <p className="flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs italic text-muted shadow-card">
+            {/* An open circle, in the gold accent: a slot not yet filled. */}
+            <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" className="shrink-0 text-gold">
+              <circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 1.6" />
+            </svg>
+            {songListContent.states.notPosted}
+          </p>
         </div>
-        {/* A solid chip on the dashed card, so it reads crisply in both themes. */}
-        <p className="flex shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs italic text-muted shadow-card">
-          {/* An open circle, in the gold accent: a slot not yet filled. */}
-          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10" className="shrink-0 text-gold">
-            <circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2 1.6" />
-          </svg>
-          {songListContent.states.notPosted}
-        </p>
+        {service.plannedInsert ? (
+          <PlannedInsert song={service.plannedInsert} className="border-t border-dashed border-staff pt-3" />
+        ) : null}
       </div>
     );
   }

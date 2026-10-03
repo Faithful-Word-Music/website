@@ -21,7 +21,7 @@ import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer as SheetViewer
 import { assignedFiles } from "@/lib/sheet-music-type";
 import { serviceSlots, songPath, songSlug } from "@/lib/song-list";
 import { serviceAnchor } from "@/lib/site-search";
-import type { Service } from "@/types/song-list";
+import type { Service, Song } from "@/types/song-list";
 
 import type { DashboardFocus } from "./focus";
 
@@ -95,6 +95,8 @@ export interface ComingUpService {
   showLabels: boolean;
   /** Whether their sheet music was looked for at all (types assigned, Index read): only then is "none" worth saying. */
   sheetMusicChecked: boolean;
+  /** Not posted yet, but its week's insert is planned: that song (plannedInserts). */
+  plannedInsert: Song | null;
 }
 
 /** One chosen song of a service, with the file of the person's first type it has - or null for none. */
@@ -161,6 +163,21 @@ export function servicePacket(service: Service, options: SheetOptions): ServiceP
   return href && songs.length > 0 ? { href, songs, showLabels: options.sheetTypes.length > 1 } : null;
 }
 
+/**
+ * The person's sheet music for every published service with songs, by
+ * service id - what the song list's cards offer. Worked out by
+ * /api/account/sheet-music, and by the Dashboard, which hands it to the song
+ * list ahead of time (src/components/song-list/ServicePackets.tsx).
+ */
+export function servicePackets(services: readonly Service[], options: SheetOptions): Record<string, ServicePacket | null> {
+  const packets: Record<string, ServicePacket | null> = {};
+  for (const service of services) {
+    if (service.placeholder || !service.date || service.songs.length === 0) continue;
+    packets[service.id] = servicePacket(service, options);
+  }
+  return packets;
+}
+
 /** Where a service's sheet music PDF is: /dashboard/sheet-music/2026-10-04-am. */
 export function servicePacketPath(service: Pick<Service, "date" | "slot">): string | null {
   return service.date ? `/dashboard/sheet-music/${serviceAnchor(service.date, service.slot)}` : null;
@@ -214,6 +231,7 @@ export function buildComingUp(
       packetSongs: packet?.songs ?? [],
       showLabels: sheetTypes.length > 1,
       sheetMusicChecked: sheetOptions !== null,
+      plannedInsert: service.plannedInsert ?? null,
     };
   });
 }

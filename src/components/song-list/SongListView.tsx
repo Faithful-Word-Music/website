@@ -17,6 +17,7 @@ import { SongSearch } from "@/components/song-list/SongSearch";
 import { useNow } from "@/components/song-list/use-now";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Collapse } from "@/components/ui/Collapse";
 import { Reveal } from "@/components/ui/Reveal";
 import { songListContent } from "@/content/song-list";
 import { getTimeline, type Timeline } from "@/lib/service-time";
@@ -469,35 +470,20 @@ function MonthBody({
             showEarlier && "mb-4 sm:mb-5",
           )}
         >
-          {/* Opens and closes smoothly by animating the grid row between 0 and
-              its natural height; `inert` keeps collapsed cards out of the tab order. */}
-          <div
-            id={earlierId}
-            inert={!showEarlier}
-            className={cn(
-              "grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              showEarlier ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-            )}
-          >
-            {/* `relative` matters: overflow only clips absolutely positioned
-                descendants (the cards' screen-reader table headers) when the
-                clipping box is itself positioned. Without it they escape the
-                collapsed section and stretch the page below the footer. */}
-            <div className="relative min-h-0 overflow-hidden">
-              <CardGrid
-                services={earlier}
-                renderCard={(service) => (
-                  <ServiceCard
-                    service={service}
-                    status="past"
-                    plays={plays}
-                    now={now}
-                    {...cardExtras(service)}
-                  />
-                )}
-              />
-            </div>
-          </div>
+          <Collapse open={showEarlier} id={earlierId}>
+            <CardGrid
+              services={earlier}
+              renderCard={(service) => (
+                <ServiceCard
+                  service={service}
+                  status="past"
+                  plays={plays}
+                  now={now}
+                  {...cardExtras(service)}
+                />
+              )}
+            />
+          </Collapse>
         </div>
       ) : null}
 

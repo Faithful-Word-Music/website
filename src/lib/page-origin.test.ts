@@ -96,7 +96,7 @@ describe("origin-aware back links across the site", () => {
   });
 
   it("names the planner's pages", () => {
-    expect(backLabel("/service-planner?through=2027-02")).toBe("Back to the Service Planner");
+    expect(backLabel("/service-planner?ahead=1")).toBe("Back to the Service Planner");
     expect(backLabel("/service-planner/inserts")).toBe("Back to Inserts");
     expect(backLabel("/service-planner/2026-10-11-am")).toBe("Back to the service");
     expect(backLabel("/song-list/archive/services")).toBe("Back to service plans");

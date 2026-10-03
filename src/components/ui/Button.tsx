@@ -18,14 +18,15 @@ export function buttonClasses(variant: Variant, size: Size = "md", className?: s
     // min-h keeps touch targets comfortable on mobile
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-full font-medium",
     // The site's default easing (globals.css), plus a small give when pressed.
-    "transition-[color,background-color,border-color,box-shadow,transform] active:scale-[0.97]",
+    "transition-[color,background-color,border-color,text-decoration-color,box-shadow,transform] active:scale-[0.97]",
     "disabled:cursor-not-allowed disabled:opacity-60",
     size === "lg" ? "px-7 text-base" : "px-5 text-sm",
     variant === "primary" &&
       "bg-ink text-paper hover:bg-ink-soft active:bg-ink-soft",
     variant === "secondary" &&
       "border border-line bg-surface text-ink hover:border-gold hover:bg-surface",
-    variant === "quiet" && "text-ink underline-offset-4 hover:text-gold-dark hover:underline",
+    variant === "quiet" &&
+      "text-ink underline decoration-transparent underline-offset-4 hover:text-gold-dark hover:decoration-current",
     className,
   );
 }

@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { loadPdfJs } from "@/components/ui/pdfjs";
-import { useScrollLock } from "@/components/ui/use-scroll-lock";
+import { modalDialogFocusClasses, modalDialogProps, useModalDialog } from "@/components/ui/use-modal-dialog";
 import { appContent } from "@/content/app";
 import { isIosDevice } from "@/lib/install";
 import { fileNameFromDisposition } from "@/lib/installed-app";
@@ -47,19 +47,10 @@ export function PdfViewer({ href, onClose }: { href: string; onClose: () => void
   const [file, setFile] = useState<File | null>(null);
   /** Each page's height as a share of its width, so the slots are the right size before drawing. */
   const [shapes, setShapes] = useState<number[]>([]);
-  const [opener] = useState(() => (document.activeElement instanceof HTMLElement ? document.activeElement : null));
-
-  useScrollLock(true);
 
   // A modal <dialog>: focus stays inside, Escape closes, and focus goes back
   // to the link afterwards.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
-    };
-  }, [opener]);
+  useModalDialog(dialogRef);
 
   // Fetch the file and open it.
   useEffect(() => {
@@ -224,12 +215,13 @@ export function PdfViewer({ href, onClose }: { href: string; onClose: () => void
   return (
     <dialog
       ref={dialogRef}
+      {...modalDialogProps}
       aria-labelledby={headingId}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
-      className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-paper p-0 text-ink"
+      className={cn("fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-paper p-0 text-ink", modalDialogFocusClasses)}
     >
       <div className="flex h-full flex-col">
         <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-2 sm:px-4">

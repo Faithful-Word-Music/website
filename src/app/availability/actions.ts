@@ -11,6 +11,7 @@ import { normalAvailabilitySchema, rangeSchema, serviceExceptionSchema } from "@
 import { loadPlannedServices } from "@/lib/availability/load";
 import { findOccurrence, serviceOccurrences, type Occurrence } from "@/lib/availability/occurrences";
 import { occurrencesInRange } from "@/lib/availability/range";
+import { plural } from "@/lib/plural";
 import {
   deleteExceptions,
   loadRosterRecords,
@@ -121,7 +122,7 @@ export async function setRangeAvailability(input: unknown): Promise<ActionResult
     return {
       ok: true,
       value: { count },
-      message: (count === 1 ? messages.rangeSaved[0] : messages.rangeSaved[1]).replace("{count}", String(count)),
+      message: plural(messages.rangeSaved, count),
     };
   });
 }

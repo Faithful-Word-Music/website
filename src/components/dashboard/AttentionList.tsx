@@ -23,7 +23,7 @@ export function AttentionList({ items, className }: { items: AttentionItem[]; cl
       <h2 id={headingId} className="font-display text-2xl text-ink">
         {dashboardContent.attention.title}
       </h2>
-      <Card barline className="mt-4">
+      <Card barline className="mt-4 overflow-hidden">
         <ul className="divide-y divide-line">
           {items.map((item) => (
             <li key={item.id}>

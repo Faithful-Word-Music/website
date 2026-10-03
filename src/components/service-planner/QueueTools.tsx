@@ -5,8 +5,8 @@ import { useState, useTransition } from "react";
 
 import { createSpecialService } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
-import { Dialog } from "@/components/availability/Dialog";
 import { Button, buttonClasses } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { ActionResult } from "@/lib/auth/session";
 
@@ -44,7 +44,7 @@ export function NewSpecialService({ today, className }: { today: string; classNa
         {copy.queue.newSpecial}
       </Button>
       {open ? (
-        <Dialog
+        <Modal
           title={copy.special.title}
           subtitle={copy.special.lead}
           closeLabel={copy.special.cancel}
@@ -69,7 +69,7 @@ export function NewSpecialService({ today, className }: { today: string; classNa
             maxLength={80}
             onChange={setLabel}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField id="special-date" label={copy.special.date} type="date" value={date} maxLength={10} onChange={setDate} />
             <TextField id="special-time" label={copy.special.time} type="time" value={time} maxLength={5} onChange={setTime} />
           </div>
@@ -104,7 +104,7 @@ export function NewSpecialService({ today, className }: { today: string; classNa
             maxLength={2}
             onChange={(value) => setSongs(Math.max(0, Math.min(20, Number(value) || 0)))}
           />
-        </Dialog>
+        </Modal>
       ) : null}
     </>
   );
@@ -127,7 +127,7 @@ export function ExportPanel({ from, to }: { from: string; to: string }) {
   return (
     <Panel title={copy.export.title} lead={copy.export.lead} collapsible>
       <div className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField id="export-from" label={copy.export.from} type="date" value={start} maxLength={10} onChange={setStart} />
           <TextField id="export-to" label={copy.export.to} type="date" value={end} maxLength={10} onChange={setEnd} />
         </div>

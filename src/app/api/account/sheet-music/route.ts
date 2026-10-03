@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getViewer } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
-import { servicePacket, type ServicePacket } from "@/lib/dashboard/coming-up";
+import { servicePackets } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
 import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
@@ -36,16 +36,11 @@ export async function GET() {
     const [schedule, index] = await reads;
     if (!schedule.ok || !index.ok) return NextResponse.json({ assigned: true, unavailable: true }, { status: 503, headers });
 
-    const options = {
+    const packets = servicePackets(schedule.months.flatMap((month) => month.services), {
       index: index.index,
       sheetTypes,
       viewer: viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER,
-    };
-    const packets: Record<string, ServicePacket | null> = {};
-    for (const service of schedule.months.flatMap((month) => month.services)) {
-      if (service.placeholder || !service.date || service.songs.length === 0) continue;
-      packets[service.id] = servicePacket(service, options);
-    }
+    });
     return NextResponse.json({ assigned: true, packets }, { headers });
   } catch (error) {
     console.error("[sheet-music] /api/account/sheet-music failed:", error instanceof Error ? error.message : "unknown error");

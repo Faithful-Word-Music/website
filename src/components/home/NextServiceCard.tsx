@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 
-import { ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
+import { PlannedInsert, ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
 import { SongLink } from "@/components/song-list/SongLink";
 import { useNow } from "@/components/song-list/use-now";
 import { buttonClasses } from "@/components/ui/Button";
@@ -87,6 +87,11 @@ export function NextServiceCard({ services, serverNow }: { services: Service[]; 
         ))}
         {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
           <li className="py-2 pl-11 text-[0.95rem] italic text-muted">{states.notPosted}</li>
+        ) : null}
+        {featured.plannedInsert ? (
+          <li className="py-2 pl-11">
+            <PlannedInsert song={featured.plannedInsert} />
+          </li>
         ) : null}
       </ol>
 

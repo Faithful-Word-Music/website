@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 
-import { ChartCard, formatGap, plural } from "@/components/song-list/YearRecapView";
+import { ChartCard, formatGap } from "@/components/song-list/YearRecapView";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import { keySignature, type KeySignature } from "@/lib/key-signature";
+import { plural } from "@/lib/plural";
 import { churchMonth, churchYear, formatAgo, formatLongDate } from "@/lib/service-time";
 import {
   HABIT_SHARE,
@@ -252,7 +253,7 @@ export function SongDetails({ stats, loadedAt }: { stats: SongStats; loadedAt: n
   if (cards.length === 0) return null;
 
   return (
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 sm:gap-5">
+    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-5">
       {cards.map((card, index) => (
         <div key={card.key} className={cn(cards.length % 2 === 1 && index === cards.length - 1 && "sm:col-span-2")}>
           {card}

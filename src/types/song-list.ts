@@ -53,6 +53,12 @@ export interface Service {
    * never shared, printed or counted as history. See buildScheduleMonths().
    */
   placeholder?: boolean;
+  /**
+   * On a placeholder: the week's insert already planned for it (a Psalm or
+   * other song). Shown on its own before the rest of the service is posted;
+   * never shared, printed or counted as history.
+   */
+  plannedInsert?: Song;
 }
 
 /** One calendar month of the schedule. */

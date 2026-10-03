@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition, type ReactNode } from "react";
 
 import { publishServices } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -10,12 +10,14 @@ import { Pill } from "@/components/admin/StatusPill";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { Collapse } from "@/components/ui/Collapse";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { ActionResult } from "@/lib/auth/session";
 import { monthLabel } from "@/lib/availability/format";
 import { serviceDate, serviceTitle, statusLine } from "@/lib/service-planner/format";
 import type { PlannerStatus } from "@/lib/service-planner/model";
 
+import { MonthTransition, MovesWithMonths } from "./MonthTransition";
 import { Chevron } from "./Panel";
 
 const copy = servicePlannerContent;
@@ -37,7 +39,8 @@ export interface QueueRow {
 
 /**
  * The work queue: what needs planning next, soonest first, month by month.
- * Published services fold away underneath, still a click from editing. Tick
+ * Published services fold away above it (they come first), still a click
+ * from editing. Tick
  * several services to publish them together, as one publication.
  */
 export function QueueView({
@@ -45,12 +48,15 @@ export function QueueView({
   published,
   cancelled,
   through,
+  planAhead,
 }: {
   needsPlanning: QueueRow[];
   published: QueueRow[];
   cancelled: QueueRow[];
   /** The last day listed, as an instant to format. */
   through: string;
+  /** "Start planning <month>" and "Not yet", at the end of the list (PlanAhead). */
+  planAhead?: ReactNode;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
@@ -74,6 +80,22 @@ export function QueueView({
 
   return (
     <div className="space-y-10">
+      {/* Earlier than the services still to plan, so above them - as past services sit on the song list. */}
+      {published.length > 0 || cancelled.length > 0 ? (
+        <div className="space-y-2">
+          {published.length > 0 ? (
+            <Fold title={copy.queue.published.replace("{count}", String(published.length))}>
+              <QueueGroup rows={published} selected={selected} onToggle={toggle} />
+            </Fold>
+          ) : null}
+          {cancelled.length > 0 ? (
+            <Fold title={copy.queue.cancelled.replace("{count}", String(cancelled.length))}>
+              <QueueGroup rows={cancelled} />
+            </Fold>
+          ) : null}
+        </div>
+      ) : null}
+
       <section aria-labelledby="needs-planning">
         <h2 id="needs-planning" className="font-display text-2xl text-ink sm:text-3xl">
           {copy.queue.needsPlanning}
@@ -85,30 +107,24 @@ export function QueueView({
         ) : (
           <div className="mt-5 space-y-6">
             {byMonth(needsPlanning).map(([month, rows]) => (
-              <QueueGroup
-                key={month}
-                title={monthLabel(month)}
-                rows={rows}
-                next={needsPlanning[0].anchor}
-                selected={selected}
-                onToggle={toggle}
-              />
+              <MonthTransition key={month}>
+                <QueueGroup
+                  title={monthLabel(month)}
+                  rows={rows}
+                  next={needsPlanning[0].anchor}
+                  selected={selected}
+                  onToggle={toggle}
+                />
+              </MonthTransition>
             ))}
           </div>
         )}
+        {planAhead ? (
+          <MovesWithMonths name="queue-plan-ahead">
+            <div className="mt-6">{planAhead}</div>
+          </MovesWithMonths>
+        ) : null}
       </section>
-
-      {published.length > 0 ? (
-        <Fold title={copy.queue.published.replace("{count}", String(published.length))}>
-          <QueueGroup rows={published} selected={selected} onToggle={toggle} />
-        </Fold>
-      ) : null}
-
-      {cancelled.length > 0 ? (
-        <Fold title={copy.queue.cancelled.replace("{count}", String(cancelled.length))}>
-          <QueueGroup rows={cancelled} />
-        </Fold>
-      ) : null}
 
       {selected.length > 0 || result ? (
         <div className="sticky bottom-4 z-10">
@@ -207,25 +223,32 @@ function QueueItem({
       )}
       <Link
         href={`/service-planner/${row.anchor}`}
-        className="flex min-w-0 flex-1 items-center gap-4 px-3 py-3.5 sm:px-4"
+        className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3.5 sm:gap-4 sm:px-4"
       >
-        <span className="w-24 shrink-0 text-sm tabular-nums text-muted">{serviceDate(row.startsAt)}</span>
+        {/* A column of its own from `sm`; on a phone a small line above the title, so the title keeps the width. */}
+        <span className="hidden w-24 shrink-0 text-sm tabular-nums text-muted sm:block">{serviceDate(row.startsAt)}</span>
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-ink underline decoration-transparent underline-offset-4 transition-[text-decoration-color] group-hover/row:decoration-gold">
+          <span className="block text-xs tabular-nums text-muted sm:hidden">{serviceDate(row.startsAt)}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-medium text-ink underline decoration-transparent underline-offset-4 transition-[text-decoration-color] group-hover/row:decoration-gold">
               {title}
             </span>
-            {next ? (
-              <span className="rounded-full bg-ink px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-paper">
-                {copy.queue.next}
+            {row.kind === "special" ? (
+              <span className="shrink-0">
+                <Pill tone="muted">{copy.queue.special}</Pill>
               </span>
             ) : null}
-            {row.kind === "special" ? <Pill tone="muted">{copy.queue.special}</Pill> : null}
           </span>
           {row.songs.length > 0 ? (
             <span className="mt-0.5 block truncate text-sm text-muted">{row.songs.join(" · ")}</span>
           ) : null}
         </span>
+        {/* Next to plan - not the song list's Next, which means the next service to happen. */}
+        {next ? (
+          <span className="shrink-0">
+            <Pill tone="neutral">{copy.queue.planNext}</Pill>
+          </span>
+        ) : null}
         <span className="hidden shrink-0 sm:block">
           <Pill tone={row.status === "published" ? "strong" : row.status === "draft" ? "warning" : "muted"}>
             {statusLine(row)}
@@ -239,13 +262,23 @@ function QueueItem({
 
 /** A section folded away until opened. */
 function Fold({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
   return (
-    <details className="group/fold">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2.5 font-display text-xl text-ink [&::-webkit-details-marker]:hidden">
-        <Chevron className="group-open/fold:rotate-90" />
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls={id}
+        className="flex min-h-11 cursor-pointer items-center gap-2.5 text-left font-display text-xl text-ink"
+      >
+        <Chevron className={cn("duration-200", open && "rotate-90")} />
         {title}
-      </summary>
-      <div className="mt-3">{children}</div>
-    </details>
+      </button>
+      <Collapse open={open} id={id}>
+        <div className="pt-3">{children}</div>
+      </Collapse>
+    </div>
   );
 }

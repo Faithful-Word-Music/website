@@ -241,11 +241,6 @@ export function emptyPositions(slots: PlanSlots): number[] {
   return slots.flatMap((song, index) => (song ? [] : [index]));
 }
 
-/** The last day the planner should list by default: `horizonWeeks` from today. */
-export function defaultHorizon(today: string): string {
-  return addDays(today, siteConfig.servicePlanner.horizonWeeks * 7);
-}
-
 // ---------------------------------------------------------------------------
 // Changes - what an edit did, kept with every save (service_plan_events), so a
 // future notification can say "Psalm 54 was added" rather than "it changed".

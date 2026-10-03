@@ -62,7 +62,7 @@ export function RoleForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <TextField
           id={`${ids}-label`}
           label="Name"
@@ -88,7 +88,7 @@ export function RoleForm({
             <p className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
               {group.label}
             </p>
-            <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+            <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {(Object.keys(PERMISSIONS) as Permission[])
                 .filter((key) => PERMISSIONS[key].group === group.key)
                 .map((key) => {

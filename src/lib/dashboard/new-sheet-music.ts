@@ -17,6 +17,8 @@ const DAY_MS = 86_400_000;
 
 export interface NewSheetSong {
   title: string;
+  /** Its hymnal number, if it has one. */
+  number: string | null;
   slug: string;
   /** The latest change among its files. */
   changedAt: string;
@@ -51,7 +53,13 @@ export function newSheetMusic(
       .sort()
       .at(-1);
     if (latest) {
-      result.push({ title: song.title, slug: songSlug(song.title), changedAt: latest, upcoming: upcomingKeys.has(key) });
+      result.push({
+        title: song.title,
+        number: song.number,
+        slug: songSlug(song.title),
+        changedAt: latest,
+        upcoming: upcomingKeys.has(key),
+      });
     }
   }
 

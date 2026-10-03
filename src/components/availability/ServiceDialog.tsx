@@ -7,12 +7,13 @@ import { setServiceAvailability } from "@/app/availability/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Collapse } from "@/components/ui/Collapse";
+import { Modal } from "@/components/ui/Modal";
 import { availabilityContent } from "@/content/availability";
 import type { BoardService } from "@/lib/availability/board";
 import { NOTE_LIMIT, type ExceptionStatus } from "@/lib/availability/effective";
 import { serviceDay, serviceLine, stateLabel } from "@/lib/availability/format";
 
-import { Dialog } from "./Dialog";
 import { StateMark, StatePill } from "./parts";
 
 const copy = availabilityContent;
@@ -48,6 +49,8 @@ export function ServiceDialog({
   // services: choosing the usual one simply clears any exception.
   const [choice, setChoice] = useState<ExceptionStatus>(own?.effective ? "available" : "unavailable");
   const [note, setNote] = useState(own?.note ?? "");
+  const [showExpected, setShowExpected] = useState(false);
+  const expectedId = `${ids}-expected`;
   const [result, setResult] = useState<Result>(null);
   const [pending, startTransition] = useTransition();
 
@@ -80,7 +83,7 @@ export function ServiceDialog({
   }
 
   return (
-    <Dialog
+    <Modal
       title={serviceDay(service)}
       subtitle={serviceLine(service)}
       closeLabel={copy.service.close}
@@ -198,27 +201,44 @@ export function ServiceDialog({
         )}
       </section>
 
-      <details className="group">
-        <summary className="cursor-pointer text-sm font-medium text-ink marker:text-muted">
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowExpected((value) => !value)}
+          aria-expanded={showExpected}
+          aria-controls={expectedId}
+          className="inline-flex cursor-pointer items-center gap-2 text-left text-sm font-medium text-ink"
+        >
+          <svg
+            aria-hidden="true"
+            width="10"
+            height="10"
+            viewBox="0 0 12 12"
+            className={cn("text-muted transition-transform duration-200", showExpected && "rotate-90")}
+          >
+            <path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
           {copy.service.expected.replace("{count}", String(service.expected.length))}
-        </summary>
-        {service.expected.length > 0 ? (
-          <ul className="mt-2 flex flex-wrap gap-1.5">
-            {service.expected.map((person) => (
-              <li
-                key={person.id}
-                title={stateLabel(person.state)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-ink"
-              >
-                <StateMark state={person.state} />
-                {person.name}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-muted">{copy.service.nobodyExpected}</p>
-        )}
-      </details>
-    </Dialog>
+        </button>
+        <Collapse open={showExpected} id={expectedId}>
+          {service.expected.length > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {service.expected.map((person) => (
+                <li
+                  key={person.id}
+                  title={stateLabel(person.state)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-xs text-ink"
+                >
+                  <StateMark state={person.state} />
+                  {person.name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-muted">{copy.service.nobodyExpected}</p>
+          )}
+        </Collapse>
+      </div>
+    </Modal>
   );
 }

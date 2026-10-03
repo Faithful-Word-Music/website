@@ -1,6 +1,6 @@
 "use client";
 
-import { ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
@@ -55,7 +55,7 @@ export function NextServiceSpotlight({
         {/* Gold rule across the top: the one strong accent on the page. */}
         <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gold" />
 
-        <div className="grid gap-5 sm:gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+        <div className="grid grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
           <div>
             <p className="flex flex-wrap items-center gap-3">
               <StatusPill status={isNow ? "now" : "next"} />
@@ -144,6 +144,12 @@ export function NextServiceSpotlight({
                   <span className="text-base italic text-muted sm:text-xl">
                     {songListContent.states.notPosted}
                   </span>
+                </li>
+              ) : null}
+              {featured.plannedInsert ? (
+                <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                  <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                  <PlannedInsert song={featured.plannedInsert} className="min-w-0 flex-1" />
                 </li>
               ) : null}
             </ol>

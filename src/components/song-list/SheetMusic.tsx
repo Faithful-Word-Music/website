@@ -46,7 +46,7 @@ export function AboutSong({ music, className = "mt-12" }: { music: PublicSheetMu
         {about.title}
       </h2>
       <Card className="mt-4">
-        <dl className="grid gap-x-8 gap-y-4 px-5 py-5 sm:grid-cols-2 sm:px-6">
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-4 px-5 py-5 sm:grid-cols-2 sm:px-6">
           {rows.map(([label, value]) => (
             <div key={label} className="min-w-0">
               <dt className={labelClasses}>{label}</dt>

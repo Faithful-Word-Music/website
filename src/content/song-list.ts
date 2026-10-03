@@ -146,6 +146,8 @@ export const songListContent = {
     pendingSong: "To be announced",
     /** A service whose songs have not been published yet. */
     notPosted: "Songs not posted yet",
+    /** On a service not posted yet whose week's insert is already planned. */
+    plannedInsert: "Planned insert:",
 
     fallbackNotice:
       "This month's schedule is laid out differently than usual, so it is shown below exactly as it appears in the spreadsheet.",

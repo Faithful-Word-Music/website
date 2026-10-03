@@ -6,6 +6,7 @@ import { servicePlannerContent } from "@/content/service-planner";
 import { firstIssue } from "@/lib/auth/forms";
 import { withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
 import { addDays, findOccurrence, serviceOccurrences, type Occurrence } from "@/lib/availability/occurrences";
+import { plural } from "@/lib/plural";
 import { dayOfWeek } from "@/lib/service-time";
 import { startsAtAt } from "@/lib/service-planner/format";
 import {
@@ -157,7 +158,8 @@ export async function saveService(
       plan = (await getPlan(viewer.env, where.date, where.slot)) ?? plan;
     }
 
-    if (plan.status === "published") refreshEverything();
+    // A draft that takes or drops the week's insert changes what the song list shows for it (plannedInserts).
+    if (plan.status === "published" || insertMode !== (current?.insertMode ?? "week")) refreshEverything();
     else refreshPlanner();
     return {
       ok: true,
@@ -320,11 +322,13 @@ export async function setInsertWeek(input: unknown): Promise<ActionResult<{ upda
     const week: InsertWeek | null = song ? { weekStart, ...song } : null;
     const { updated, outdated } = await passInsertOn(viewer, weekStart, week, ["draft"]);
 
-    refreshPlanner();
+    // The song list shows a planned insert on services not posted yet.
+    refreshEverything();
     return {
       ok: true,
       value: { updated, outdated },
-      message: copy.inserts.saved.replace("{count}", String(updated)),
+      message:
+        updated === 0 ? copy.inserts.saved : plural(copy.inserts.savedUpdated, updated),
     };
   });
 }
@@ -339,7 +343,7 @@ export async function applyInsertToPublished(input: unknown): Promise<ActionResu
 
     const { updated } = await passInsertOn(viewer, weekStart, week, ["published"]);
     refreshEverything();
-    return { ok: true, value: { updated }, message: copy.inserts.updated.replace("{count}", String(updated)) };
+    return { ok: true, value: { updated }, message: plural(copy.inserts.updated, updated) };
   });
 }
 

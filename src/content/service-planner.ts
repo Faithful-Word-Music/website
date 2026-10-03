@@ -43,12 +43,11 @@ export const servicePlannerContent = {
     publishedGroup: "Published {count} services together.",
     publishedOne: "Published.",
     clearSelection: "Clear",
-    planFurther: "Plan another month ahead",
-    showing: "Listing services through {date}. Regular services are always here - list further ahead to plan them early.",
+    showing: "Listing services through {date}.",
     newSpecial: "New special service",
     open: "Open",
-    next: "Next",
     special: "Special",
+    planNext: "Plan next",
     ahead: "Planning ahead",
   },
 
@@ -200,6 +199,13 @@ export const servicePlannerContent = {
     group: "with {count} other services",
   },
 
+  /** The end of the Plan and Inserts lists (PlanAhead). {month} is e.g. "November". */
+  planAhead: {
+    start: "Start planning {month}",
+    /** Undoes it: the month brought in early goes away again. What was planned stays saved. */
+    stop: "Not yet - hide {month}",
+  },
+
   inserts: {
     title: "Inserts",
     lead: "One Psalm or other song a week. It goes third in that week's Sunday morning, Sunday evening and Wednesday services, unless a service changes it.",
@@ -210,12 +216,15 @@ export const servicePlannerContent = {
     clear: "Clear",
     key: "Key",
     services: "{count} services follow this week",
-    custom: "{count} changed it themselves",
-    outdated: "{count} published still show an older insert.",
+    custom: ["{count} changed it themselves", "{count} changed it themselves"],
+    outdated: ["{count} published service still shows an older insert.", "{count} published still show an older insert."],
     updatePublished: "Update them",
-    updated: "Updated {count} published services.",
-    saved: "Insert saved. {count} unpublished services updated.",
-    more: "Show more weeks",
+    updated: ["Updated {count} published service.", "Updated {count} published services."],
+    /** When no unplanned or draft service needed it. */
+    saved: "Insert saved.",
+    savedUpdated: ["Insert saved and put into {count} draft service.", "Insert saved and put into {count} draft services."],
+    /** A planned month, folded away once the next month is up. {count} is its weeks. */
+    monthPlanned: ["{count} week planned", "All {count} weeks planned"],
   },
 
   export: {
