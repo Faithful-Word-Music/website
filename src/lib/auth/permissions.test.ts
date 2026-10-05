@@ -69,6 +69,27 @@ describe("canAccessAdmin", () => {
     expect(
       canAccessAdmin(resolvePermissions(["musician"], rolePermissions, [{ permission: "view_profiles", effect: "grant" }])),
     ).toBe(true);
+    // AI's status and usage live in the admin area (/admin/ai).
+    expect(
+      canAccessAdmin(resolvePermissions(["musician"], rolePermissions, [{ permission: "use_ai", effect: "grant" }])),
+    ).toBe(true);
+  });
+});
+
+describe("AI permission", () => {
+  it("is held by administrators and the Music Director, and nobody else", () => {
+    const has = (roleKeys: string[]) => resolvePermissions(roleKeys, rolePermissions).has("use_ai");
+    expect(has([ADMIN_ROLE])).toBe(true);
+    expect(has(["music_director"])).toBe(true);
+    expect(has(["song_leader"])).toBe(false);
+    expect(has(["musician"])).toBe(false);
+    expect(has([])).toBe(false);
+  });
+
+  it("is granted once to the existing Music Director role only", () => {
+    const fixup = PERMISSION_FIXUPS.find((item) => item.permissions.includes("use_ai"));
+    expect(fixup).toBeDefined();
+    expect(fixupGrants(fixup!.permissions)).toEqual([{ role: "music_director", permission: "use_ai" }]);
   });
 });
 

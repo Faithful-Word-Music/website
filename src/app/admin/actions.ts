@@ -60,6 +60,8 @@ import {
   setCapoPolicy,
   type OptionList,
 } from "@/lib/auth/store";
+import { generateAiText } from "@/lib/ai/service";
+import type { AiTokenUsage } from "@/lib/ai/usage";
 import { MAX_ACCIDENTALS } from "@/lib/capo-policy";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
@@ -712,5 +714,50 @@ export async function removeSheetMusicSourceAction(sourceId: unknown): Promise<A
     await removeSheetMusicSource(viewer.env, id);
     revalidateSheetMusicTypes();
     return { ok: true, value: null, message: "Folder removed." };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AI
+// ---------------------------------------------------------------------------
+
+/** What the connection test reports back: the model's reply, and what was logged for it. */
+export interface AiTestOutcome {
+  reply: string;
+  model: string;
+  tokens: AiTokenUsage;
+  costUsd: number | null;
+  durationMs: number;
+}
+
+/**
+ * Admin -> AI's connection test: one tiny request through the shared AI layer
+ * (src/lib/ai/service.ts), which proves the key, the model and the usage log
+ * end to end. The prompt is fixed - nothing typed is ever sent - so this
+ * cannot be used as a way to ask the model anything else.
+ */
+export async function testAiConnectionAction(): Promise<ActionResult<AiTestOutcome>> {
+  return withPermission("use_ai", async (viewer) => {
+    const result = await generateAiText({
+      viewer,
+      feature: "connection_test",
+      instructions: "You are confirming that a website can reach you. Answer in one short, plain sentence.",
+      prompt: "Say that the connection to Faithful Word Music is working.",
+      maxOutputTokens: 400,
+      reasoning: "low",
+    });
+    revalidatePath("/admin/ai");
+    if (!result.ok) return { ok: false, error: result.message };
+    return {
+      ok: true,
+      value: {
+        reply: result.text.trim().slice(0, 400),
+        model: result.model,
+        tokens: result.tokens,
+        costUsd: result.costUsd,
+        durationMs: result.durationMs,
+      },
+      message: "The model answered.",
+    };
   });
 }

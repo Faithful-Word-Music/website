@@ -47,6 +47,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
       label: "Configuration",
       show: viewer.can("manage_profiles") || viewer.can("manage_sheet_music"),
     },
+    { href: "/admin/ai", label: "AI", show: viewer.can("use_ai") },
   ].filter((item) => item.show);
 
   return (

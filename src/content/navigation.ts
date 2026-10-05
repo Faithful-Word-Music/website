@@ -39,6 +39,7 @@ export const navigationContent = {
     people: "Back to people",
     roles: "Back to roles",
     configuration: "Back to configuration",
+    ai: "Back to AI",
     generic: "Back",
   },
 } as const;

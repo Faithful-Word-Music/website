@@ -13,6 +13,7 @@ The website of **Faithful Word Music**, the music ministry of
 - **Live site:** https://faithfulwordmusic.com
 - **Contact inbox:** contact@faithfulwordmusic.com
 - **Editing words, links or the song list?** See **[CONTENT-GUIDE.md](./CONTENT-GUIDE.md)**, which needs no coding. This file is for developers.
+- **The AI system** (in phases) has its own status and design document: **[AI.md](./AI.md)**.
 
 ---
 
@@ -26,7 +27,7 @@ The website of **Faithful Word Music**, the music ministry of
    - [The song list](#the-song-list) · [The Service Planner](#the-service-planner) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
    - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
-   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience) · [Availability](#availability)
+   - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience) · [Availability](#availability) · [AI](#ai)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
 8. [Deploying to Vercel](#deploying-to-vercel)
@@ -66,13 +67,14 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `/profile`, `/profile/edit` | A member's own profile (who they are in the ministry) and its editor |
 | `/account` | Account settings: Clerk's screen for sign-in email, password and devices. Old `/account/edit` and `/account/security` links redirect |
 | `/admin/...` | Requests, invitations, people, roles, and the title and instrument lists. Each section needs its own permission |
+| `/admin/ai` | The AI system's status, a connection test, and this month's AI usage and cost by feature (`use_ai`). See [AI](#ai) |
 | `POST /api/account-requests` | The request form's endpoint |
 | `GET /api/account/sheet-music` | The signed-in person's sheet music PDF for each published service, for the song list's cards |
 | `/manifest.webmanifest`, `/app-icon/<variant>`, `/apple-icon` | What makes the site installable as the Faithful Word Music app, and its icons. See [Installing the app](#installing-the-app) |
 
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 ·
 Neon Postgres (service plans, song archive, accounts) · Google Drive and Sheets APIs (sheet music only) ·
-Resend (email) · Vercel BotID · `@react-pdf/renderer` (PDF) · ExcelJS (spreadsheet exports) ·
+Resend (email) · Vercel AI SDK and AI Gateway (AI) · Vercel BotID · `@react-pdf/renderer` (PDF) · ExcelJS (spreadsheet exports) ·
 `next/og` (pictures and link previews) · Clerk (member sign-in) · Zod · Vitest.
 
 > **Heads-up for contributors:** this is Next.js 16, which has breaking changes from older versions.
@@ -119,6 +121,9 @@ All of these are **server-only secrets** except `NEXT_PUBLIC_CLERK_PUBLISHABLE_K
 | `CRON_SECRET` | Protects the cron jobs (and the one-time import) | `src/lib/cron-auth.ts` | Production, and locally if you run them by hand |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Member accounts (optional). **Public**, and a **different value per environment** | Clerk SDK, `src/lib/auth/clerk-env.ts` | Local + Preview: `pk_test_…` · Production: `pk_live_…` |
 | `CLERK_SECRET_KEY` | Member accounts (optional). **Different value per environment** | Clerk SDK, `src/lib/auth/clerk.ts` | Local + Preview: `sk_test_…` · Production: `sk_live_…` |
+| `AI_GATEWAY_API_KEY` | AI features (optional). The Vercel AI Gateway key | The AI SDK; presence checked in `src/lib/ai/config.ts` | Development, Preview, Production |
+| `AI_MODEL` | Which model AI features use (optional, not a secret). Default `openai/gpt-5.6-terra` | `src/lib/ai/config.ts` | Wherever it should differ from the default |
+| `AI_MONTHLY_BUDGET_USD` | The monthly budget shown on Admin → AI (optional, not a secret). Default `10` | `src/lib/ai/config.ts` | Wherever it should differ from the default |
 
 The two Clerk keys are the exception to "tick every environment": see [Accounts (Clerk)](#accounts-clerk).
 
@@ -156,7 +161,7 @@ src/
 │   ├── availability/                 The availability board and its server actions
 │   ├── profile/                      A member's own profile and profile editor
 │   ├── account/                      Account settings (Clerk: email, password, devices)
-│   ├── admin/                        Requests, invitations, people, roles, titles & instruments
+│   ├── admin/                        Requests, invitations, people, roles, titles & instruments, AI status and usage
 │   ├── api/account-requests/         Account request endpoint
 │   ├── layout.tsx                    Fonts, header, footer, base metadata
 │   ├── globals.css                   Design tokens (@theme), motion, print
@@ -208,6 +213,7 @@ src/
 | `auth/profile-visibility.ts` | Which profile fields each audience (self, staff, later other members) may see (pure) |
 | `navigation.ts` | Which links the header, mobile menu, footer and account menu show, for visitors and per permission (pure) |
 | `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up`, `repertoire`, `sheet-gaps`, `new-sheet-music` and `people` (pure); `load.ts` does the reads (server-only) |
+| `ai/` | The AI system (see [AI.md](./AI.md)): `service.ts`, the one place a model is called (server-only); `store.ts`, the usage log (server-only); `config.ts`; and `features`, `settings`, `errors`, `usage`, `format` (pure) |
 | `availability/` | Availability: `occurrences` (which services happen), `effective` (normal + exception = effective, the one rule), `board`, `summary`, `range`, `access` (who is on the board, whose records someone may change), `forms`, `format` (pure); `store.ts` and `load.ts` (server-only) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
@@ -674,6 +680,18 @@ Neither is protection; members' pages still check on the server.
 
 **Later:** member profiles can show normal services and upcoming exceptions from the same tables. Notifications and private staff notes aren't part of this phase. The Service Planner reads availability but never stores it, and never assigns people to services.
 
+### AI
+
+The site has an internal AI system, built in phases; **[AI.md](./AI.md)** tracks the phases and holds the design. So far there is only the foundation: no assistant and no AI in the Service Planner yet.
+
+- **Who:** only people holding **`use_ai`** ("Use AI features"): Administrator always, and Music Director by default. Musicians, song leaders, members and visitors can never make an AI request.
+- **One way in.** Every AI request goes through `generateAiText()` in `src/lib/ai/service.ts`, the only file allowed to import the AI SDK (an ESLint rule enforces it). It checks `use_ai` again, calls the model through **Vercel AI Gateway**, logs the request and never throws: a failure comes back as `{ ok: false, code, message }` with wording that is safe to show (`src/content/ai.ts`).
+- **The model is configuration:** `AI_MODEL`, an AI Gateway `provider/model` ID. Nothing in the code is tied to one provider.
+- **Usage log:** one row per request in `ai_usage` (created on first use, tagged `clerk_env`): when, feature, model, who, input, output and reasoning tokens, cost, duration, and how it ended. Prompts and answers are **not** stored.
+- **Budget:** the limit that stops spending is the budget set in Vercel AI Gateway. `AI_MONTHLY_BUDGET_USD` only sets the figure shown beside the site's own totals.
+- **Admin → AI** (`/admin/ai`): whether AI is connected, **Run test request** (one fixed, tiny request that proves the key, model and log end to end), this month's cost against the budget, usage by feature and by model, and the latest requests.
+- **Without a key** the site is unchanged: the page says "Not set up" and no request is made.
+
 ---
 
 ## Design conventions
@@ -698,7 +716,7 @@ Neither is protection; members' pages still check on the server.
   - **Fallbacks:** no View Transitions API means pages swap instantly. With JavaScript off, a `<noscript>` style shows everything. With `prefers-reduced-motion`, all motion is off (enforced in both CSS and JavaScript).
 - **Copy** lives in `src/content/`, never inside components, so wording can change without touching layout. A count keeps both forms together (`["{count} song", "{count} songs"]`) and is filled in with `plural()` from `src/lib/plural.ts`.
 - **Dialogs:** use `Modal` (`components/ui/Modal.tsx`), or for a full-screen one the `useModalDialog` hook it is built on. Focus goes to the dialog itself, never its close button, so nothing shows a focus ring as it opens. A dialog made for typing may move focus into its field afterwards, but only with a mouse and keyboard (`(pointer: fine)`), so phones don't throw up the keyboard.
-- **Phones first:** the page never scrolls sideways. Tab bars wrap (`AdminNav`), except Admin's six tabs, which use `overflow="scroll"`: one row that scrolls on its own, with a fade and chevron on the side with more tabs. A row that holds a title plus controls puts the controls on a second line below `sm`, so the title keeps the width. Every responsive grid starts from `grid-cols-1` (`grid grid-cols-1 md:grid-cols-2`); without it the implicit column grows to fit a long truncated line and pushes the page wider than the screen.
+- **Phones first:** the page never scrolls sideways. Tab bars wrap (`AdminNav`), except Admin's seven tabs, which use `overflow="scroll"`: one row that scrolls on its own, with a fade and chevron on the side with more tabs. A row that holds a title plus controls puts the controls on a second line below `sm`, so the title keeps the width. Every responsive grid starts from `grid-cols-1` (`grid grid-cols-1 md:grid-cols-2`); without it the implicit column grows to fit a long truncated line and pushes the page wider than the screen.
 - **Cards with hover rows** get `overflow-hidden` (or rounded last cells, for a table with a sticky header), so a row's hover background stays inside the card's rounded corners and gold barline.
 - **Badges:** the Next/Now badge is `StatusPill` from `components/song-list/ServiceBits.tsx`, and only for the next service to actually happen. Other labels (the planner's "Plan next") use `Pill` (`components/admin/StatusPill.tsx`).
 - **Planner lists** show a month at a time (`src/lib/service-planner/planning-window.ts`): the month being planned, the next one from a week before it starts, and earlier only through "Start planning <month>" / "Not yet" (`PlanAhead`).
@@ -725,6 +743,7 @@ Vitest covers the pure logic in `src/lib`:
 - permissions, navigation per permission, and profile visibility (`auth/permissions.test.ts`, `navigation.test.ts`, `auth/profile-visibility.test.ts`)
 - the Dashboard's focus, attention list, coming services and sheet-music choice (`dashboard/dashboard.test.ts`)
 - a song's own key and the capo policy: thresholds, a rule switched off, one song's setting (`capo-policy.test.ts`)
+- the AI system: sorting failures into codes (a spent budget included), keeping credentials out of logged details, tokens and cost, the month and its budget, settings (`ai/errors.test.ts`, `ai/usage.test.ts`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.
@@ -749,6 +768,7 @@ In **Settings → Environment Variables**, tick **Production, Preview and Develo
 ```
 RESEND_API_KEY        = <your key>
 CRON_SECRET           = <a long random string>
+AI_GATEWAY_API_KEY    = <your AI Gateway key>     (optional: AI features; see AI.md)
 ```
 
 `DATABASE_URL` is added for you when Neon is connected (see [Database (Neon)](#database-neon)). `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` are described under [Sheet music (service account)](#sheet-music-service-account).

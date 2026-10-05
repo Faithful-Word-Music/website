@@ -80,6 +80,11 @@ export const PERMISSIONS = {
     description: "See song statistics and reports.",
     group: "music",
   },
+  use_ai: {
+    label: "Use AI features",
+    description: "Use the site's AI features and see what they cost. Every request is paid for.",
+    group: "music",
+  },
   view_service_plans: {
     label: "View service plans",
     description: "See published service plans and what to prepare for them.",
@@ -108,7 +113,8 @@ export function isPermission(value: string): value is Permission {
 /**
  * Permissions that open the admin area. Anyone holding one sees the Admin
  * link. manage_sheet_music is here because each person's sheet music is
- * chosen on their page under People.
+ * chosen on their page under People; use_ai because the AI's status and usage
+ * are there (/admin/ai).
  */
 export const ADMIN_PERMISSIONS: Permission[] = [
   "manage_users",
@@ -116,6 +122,7 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "view_profiles",
   "manage_profiles",
   "manage_sheet_music",
+  "use_ai",
 ];
 
 /** Permissions that open People (/admin/users): everything that works on a person's page. */
@@ -161,6 +168,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
       "view_availability",
       "manage_availability",
       "view_analytics",
+      "use_ai",
       "view_service_plans",
       "view_sheet_music",
       "view_member_resources",
@@ -197,6 +205,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
  */
 export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readonly Permission[] }> = [
   { key: "2026-10-availability-permissions", permissions: ["view_availability", "manage_availability"] },
+  { key: "2026-10-ai-permission", permissions: ["use_ai"] },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

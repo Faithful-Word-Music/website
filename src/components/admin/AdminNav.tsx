@@ -18,7 +18,7 @@ import { usePagePath } from "@/components/ui/use-page-path";
  *     share the full width, each with its own rule, and wrap onto a second
  *     row if there are too many; `trailing` (the planner's link to the song
  *     list) sits on its own line above them.
- *   "scroll" (Admin, whose six tabs would wrap) - one row that scrolls
+ *   "scroll" (Admin, whose seven tabs would wrap) - one row that scrolls
  *     sideways, and says so: the side with more tabs fades out, with a
  *     chevron to page along, and the open tab is brought into view.
  *

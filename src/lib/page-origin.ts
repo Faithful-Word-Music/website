@@ -115,6 +115,7 @@ export function backLabel(entry: string): string {
     "/admin/users": labels.people,
     "/admin/roles": labels.roles,
     "/admin/configuration": labels.configuration,
+    "/admin/ai": labels.ai,
   };
   return named[path] ?? labels.generic;
 }
