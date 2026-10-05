@@ -1,18 +1,98 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
 
 import { MobileSearchBar } from "@/components/search/CommandPalette";
+import { Collapse } from "@/components/ui/Collapse";
 import { cn } from "@/components/ui/cn";
+import { usePagePath } from "@/components/ui/use-page-path";
 import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { siteConfig } from "@/config/site";
 import type { NavItem } from "@/lib/navigation";
 
-type Row =
-  | { kind: "heading"; label: string }
-  /** `grouped`: one of a menu's links; `last`: the final one, which closes the group with a little room. */
-  | { kind: "link"; item: NavItem; grouped: boolean; last: boolean };
+/** How a row arrives as the menu opens: its place in the stagger. */
+type Enter = { style: CSSProperties; className: string };
+
+// About 60px a row: well over a finger's 44px, without filling the screen.
+const rowClasses = "flex w-full items-center gap-4 py-3.5 text-left font-display text-2xl";
+
+/**
+ * A menu among the links ("Tools"): a row like the others that opens in
+ * place, its links sliding out beneath it and the rows below moving down to
+ * make room. It starts open on one of its own pages.
+ */
+function MenuRow({
+  item,
+  isActive,
+  onClose,
+  enter,
+}: {
+  item: NavItem;
+  isActive: (href: string) => boolean;
+  onClose: () => void;
+  enter: Enter;
+}) {
+  const children = item.children ?? [];
+  const pathname = usePagePath();
+  const active = children.some((child) => isActive(child.href));
+  const [open, setOpen] = useState(active);
+  const [lastPathname, setLastPathname] = useState(pathname);
+  const listId = useId();
+
+  // A new page: open on one of its own, closed anywhere else.
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
+    setOpen(active);
+  }
+
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((value) => !value)}
+        style={enter.style}
+        className={cn(rowClasses, enter.className, active || open ? "text-ink" : "text-muted")}
+      >
+        {/* The same barline the links wear, when one of its pages is open. */}
+        <span aria-hidden="true" className={cn("h-7 w-0.5 shrink-0 rounded-full", active ? "bg-gold" : "bg-transparent")} />
+        {item.label}
+        <svg
+          aria-hidden="true"
+          width="14"
+          height="14"
+          viewBox="0 0 10 10"
+          fill="none"
+          className={cn("-ml-1.5 shrink-0 transition-transform duration-300", open && "rotate-180")}
+        >
+          <path d="M2 3.75L5 6.75l3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <Collapse open={open} id={listId}>
+        {/* Set in from the label, down a hairline: these belong to the row above. */}
+        <ul className="mb-2 ml-[1.125rem] border-l border-line pl-4">
+          {children.map((child) => {
+            const current = isActive(child.href);
+            return (
+              <li key={child.href}>
+                <Link
+                  href={child.href}
+                  onClick={onClose}
+                  aria-current={current ? "page" : undefined}
+                  className={cn("flex min-h-11 items-center py-2 font-display text-xl", current ? "text-ink" : "text-muted")}
+                >
+                  {child.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </Collapse>
+    </li>
+  );
+}
 
 /**
  * The mobile navigation: a full-screen overlay below the header bar.
@@ -46,17 +126,6 @@ export function MobileMenu({
   // overlay while the page stayed pinned and unscrollable.)
   useScrollLock(open);
 
-  // One row per link. A menu ("Tools") becomes its name and then its links -
-  // nothing to tap open, since there is room here to show them all.
-  const rows: Row[] = items.flatMap((item): Row[] =>
-    item.children
-      ? [
-          { kind: "heading", label: item.label },
-          ...item.children.map((child, index, list): Row => ({ kind: "link", item: child, grouped: true, last: index === list.length - 1 })),
-        ]
-      : [{ kind: "link", item, grouped: false, last: false }],
-  );
-
   return (
     <div
       id={panelId}
@@ -86,41 +155,28 @@ export function MobileMenu({
           />
           <nav aria-label="Primary" className="mt-2">
             <ul className="flex flex-col">
-              {rows.map((row, index) => {
+              {items.map((item, index) => {
                 // A short stagger on the way in; immediate on the way out, so
                 // closing feels responsive rather than draggy.
-                const enter = {
+                const enter: Enter = {
                   style: { transitionDelay: open ? `${90 + index * 60}ms` : "0ms" },
                   className: cn(
                     "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
                     open ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
                   ),
                 };
-                if (row.kind === "heading") {
-                  // A menu's name ("Tools") over its links, which follow as rows of their own.
-                  return (
-                    <li key={`heading:${row.label}`} style={enter.style} className={cn("pl-[1.125rem] pt-4", enter.className)}>
-                      <span className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
-                        {row.label}
-                      </span>
-                    </li>
-                  );
+                if (item.children) {
+                  // Several destinations behind one row ("Tools"), which opens in place.
+                  return <MenuRow key={item.label} item={item} isActive={isActive} onClose={onClose} enter={enter} />;
                 }
-                const { item } = row;
                 return (
-                  <li key={item.href} className={row.last ? "pb-3" : undefined}>
+                  <li key={item.href}>
                     <Link
                       href={item.href}
                       onClick={onClose}
                       aria-current={isActive(item.href) ? "page" : undefined}
                       style={enter.style}
-                      className={cn(
-                        // About 60px a row: well over a finger's 44px, without filling the screen.
-                        "flex items-center gap-4 font-display text-2xl",
-                        row.grouped ? "py-2.5" : "py-3.5",
-                        enter.className,
-                        isActive(item.href) ? "text-ink" : "text-muted",
-                      )}
+                      className={cn(rowClasses, enter.className, isActive(item.href) ? "text-ink" : "text-muted")}
                     >
                       {/* Barline marking the current page. */}
                       <span

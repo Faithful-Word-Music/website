@@ -283,13 +283,20 @@ export function ConductorChat({ variant, autoFocus = false }: { variant: "page" 
                 following.current = box.scrollHeight - box.scrollTop - box.clientHeight < FOLLOW_WITHIN;
               }
         }
-        className={cn("flex-1", page ? "flex flex-col pb-8 pt-2" : "min-h-0 overflow-y-auto overscroll-contain py-5", gutter)}
+        className={cn(
+          "flex-1",
+          // With a phone's keyboard up (the sheet marks itself data-keyboard) there is little height: less of it goes on room.
+          page ? "flex flex-col pb-8 pt-2" : "min-h-0 overflow-y-auto overscroll-contain py-5 [[data-keyboard]_&]:py-3",
+          gutter,
+        )}
       >
         {messages.length === 0 ? (
           <div className={cn("mx-auto flex w-full max-w-xl flex-col justify-center", page ? "flex-1 py-6" : "min-h-full")}>
             <p className="font-display text-2xl text-ink">{copy.empty.heading}</p>
-            <p className="mt-2 text-sm text-muted">{copy.empty.body}</p>
-            <p className="mt-6 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
+            {/* In the panel this is the one place its limits are said (the page says them under the box to type in);
+                it gives way to the suggestions while the keyboard is up. */}
+            <p className="mt-2 text-sm text-muted [[data-keyboard]_&]:hidden">{page ? copy.empty.body : copy.capabilities}</p>
+            <p className="mt-6 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark [[data-keyboard]_&]:mt-3">
               {copy.empty.examplesLabel}
             </p>
             <ul className="mt-2 divide-y divide-line border-y border-line">
@@ -396,7 +403,8 @@ export function ConductorChat({ variant, autoFocus = false }: { variant: "page" 
               </button>
             )}
           </div>
-          <p id={hintId} className={cn("mt-2 text-xs", tooLong ? "text-gold-dark" : "text-muted")}>
+          {/* The panel has said this already, over the suggestions: there it is kept for a screen reader only. */}
+          <p id={hintId} className={cn("mt-2 text-xs", tooLong ? "text-gold-dark" : page ? "text-muted" : "sr-only")}>
             {tooLong
               ? copy.composer.tooLong.replace("{max}", CONDUCTOR_LIMITS.questionChars.toLocaleString("en-US"))
               : copy.capabilities}

@@ -63,6 +63,8 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
         "[:root[data-share-bar]_&]:invisible",
         // ...and for Conductor's own page, where the box to type in does.
         "[:root[data-conductor-page]_&]:invisible",
+        // ...and for the open mobile menu, which takes the whole screen (Header.tsx).
+        "[:root[data-nav-menu]_&]:invisible",
       )}
     >
       <svg

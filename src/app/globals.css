@@ -760,7 +760,7 @@ html[data-conductor-resizing] body {
     box-shadow: var(--shadow-lift), 0 0 0 0 color-mix(in srgb, var(--color-gold) 0%, transparent);
   }
   50% {
-    box-shadow: var(--shadow-lift), 0 0 18px 2px color-mix(in srgb, var(--color-gold) 38%, transparent);
+    box-shadow: var(--shadow-lift), 0 0 12px 1px color-mix(in srgb, var(--color-gold) 55%, transparent);
   }
 }
 

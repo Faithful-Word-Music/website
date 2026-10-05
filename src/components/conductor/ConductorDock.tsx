@@ -325,6 +325,8 @@ function Drawer({ onClosed }: { onClosed: () => void }) {
 
 /** How far the sheet must be pulled down to close it. */
 const DISMISS_AFTER = 110;
+/** How much of the window must be covered at the bottom before it is taken for the keyboard. */
+const KEYBOARD_AT_LEAST = 120;
 
 /**
  * Conductor over the page: a sheet that rises from the bottom and stops short
@@ -353,7 +355,11 @@ function Sheet({ onClosed }: { onClosed: () => void }) {
       if (!viewport || !sheet) return;
       sheet.style.setProperty("--sheet-space", `${viewport.height}px`);
       // What the keyboard (or a browser bar) covers at the bottom of the layout viewport.
-      sheet.style.setProperty("--sheet-lift", `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`);
+      const lift = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      sheet.style.setProperty("--sheet-lift", `${lift}px`);
+      // That much is a keyboard, not a browser bar: the conversation tightens up to fit (ConductorChat).
+      if (lift > KEYBOARD_AT_LEAST) sheet.dataset.keyboard = "";
+      else delete sheet.dataset.keyboard;
     }
     fit();
     viewport.addEventListener("resize", fit);
@@ -477,6 +483,8 @@ function Launcher({ onOpen }: { onOpen: () => void }) {
         "hover:-translate-y-1 hover:scale-[1.06] hover:border-gold focus-visible:border-gold active:translate-y-0 active:scale-[0.96] active:duration-150",
         // Steps aside for the song list's share bar, which takes the bottom of the screen.
         "[:root[data-share-bar]_&]:invisible app-login:hidden",
+        // ...and for the open mobile menu, which takes the whole screen (Header.tsx).
+        "[:root[data-nav-menu]_&]:invisible",
       )}
     >
       {/* The mark alone: a quiet round button in the corner, like "Back to top" above it. */}

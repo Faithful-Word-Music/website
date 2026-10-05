@@ -54,6 +54,16 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  // The menu takes the whole screen below the bar: the floating buttons
+  // (Back to top, Conductor) stand down rather than sit on its links.
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.dataset.navMenu = "";
+    return () => {
+      delete document.documentElement.dataset.navMenu;
+    };
+  }, [open]);
+
   const close = useCallback(() => setOpen(false), []);
   // The mobile menu's search bar: the menu gives way to the palette.
   const openSearch = useCallback(() => {
