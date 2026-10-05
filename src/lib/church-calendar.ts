@@ -19,6 +19,10 @@ import type { DatedService } from "@/types/song-list";
  * hymn that so far happens to have been sung only at Christmastime counts as
  * one too - until the first time it is sung at any other time of year, when
  * it stops counting, so the records correct themselves as they grow.
+ *
+ * Easter and Thanksgiving are here as dates only: what is sung around them is
+ * the Music Director's planning philosophy (src/lib/ai/planning), not a rule
+ * this file enforces.
  */
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -40,6 +44,30 @@ export function christmasSeason(year: number): { from: string; to: string } {
 export function inChristmasSeason(date: string): boolean {
   const { from, to } = christmasSeason(Number(date.slice(0, 4)));
   return date >= from && date <= to;
+}
+
+/** Easter Sunday (the Gregorian reckoning, as the church keeps it). */
+export function easter(year: number): string {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** The dates one year's seasons turn on, so nothing that reads them has to work them out. */
+export function seasonDates(year: number): { year: number; easter: string; thanksgiving: string; christmasSeason: { from: string; to: string } } {
+  return { year, easter: easter(year), thanksgiving: thanksgiving(year), christmasSeason: christmasSeason(year) };
 }
 
 /** The ids (songKey) of every song only ever sung in the Christmas season. */

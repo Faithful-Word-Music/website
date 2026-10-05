@@ -3,6 +3,8 @@ import "server-only";
 import { conductorContent } from "@/content/conductor";
 import type { Viewer } from "@/lib/auth/session";
 
+import { loadPlanningPhilosophy } from "../planning/load";
+import { philosophyOutline } from "../planning/philosophy";
 import { streamAiText, type AiStreamResult } from "../service";
 import { countRecentAiUsage } from "../store";
 import { normalizePageContext } from "./context";
@@ -21,7 +23,8 @@ const HOUR_MS = 3_600_000;
  *   2. Only the latest part of the conversation goes to the model
  *      (trimConversation), and only its text.
  *   3. The model gets Conductor's instructions, the page it was opened over
- *      (checked first - normalizePageContext) and the read-only tools.
+ *      (checked first - normalizePageContext), the titles of the planning
+ *      philosophy's sections, and the read-only tools.
  *   4. The request itself is streamAiText(): use_ai checked again, a bounded
  *      number of model calls, one usage row, and never an exception.
  *
@@ -51,6 +54,9 @@ export async function answerConductor(input: {
   const messages = trimConversation(input.turns);
   if (messages.length === 0) return { ok: false, code: "invalid-response", message: conductorContent.errors.invalid };
 
+  // A read from disk, kept for the life of the server: only the section titles go into the instructions.
+  const planning = await loadPlanningPhilosophy();
+
   return streamAiText({
     viewer,
     feature: "assistant",
@@ -59,6 +65,7 @@ export async function answerConductor(input: {
       now: Date.now(),
       context: normalizePageContext(input.context),
       canPlan: viewer.can("manage_service_plans"),
+      philosophyOutline: planning.ok ? philosophyOutline(planning.philosophy) : null,
     }),
     messages: messages.map((turn) => ({ role: turn.role, content: turn.text })),
     tools: conductorTools(viewer),

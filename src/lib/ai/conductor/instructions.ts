@@ -7,7 +7,8 @@ import { describePageContext, type ConductorPageContext } from "./context";
 /**
  * What Conductor is told before every question: who it is, the one rule that
  * matters (this church's facts come from the tools, never from memory), what
- * it cannot do yet, and today's date. Pure - unit tested.
+ * it cannot do yet, how to use the planning philosophy, and today's date.
+ * Pure - unit tested.
  *
  * The calendar is spelled out because "three Sundays ago" is arithmetic a
  * model gets wrong; with the dates in front of it there is nothing to work out.
@@ -37,7 +38,43 @@ export function conductorCalendar(today: string): string {
   ].join("\n");
 }
 
-export function conductorInstructions(input: { now: number; context: ConductorPageContext | null; canPlan: boolean }): string {
+/**
+ * How Conductor uses the Music Director's planning philosophy. The philosophy
+ * itself is NOT here: it is one document, read through get_planning_philosophy
+ * (src/lib/ai/planning). This is only how to use it and how to keep its three
+ * voices apart - the record, the philosophy, Conductor's own judgement.
+ *
+ * It is sent with every question, planning or not, so it is kept short
+ * (PLANNING_INSTRUCTIONS_MAX, unit tested). `outline` is the document's
+ * section titles, so the sections wanted can be named in the first call; it
+ * is left out when the document could not be read.
+ */
+export const PLANNING_INSTRUCTIONS_MAX = 1300;
+
+export function planningInstructions(outline: string | null): string {
+  const { recentDays } = siteConfig.servicePlanner;
+  return `# Planning philosophy
+The Music Director's planning philosophy is a document you know ONLY through get_planning_philosophy, called in this turn.
+- Call it before saying what the philosophy is, and before judging or recommending a song, a place, a pairing or a service. Ask once, in the same round as your other lookups, for the sections you need; leave topics out (the whole document) only for a whole service or week.
+- Keep apart, and say which is which: the record (what a tool returned), the philosophy (what the document says) and your own recommendation.
+- Never state a rule, number or limit the document does not contain; where it is silent, say so. The planner's ${recentDays}-day "sung recently" notice is the Service Planner's, not the Director's policy.
+- Times sung is evidence that a song is familiar, never that it is loved. timesSung 0 means unsung in these records, not new to the congregation.
+- Lyrics do not tell you tempo, energy, style or difficulty. Judge how songs sit together from their words and from what the document says, and say when musical character is not known here.
+- The week's insert and its place are fixed: suggest around it.${outline ? `\nIts sections: ${outline}.` : ""}`;
+}
+
+/**
+ * Ordered for the provider's prompt cache: everything that is the same for
+ * every question comes first, and what changes (the dates, the person, the
+ * page) comes last, so the long fixed part is one repeated prefix.
+ */
+export function conductorInstructions(input: {
+  now: number;
+  context: ConductorPageContext | null;
+  canPlan: boolean;
+  /** The planning philosophy's section titles (philosophyOutline), when it could be read. */
+  philosophyOutline?: string | null;
+}): string {
   const { church, name } = siteConfig;
   const page = describePageContext(input.context);
 
@@ -73,16 +110,12 @@ The song library's lyrics are indexed from this church's own sheet music, and th
 # What you cannot do
 - You cannot read the music itself: notes, rhythm, harmony, chords or anything in the score other than the words. If asked, say so.
 - You only read. You cannot add, change, move or remove a song, save or publish a service, or change anything on the site, and you must not say or imply that you have. You may suggest; the person makes the change in the Service Planner.
-- You know nothing a planner has typed but not yet saved.${input.canPlan ? "" : "\n- This person does not manage service plans, so you know only the services posted to the song list - not drafts."}`,
+- You know nothing a planner has typed but not yet saved.`,
+
+    planningInstructions(input.philosophyOutline ?? null),
 
     `# How services are named
-Sunday has a morning service (AM) and an evening service (PM); Wednesday has an evening service (PM). Other days are special services. "Sunday night" is Sunday PM. Each week has one insert (often a Psalm) sung at all three services of its week on purpose - that is not a repeat. A key belongs to a service: it is the key the song was sung in that day.
-
-# Dates
-${conductorCalendar(churchDate(input.now))}
-Work out any other date from these before calling a tool. Tools take dates as YYYY-MM-DD.`,
-
-    page ? `# The page behind you\n${page}` : null,
+Sunday has a morning service (AM) and an evening service (PM); Wednesday has an evening service (PM). Other days are special services. "Sunday night" is Sunday PM. Each week has one insert (often a Psalm) sung at all three services of its week on purpose - that is not a repeat. A key belongs to a service: it is the key the song was sung in that day.`,
 
     `# How to answer
 - Be brief and direct: the answer first, then only the detail that helps. No preamble, and do not describe your tools or how you looked something up.
@@ -90,6 +123,15 @@ Work out any other date from these before calling a tool. Tools take dates as YY
 - Give a song as its title, with its hymnal number when it has one.
 - Use short paragraphs, and a simple list when listing songs or dates. Plain Markdown only: bold, lists and small tables. No links, images or HTML.
 - If the question is unclear, ask one short question rather than guessing what was meant.`,
+
+    // Everything above is the same for every question; what changes comes last (see the note on the function).
+    `# Dates
+${conductorCalendar(churchDate(input.now))}
+Work out any other date from these before calling a tool. Tools take dates as YYYY-MM-DD.`,
+
+    input.canPlan ? null : "# This person\nThis person does not manage service plans, so you know only the services posted to the song list - not drafts.",
+
+    page ? `# The page behind you\n${page}` : null,
   ]
     .filter(Boolean)
     .join("\n\n");

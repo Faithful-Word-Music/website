@@ -476,7 +476,7 @@ export function songsNotSungSince(data: ConductorData, options: { days: number; 
       daysSince: Math.floor((data.now - Date.parse(record.plays.at(-1)!.startsAt)) / DAY_MS),
       ...(seasonal.has(record.id) ? { christmasSong: true } : {}),
     }))
-    // The best-loved neglected songs first; among equals, the longest unsung.
+    // The most sung of the neglected songs first; among equals, the longest unsung.
     .sort((a, b) => b.timesSung - a.timesSung || b.daysSince - a.daysSince);
   const limit = listSize(options.limit);
 

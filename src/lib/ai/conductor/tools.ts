@@ -5,13 +5,15 @@ import { z } from "zod";
 
 import type { ConductorStatusKey } from "@/content/conductor";
 import type { Viewer } from "@/lib/auth/session";
-import { isDateString } from "@/lib/availability/occurrences";
+import { churchDate, isDateString } from "@/lib/availability/occurrences";
 import { SERVICE_TYPES } from "@/lib/service-archive";
 import { searchByTheme, searchLyrics, similarSongs } from "@/lib/library-content/search";
 import { getSongSections, listLibrarySongs, type LibrarySong } from "@/lib/library-content/store";
 import { loadWorkspace } from "@/lib/service-planner/load";
 import { serviceAnchor } from "@/lib/site-search";
 
+import { loadPlanningPhilosophy } from "../planning/load";
+import { PHILOSOPHY_TOPICS_MAX, planningGuidance } from "../planning/philosophy";
 import { loadConductorData } from "./data";
 import {
   checkSongForService,
@@ -46,7 +48,7 @@ import { findLibrarySong, lyricMatches, NOT_INDEXED, similarMatches, songLyrics,
  *   - Permissions are the person's own: drafts and planner checks need
  *     manage_service_plans as well as use_ai (data.ts, check_service_plan).
  *
- * Two families so far:
+ * Three families so far:
  *
  *   the records   what was sung, what is planned, statistics, planner checks
  *                 (facts.ts, over the site's own read layer)
@@ -56,6 +58,11 @@ import { findLibrarySong, lyricMatches, NOT_INDEXED, similarMatches, songLyrics,
  *                 theme and songs alike in theme by embeddings. Every lyric
  *                 result carries the song's history too, so the two families
  *                 answer together.
+ *   the planning  how the Music Director plans a service: the planning
+ *   philosophy    philosophy document, a section at a time and word for word
+ *                 (src/lib/ai/planning, shared with every other AI feature).
+ *                 It is the Director's guidance, not a record: what was sung
+ *                 and what a song says still come from the other two.
  *
  * A new family is added as another group here with its own status wording;
  * nothing else changes.
@@ -93,6 +100,7 @@ const TOOL_STATUS = {
   find_lyrics: "lyrics",
   search_songs_by_theme: "themes",
   find_similar_songs: "themes",
+  get_planning_philosophy: "philosophy",
 } as const satisfies Record<string, ConductorStatusKey>;
 
 export type ConductorToolName = keyof typeof TOOL_STATUS;
@@ -154,7 +162,33 @@ export function conductorTools(viewer: Viewer) {
     onlySungBefore: z.boolean().optional().describe("Only songs this church has sung at least once - songs the congregation already knows."),
   };
 
+  // The philosophy's sections already sent in this question: one asked for again is named, not sent twice.
+  const philosophyGiven = new Set<string>();
+
   return {
+    get_planning_philosophy: tool({
+      description:
+        "The Music Director's own planning philosophy for song services, word for word from the site's document: familiar and new songs, the opener, the middle, the closer, service flow, songs that should not sit together, the week's insert, variety across the week, Thanksgiving, Christmas and Easter. Use it before saying what the philosophy is, and before judging or recommending a song, a place, a pairing or a service. Name the sections wanted; leave topics out only when the whole document is needed. Also gives the dates of Thanksgiving, the Christmas season and Easter.",
+      inputSchema: z.object({
+        topics: z
+          .array(z.string().trim().min(2).max(80))
+          .max(PHILOSOPHY_TOPICS_MAX)
+          .optional()
+          .describe("The sections wanted, by title. Left out: the whole document."),
+        date: date.optional().describe('A date the question is about, "YYYY-MM-DD": the seasons are dated for its year.'),
+      }),
+      execute: async (input) => {
+        // Read from the repository, not from the records: it answers whether or not the history can be read.
+        const loaded = await loadPlanningPhilosophy();
+        if (!loaded.ok) return UNAVAILABLE;
+        const guidance = planningGuidance(loaded.philosophy, { ...input, today: churchDate(Date.now()), given: philosophyGiven });
+        for (const section of loaded.philosophy.sections) {
+          if (guidance.sections.some((sent) => sent.title === section.title)) philosophyGiven.add(section.id);
+        }
+        return guidance;
+      },
+    }),
+
     get_song_lyrics: tool({
       description:
         "The words of one song, as this church's own sheet music has them: its verses in order and its refrain. Give a verse number, or ask for the refrain, to get only that part. Use this before quoting, summarising or saying anything about what a song says - for every song, however well known.",
@@ -267,7 +301,7 @@ export function conductorTools(viewer: Viewer) {
 
     songs_not_sung_recently: tool({
       description:
-        "Songs that have been sung before but not for a given number of days, and are not planned - the neglected ones, best-loved first.",
+        "Songs that have been sung before but not for a given number of days, and are not planned - the neglected ones, most sung first.",
       inputSchema: z.object({
         days: z.number().int().min(1).max(3650).describe("Not sung for at least this many days."),
         minTimesSung: z.number().int().min(1).max(100).optional().describe("Only songs sung at least this many times in all. Two when left out."),

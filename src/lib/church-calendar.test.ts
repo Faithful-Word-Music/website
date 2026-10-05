@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { christmasSeason, christmasSongs, inChristmasSeason, thanksgiving } from "@/lib/church-calendar";
+import { christmasSeason, christmasSongs, easter, inChristmasSeason, seasonDates, thanksgiving } from "@/lib/church-calendar";
 import { startsAtFor } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
@@ -25,6 +25,23 @@ describe("the Christmas season", () => {
     expect(inChristmasSeason("2025-11-30")).toBe(true); // the first Sunday after, when the carols began
     expect(inChristmasSeason("2025-12-24")).toBe(true);
     expect(inChristmasSeason("2025-12-28")).toBe(false);
+  });
+
+  it("finds Easter Sunday", () => {
+    expect(easter(2024)).toBe("2024-03-31");
+    expect(easter(2025)).toBe("2025-04-20");
+    expect(easter(2026)).toBe("2026-04-05");
+    expect(easter(2027)).toBe("2027-03-28");
+    expect(easter(2038)).toBe("2038-04-25"); // the latest it can be
+  });
+
+  it("gives a year's seasons together, agreeing with each rule", () => {
+    expect(seasonDates(2026)).toEqual({
+      year: 2026,
+      easter: "2026-04-05",
+      thanksgiving: thanksgiving(2026),
+      christmasSeason: christmasSeason(2026),
+    });
   });
 
   it("counts a song as a Christmas song only if it was never sung out of season", () => {

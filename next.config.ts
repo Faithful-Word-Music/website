@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
     "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
     // The Service Planner's PDF export draws the same song list.
     "/service-planner/export": ["./assets/fonts/*.ttf"],
+    // Conductor reads the Music Director's planning philosophy from disk
+    // (src/lib/ai/planning/load.ts). Any other route that reads it is listed here too.
+    "/api/conductor": ["./src/content/music-planning-philosophy.md"],
   },
 
   /**

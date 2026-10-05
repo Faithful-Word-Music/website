@@ -17,6 +17,7 @@ After editing any file, commit and push. Vercel rebuilds and deploys automatical
 | The weekly insert (Psalm / other song) | **Service Planner → Inserts** |
 | Default number of songs, the insert's place, which services take it | `src/config/site.ts` → `servicePlanner` |
 | Service planner wording | `src/content/service-planner.ts` |
+| The planning philosophy the AI follows | `src/content/music-planning-philosophy.md` - plain Markdown. Keep one topic under each `##` heading, and no two headings the same |
 | Homepage wording | `src/content/home.ts` |
 | Contact page wording, form labels, error messages | `src/content/contact.ts` |
 | Footer headings, resource labels, the list of resources | `src/content/footer.ts` |

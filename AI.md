@@ -9,18 +9,19 @@ The internal AI system of the Faithful Word Music website: where it stands, how 
 | **1** | **AI foundation:** the shared AI layer, the `use_ai` permission, the usage log, Admin → AI | **Complete** (2026-10-05) |
 | **2** | **Conductor:** the assistant. Read-only tools over the site's own data, streaming, the Conductor page and the floating panel | **Complete** (2026-10-05) |
 | **3** | **Library Intelligence:** the songs' lyrics read from the MuseScore files, a persistent index in Neon, embeddings, exact and by-theme search, the lyric tools; usage counted per Gateway call | **Complete** (2026-10-05) |
-| 4 | To be scoped | Not started |
-| 5 | To be scoped | Not started |
+| **4** | **Planning Intelligence:** the Music Director's planning philosophy as one document in the repository, a shared loader for every AI feature, and Conductor's tool for reading it | **Complete** (2026-10-05) |
+| 5 | **Generate with AI** in the Service Planner | Not started |
 
-Where the later phases are headed, in no fixed order yet: the Music Director's planning-philosophy document, and **Generate with AI** / **Replace Song with AI** in the Service Planner, which will plan from the history (Phase 2) and from what the songs say (Phase 3). The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
+Where the later phases are headed: **Generate with AI** / **Replace Song with AI** in the Service Planner, which will plan from the history (Phase 2), from what the songs say (Phase 3) and from the planning philosophy (Phase 4). The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
 
-**Not built yet, on purpose:** anything about the music itself (notes, rhythm, harmony, chords, transposition, reading a PDF), planning-philosophy ingestion, anything that lets AI change a service plan (generate, replace, reorder, save, publish), conversation history kept on the server, notifications, model routing, scheduled indexing jobs.
+**Not built yet, on purpose:** anything about the music itself (notes, rhythm, harmony, chords, transposition, reading a PDF), anything that lets AI change a service plan (generate, replace, reorder, save, publish), an Admin editor for the philosophy, conversation history kept on the server, notifications, model routing, scheduled indexing jobs.
 
 ## Conductor
 
 **Conductor** is the site's AI assistant ("Faithful Word Music AI Assistant" where a longer name helps). It is for the Music Director and administrators while they plan and review congregational singing, and answers two kinds of question:
 
 - **About this church's music** (when a song was last sung, how often, in what key, what was sung at a service, what is planned, what goes together, whether something is being repeated too soon, **and what a song says**: a verse, a phrase, its themes, songs like it): **only from the site's own data, through tools.** The model interprets and explains what a tool returned; it never supplies a date, count, key, song or lyric from memory.
+- **About how to plan** (what the planning philosophy says, whether a song suits a place, whether two songs sit well together, why a service may feel repetitive): from the **Music Director's planning philosophy**, read through a tool, together with the records and lyrics above. It says which part is the record, which is the philosophy and which is its own recommendation.
 - **About music in general** (theory, arranging, instruments, audio, equipment): from the model's own knowledge.
 
 It only reads. Nothing a person asks can create, change, publish or delete anything.
@@ -46,7 +47,8 @@ Conductor page (/conductor)        floating panel (every other signed-in page)
    Vercel AI Gateway         tools.ts ─┬─ facts.ts → the site's own read layer
    → the model (AI_MODEL)              │   (song-archive, schedule, song-stats, service-archive,
    → the embedding model               │    service-planner/intelligence, year-recap)
-     (AI_EMBEDDING_MODEL)              └─ lyrics.ts → src/lib/library-content (the library index)
+     (AI_EMBEDDING_MODEL)              ├─ lyrics.ts → src/lib/library-content (the library index)
+                                       └─ src/lib/ai/planning → src/content/music-planning-philosophy.md
 ```
 
 The library index is filled separately, by hand, from Admin → AI:
@@ -77,6 +79,10 @@ texts with no vector from the current model → embedAiValues() → library_embe
 | `src/lib/library-content/indexer.ts` | `refreshLibraryIndex()`, `getLibraryIndexStatus()` (server-only) |
 | `src/lib/library-content/store.ts` | The `library_*` tables: writes, counts, phrase and vector queries (server-only) |
 | `src/lib/library-content/search.ts` | `searchLyrics()` (literal), `searchByTheme()` and `similarSongs()` (by meaning) (server-only) |
+| `src/content/music-planning-philosophy.md` | The Music Director's planning philosophy: the one source, edited by hand |
+| `src/lib/ai/planning/philosophy.ts` | `parsePlanningPhilosophy()`, `selectSections()`, `planningGuidance()`, `philosophyOutline()`: the document as its own sections (pure) |
+| `src/lib/ai/planning/load.ts` | `loadPlanningPhilosophy()`: read from disk once per server, never throws (server-only) |
+| `src/lib/church-calendar.ts` | `thanksgiving()`, `christmasSeason()`, `easter()`, `seasonDates()`: the dates the seasonal guidance turns on (pure) |
 | `src/lib/ai/config.ts`, `settings.ts`, `features.ts`, `errors.ts`, `usage.ts`, `format.ts` | Configuration, feature keys, failure codes, token and cost arithmetic (as in Phase 1) |
 | `src/lib/ai/conductor/conductor.ts` | `answerConductor()`: one question, start to finish (server-only) |
 | `src/lib/ai/conductor/tools.ts` | The tool definitions: names, descriptions, zod input schemas (server-only) |
@@ -104,6 +110,7 @@ texts with no vector from the current model → embedAiValues() → library_embe
 7. **Words go in `src/content/`**, and a provider's own error text never reaches the browser.
 8. **One request, however many calls.** Anything that calls the Gateway more than once does it inside one logged request: a tool's embedding joins the answer's row by itself, and work that is only its calls is wrapped in `withAiOperation()`.
 9. **Exact words are matched as text; meaning is matched by embeddings.** Neither stands in for the other.
+10. **The planning philosophy has one source.** Every feature reads `src/content/music-planning-philosophy.md` through `loadPlanningPhilosophy()`. No prompt, tool description or constant restates what it says, and no code turns one of its preferences into a number.
 
 ## Tools
 
@@ -131,6 +138,12 @@ All in `src/lib/ai/conductor/tools.ts`. Each is one question the site can alread
 | `find_lyrics` | Which songs contain an **exact phrase** (and, when none does, every one of its words in any order). Text matching: no model, no cost | `searchLyrics` → `findPhrase`, `findWords` |
 | `search_songs_by_theme` | Songs **about** something, ranked by closeness of meaning, optionally only those not sung for N days or only those sung before | `searchByTheme` → `embedAiValues`, `nearestTo` |
 | `find_similar_songs` | Songs whose words are closest to one song's, with the same narrowing | `similarSongs` → `nearestSongs` (no Gateway call) |
+
+**The planning tool** (Phase 4), over the planning philosophy:
+
+| Tool | Answers | Built on |
+|---|---|---|
+| `get_planning_philosophy` | What the Music Director's planning philosophy says: the sections named, or the whole document, word for word; and the dates of Thanksgiving, the Christmas season and Easter | `loadPlanningPhilosophy`, `planningGuidance`, `seasonDates` |
 
 Every lyric result carries each song's history from the same data the other tools read (`timesSung`, `lastSung`, `daysSinceLastSung`, `plannedFor`), so "songs about heaven we have not sung recently" is one grounded call. A song printed in several books is listed once, as the copy the church sings from (its hymnal, then the Psalms and Other Songs, then other hymnals), with `alsoIn` naming the rest. A song without indexed lyrics answers `lyricsIndexed: false` and why; before the index has ever been built every lyric tool says so.
 
@@ -197,6 +210,78 @@ The report says what was indexed for the first time, updated, left unchanged, re
 - An **exact scan**, not an approximate index: the library is about 2,600 vectors. Add an HNSW index only if it grows by orders of magnitude; the vector column would then need a fixed dimension.
 - Closeness is a ranking, not a verdict. Results say so, and the instructions tell Conductor to read the words returned before calling a song a fit.
 
+## Planning Intelligence
+
+How the Music Director plans a song service, made available to the AI: the aim of strong congregational singing, familiar and new songs, the opener, the middle and the closer, flow, songs that should not sit side by side, the week's insert, variety across the week, Thanksgiving, Christmas and Easter.
+
+### One document
+
+`src/content/music-planning-philosophy.md` is the philosophy. It is plain Markdown, edited by hand and committed like any other wording. It is not in the database and has no editor on the site.
+
+```
+src/content/music-planning-philosophy.md
+        │  load.ts         read from disk, once per server
+        │  philosophy.ts   split at its own "## " headings; refused if unusable
+        ▼
+   ├─ Conductor            get_planning_philosophy: sections on request
+   ├─ Generate with AI     (Phase 5) the whole document in its prompt
+   └─ Replace Song with AI (later)
+```
+
+- **A section is each `## ` heading and everything under it**; `### ` parts stay inside their section. There is no list of expected headings, so sections can be added, renamed, reordered or removed with no code change.
+- **Nothing is extracted from it.** There is no rules table and no numbers in code. Whether something is a hard rule or a preference is read from the document's own wording ("must", "a hard rule"); every tool result says so in `howToRead`.
+- **A document that cannot be used is refused whole**: empty, no `## ` sections, two sections with the same heading, or longer than `PHILOSOPHY_MAX_CHARS` (24,000 characters; it is about 15,700). The loader then logs why, and Conductor says the philosophy is not available. `philosophy.test.ts` reads the real file, so `npm test` fails before a deploy does.
+- **It ships with the deployment**: `next.config.ts` lists the file under `outputFileTracingIncludes` for `/api/conductor`. **A new route that reads it must be listed there too.**
+
+### How Conductor reads it
+
+`get_planning_philosophy({ topics?, date? })`:
+
+- `topics` (up to 6) names sections by title, by a word from a title or from a part's title ("openers", "new songs", "Christmas"). Only those sections come back, with the titles of the rest. A topic that names nothing is returned in `notFound`; nothing is guessed.
+- With no `topics` the whole document comes back, for judging a whole service or week.
+- Each result has `source`, `howToRead`, the sections' text exactly as written, and, when a seasonal section is included or a `date` is given, `seasons`: Thanksgiving, the Christmas season and Easter for that year and the next, from `church-calendar.ts`.
+- A section already sent in the same question is named in `alreadyGiven`, not sent again.
+
+For "would this song work here?" Conductor calls it alongside the existing tools (the plan, the song's history, its lyrics, songs by theme). Nothing about history or lyrics is duplicated.
+
+### Grounding
+
+`planningInstructions()` in `instructions.ts` tells Conductor to:
+
+- know the philosophy **only** through the tool, called in this turn;
+- keep apart, and name, **the record** (a tool result), **the philosophy** (the document) and **its own recommendation**;
+- never state a rule, number or limit the document does not contain, and say so where it is silent;
+- treat the Service Planner's 14-day "sung recently" notice (`siteConfig.servicePlanner.recentDays`) as the planner's, not the Director's policy;
+- treat times sung as evidence of familiarity, never of being loved, and `timesSung: 0` as unsung in these records, not new to the congregation;
+- not read tempo, energy, style or difficulty out of lyrics, and say when musical character is not known;
+- treat the week's insert and its place as fixed.
+
+### Cost
+
+The planning layer makes no Gateway call of its own. What it adds is tokens:
+
+- **Every question** carries the instruction paragraph (at most `PLANNING_INSTRUCTIONS_MAX`, 1,300 characters) and one line of section titles, about 450 tokens per model call with the tool's definition. An ordinary two-call question went from about 7,200–8,000 tokens to about 8,600.
+- **A planning question** adds the sections asked for: 500 to 2,200 characters each, about 16,700 for the whole document.
+- The section titles are in the instructions so the model names the sections it wants in its first call, in the same round as its other lookups.
+- `conductorInstructions()` puts everything that is the same for every question first and what changes (the dates, the person, the page) last, so a provider that caches a repeated prefix can reuse it.
+
+Measured on 2026-10-05: a direct question about one section, about 8,700 tokens and half a cent; a pairing judged from the philosophy and two songs' lyrics, about 10,000 tokens and under a cent; a whole planned service judged against the philosophy, its plan, history and lyrics, about 23,000 tokens and three cents.
+
+### Editing the philosophy
+
+- Edit `src/content/music-planning-philosophy.md`, commit, deploy. Nothing else.
+- Keep each topic under its own `## ` heading, with a title that says what it is about: the titles are how sections are asked for.
+- Do not give two sections the same heading.
+- State a hard rule as one ("must", "this is a hard rule"). Anything not written as required is treated as a preference.
+- Write a number only if it is meant. The AI repeats what is there and is told not to add any.
+- Run `npm test` after a large edit: it checks the real file still parses and fits.
+
+### For Generate with AI (Phase 5)
+
+Import `loadPlanningPhilosophy()` and put `philosophy.markdown` (the whole document) in the generator's prompt, with `seasonDates()` and the week's insert as fixed inputs. Add the generator's route to `outputFileTracingIncludes`. Do not copy any of the philosophy into the generator's own instructions.
+
+Two things Phase 5 will have to settle that Phase 4 only describes: the document's "only Christmas songs" rule is not enforced anywhere (the planner flags a Christmas song out of season, not an ordinary song in season, and which songs are Christmas songs is inferred from the records), and the planner's 14-day notice is a number the document does not contain.
+
 ## Grounding
 
 `instructions.ts` tells the model, every question:
@@ -205,6 +290,7 @@ The report says what was indexed for the first time, updated, left unchanged, re
 - General music questions need no tool.
 - **Lyrics follow the same rule.** It knows a song's words only from a lyric tool called in this turn: before quoting, paraphrasing, summarizing or saying what a song is about, it calls `get_song_lyrics`, for every song however famous. It quotes exactly what came back, and when a song's lyrics are not indexed, or the song is not in the library, it says they are not available rather than supplying them.
 - Exact words go to `find_lyrics`, a subject to `search_songs_by_theme`; a ranking by meaning is judged from the words returned, and a loose fit is called one.
+- The planning philosophy follows the same rule, and its own (see Planning Intelligence).
 - It cannot read the music itself (notes, rhythm, harmony, chords).
 - It only reads, and must not say or imply it changed anything.
 - Today's date and the dates of the surrounding Sundays and Wednesdays, written out, so "three Sundays ago" is looked up rather than calculated.
@@ -273,6 +359,8 @@ In `src/lib/ai/conductor/limits.ts`:
 
 For the lyric tools (`conductor/lyrics.ts`, `library-content/search.ts`): 12 songs for a phrase, 10 for a theme unless asked (20 at most), a section in a search result cut at 600 characters, a phrase at least 4 characters once folded.
 
+For the planning tool (`planning/philosophy.ts`): 6 topics a request, and the document itself at most 24,000 characters. Its result is not passed through `clampToolResult()`, which would drop sections without saying which; the document's own limit is the bound.
+
 A typical question costs a fraction of a cent to about a cent; a search by theme adds one embedding call of a few tokens. AI Gateway's budget remains what stops spending.
 
 ## Provider and Gateway
@@ -333,6 +421,9 @@ Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into
 - **Cost pending:** a request shows "Cost pending" until every one of its calls has a cost; the backfill fills them in when Admin → AI is next opened.
 - **The hourly cap counts rows in `ai_usage`**, so it is per environment, like the usage figures.
 - **The conversation is per tab.** A second tab starts its own.
+- **Planning advice is judgement.** The philosophy is quoted faithfully, but whether a song fits a place is the model's reading of it. There is no data on what the congregation loves, on musical character, or on which songs are Thanksgiving or Easter songs: those are found by theme, from the lyrics.
+- **The philosophy's hard rule is described, not enforced.** Conductor can say the Christmas season takes only Christmas songs and give its dates; nothing checks a plan against it.
+- **Not verified live in Phase 4:** the deployed site (the document was confirmed in the route's build trace, and the questions were asked on the local server), whether the provider's prompt cache is being hit (Admin → AI shows total tokens, not cached ones), and the new example question at phone width.
 - **Not verified live in Phase 3:** the **Refresh library index** button itself was not pressed in a browser. The refresh it calls was run pass by pass against the real Drive, Neon and Gateway (first run, an unchanged run, a rebuild), the lyric tools were asked real questions through Conductor, and the Admin → AI section was looked at on a wide screen and at phone width.
 - **Not verified live in Phase 2:** a signed-in person without `use_ai` (no such test account; covered by the route's check, the 401 for a signed-out request, and the navigation tests), and a provider failure mid-stream (the path is the Phase 1 classifier).
 
@@ -346,3 +437,5 @@ For Phase 3:
 - `AI_EMBEDDING_MODEL` is optional.
 - **pgvector** is enabled by the site itself the first time the index is used (`CREATE EXTENSION IF NOT EXISTS vector`), which the database's owner role may do; it was on the Neon database in use. If a different database refuses, enable the `vector` extension once in its console.
 - The Google service account needs nothing new: it already reads the Sheet Music folder.
+
+Nothing for Phase 4: no key, table or setting.

@@ -10,7 +10,8 @@ import {
   parseStoredWidth,
   widthFromPointer,
 } from "@/lib/ai/conductor/drawer";
-import { conductorCalendar, conductorInstructions } from "@/lib/ai/conductor/instructions";
+import { siteConfig } from "@/config/site";
+import { conductorCalendar, conductorInstructions, PLANNING_INSTRUCTIONS_MAX, planningInstructions } from "@/lib/ai/conductor/instructions";
 import { clampToolResult, CONDUCTOR_LIMITS, trimConversation, type ConductorTurn } from "@/lib/ai/conductor/limits";
 import { parseInline, parseMarkdown } from "@/lib/ai/conductor/markdown";
 import { parseConductorRequest } from "@/lib/ai/conductor/protocol";
@@ -349,6 +350,43 @@ describe("Conductor's instructions", () => {
     expect(text).toContain("You only read");
     expect(text).not.toContain("The page behind you");
     expect(text).not.toContain("not drafts");
+  });
+
+  it("keeps the record, the philosophy and its own judgement apart, and adds no rule of its own", () => {
+    const text = conductorInstructions({ now, context: null, canPlan: true, philosophyOutline: "Purpose; The Opener" });
+    expect(text).toContain("ONLY through get_planning_philosophy, called in this turn");
+    expect(text).toContain("the record (what a tool returned), the philosophy (what the document says) and your own recommendation");
+    expect(text).toContain("Never state a rule, number or limit the document does not contain");
+    // The planner's own number is the planner's, not the Director's.
+    expect(text).toContain(`${siteConfig.servicePlanner.recentDays}-day "sung recently" notice is the Service Planner's, not the Director's policy`);
+    expect(text).toContain("never that it is loved");
+    expect(text).toContain("Lyrics do not tell you tempo, energy, style or difficulty");
+    expect(text).toContain("insert and its place are fixed");
+    expect(text).toContain("Its sections: Purpose; The Opener.");
+  });
+
+  it("holds none of the philosophy itself, and stays short: it is sent with every question", () => {
+    expect(planningInstructions(null).length).toBeLessThanOrEqual(PLANNING_INSTRUCTIONS_MAX);
+    expect(planningInstructions(null)).not.toContain("Its sections");
+    expect(conductorInstructions({ now, context: null, canPlan: true })).not.toContain("Its sections");
+    // What the Director wrote is read through the tool, never repeated here.
+    for (const phrase of ["once every other week", "one to three", "Onward", "Cleanse Me", "only Christmas songs"]) {
+      expect(planningInstructions("Purpose")).not.toContain(phrase);
+    }
+  });
+
+  it("puts what changes from question to question last, so the fixed part can be cached", () => {
+    const text = conductorInstructions({ now, context: { area: "library", song: "blessed-assurance" }, canPlan: false, philosophyOutline: "Purpose" });
+    const fixed = ["# Where your facts come from", "# Lyrics", "# What you cannot do", "# Planning philosophy", "# How services are named", "# How to answer"];
+    const varying = ["# Dates", "# This person", "# The page behind you"];
+    const lastFixed = Math.max(...fixed.map((heading) => text.indexOf(heading)));
+    for (const heading of [...fixed, ...varying]) expect(text.indexOf(heading)).toBeGreaterThanOrEqual(0);
+    for (const heading of varying) expect(text.indexOf(heading)).toBeGreaterThan(lastFixed);
+
+    // The fixed part is identical for another person, page and day.
+    const other = conductorInstructions({ now: now + 9 * 86_400_000, context: null, canPlan: true, philosophyOutline: "Purpose" });
+    const prefix = text.slice(0, text.indexOf("# Dates"));
+    expect(other.startsWith(prefix)).toBe(true);
   });
 
   it("adds the page, and says when drafts are out of reach", () => {
