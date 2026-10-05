@@ -2,8 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { AI_FEATURES, aiFeatureLabel, isAiFeature } from "@/lib/ai/features";
 import { formatDuration, formatShare, formatTokens, formatUsd } from "@/lib/ai/format";
-import { DEFAULT_AI_MODEL, DEFAULT_MONTHLY_BUDGET_USD, parseModelId, parseMonthlyBudget } from "@/lib/ai/settings";
-import { averageCostUsd, budgetStatus, monthWindow, parseCost, readGatewayMetadata, readTokenUsage } from "@/lib/ai/usage";
+import { DEFAULT_AI_EMBEDDING_MODEL, DEFAULT_AI_MODEL, DEFAULT_MONTHLY_BUDGET_USD, parseModelId, parseMonthlyBudget } from "@/lib/ai/settings";
+import {
+  averageCostUsd,
+  budgetStatus,
+  costPending,
+  monthWindow,
+  parseCost,
+  readEmbeddingUsage,
+  readGatewayMetadata,
+  readTokenUsage,
+  sumCalls,
+  type AiCallUsage,
+} from "@/lib/ai/usage";
 
 describe("readTokenUsage", () => {
   it("reads the AI SDK's usage, reasoning and cached tokens included", () => {
@@ -64,6 +75,48 @@ describe("cost", () => {
   });
 });
 
+describe("the calls behind one request", () => {
+  const chat = (costUsd: number | null, generationId: string | null = "gen_chat"): AiCallUsage => ({
+    kind: "language",
+    model: "openai/gpt-5.6-terra",
+    responseModel: "openai/gpt-5.6-terra",
+    tokens: { inputTokens: 3000, outputTokens: 500, reasoningTokens: 100, cachedInputTokens: null, totalTokens: 3500 },
+    costUsd,
+    generationId,
+  });
+  const embedding = (costUsd: number | null, generationId: string | null = "gen_embed"): AiCallUsage => ({
+    kind: "embedding",
+    model: "openai/text-embedding-3-small",
+    responseModel: null,
+    tokens: readEmbeddingUsage({ tokens: 12 }),
+    costUsd,
+    generationId,
+  });
+
+  it("reads an embedding's tokens as input", () => {
+    expect(readEmbeddingUsage({ tokens: 12 })).toEqual({ inputTokens: 12, outputTokens: null, reasoningTokens: null, cachedInputTokens: null, totalTokens: 12 });
+    expect(readEmbeddingUsage(undefined).totalTokens).toBeNull();
+  });
+
+  it("adds a question's chat calls and its embedding call into one request", () => {
+    const { tokens, costUsd } = sumCalls([embedding(0.000001), chat(0.0012), chat(0.0075)]);
+    expect(tokens).toEqual({ inputTokens: 6012, outputTokens: 1000, reasoningTokens: 200, cachedInputTokens: null, totalTokens: 7012 });
+    expect(costUsd).toBeCloseTo(0.008701);
+  });
+
+  it("leaves the cost pending while any call's can still be asked for", () => {
+    const calls = [chat(0.0012), chat(null), embedding(0.000001)];
+    expect(calls.map(costPending)).toEqual([false, true, false]);
+    expect(sumCalls(calls).costUsd).toBeNull();
+  });
+
+  it("does not wait on a call that can never be priced, and has no cost with no calls", () => {
+    expect(sumCalls([chat(0.0012), embedding(null, null)]).costUsd).toBeCloseTo(0.0012);
+    expect(sumCalls([embedding(null, null)]).costUsd).toBeNull();
+    expect(sumCalls([])).toEqual({ tokens: readTokenUsage(undefined), costUsd: null });
+  });
+});
+
 describe("budgetStatus", () => {
   it("reports what is spent and left of the budget", () => {
     expect(budgetStatus(2.5, 10)).toEqual({ budgetUsd: 10, spentUsd: 2.5, remainingUsd: 7.5, used: 0.25, over: false });
@@ -103,6 +156,12 @@ describe("settings", () => {
     expect(parseModelId("openai/gpt 5")).toBe(DEFAULT_AI_MODEL);
     expect(parseModelId(" openai/gpt-5.6-luna ")).toBe("openai/gpt-5.6-luna");
     expect(parseModelId("anthropic/claude-sonnet-5.5")).toBe("anthropic/claude-sonnet-5.5");
+  });
+
+  it("reads the embedding model the same way, with its own default", () => {
+    expect(parseModelId(undefined, DEFAULT_AI_EMBEDDING_MODEL)).toBe("openai/text-embedding-3-small");
+    expect(parseModelId("not a model", DEFAULT_AI_EMBEDDING_MODEL)).toBe(DEFAULT_AI_EMBEDDING_MODEL);
+    expect(parseModelId("voyage/voyage-3.5-lite", DEFAULT_AI_EMBEDDING_MODEL)).toBe("voyage/voyage-3.5-lite");
   });
 
   it("reads the display budget, with 0 meaning none", () => {

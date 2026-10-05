@@ -1,6 +1,7 @@
 import { NoAccess, Notice } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { AiConnectionTest } from "@/components/admin/AiConnectionTest";
+import { LibraryIndexProblems, LibraryIndexRefresh } from "@/components/admin/LibraryIndexRefresh";
 import { Pill } from "@/components/admin/StatusPill";
 import { Card } from "@/components/ui/Card";
 import { ExternalLink } from "@/components/ui/ExternalLink";
@@ -17,6 +18,8 @@ import { averageCostUsd, budgetStatus, monthWindow, type AiUsageGroup } from "@/
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { formatDateTime } from "@/lib/auth/format";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { isGoogleConfigured } from "@/lib/google-auth";
+import { getLibraryIndexStatus, type LibraryIndexStatus } from "@/lib/library-content/indexer";
 import { plural } from "@/lib/plural";
 
 export const metadata = { title: "AI" };
@@ -36,7 +39,7 @@ export default async function AiPage() {
   if (!viewer) return <NoAccess />;
 
   const config = aiConfig();
-  const usage = await loadUsage(viewer.env);
+  const [usage, library] = await Promise.all([loadUsage(viewer.env), getLibraryIndexStatus(viewer)]);
 
   return (
     <div>
@@ -85,6 +88,8 @@ export default async function AiPage() {
         </section>
       </div>
 
+      <LibraryIndex status={library} canRefresh={isGoogleConfigured()} />
+
       {usage ? (
         <Usage {...usage} budgetUsd={config.monthlyBudgetUsd} />
       ) : (
@@ -111,6 +116,68 @@ async function loadUsage(env: ClerkEnv): Promise<{ summary: AiUsageSummary; rece
     console.error("[ai] Could not load usage:", error instanceof Error ? error.message : "unknown error");
     return null;
   }
+}
+
+/**
+ * The library index: how many songs have their lyrics read and embedded, what
+ * a refresh would do now, and the button that refreshes it. Read from Neon
+ * and the cached Drive listing - loading the page opens no file.
+ */
+function LibraryIndex({ status, canRefresh }: { status: LibraryIndexStatus; canRefresh: boolean }) {
+  const text = content.library;
+  const count = (value: number) => value.toLocaleString("en-US");
+
+  return (
+    <>
+      <h2 className="mt-12 font-display text-2xl text-ink">{text.heading}</h2>
+      <p className="mt-1 max-w-3xl text-sm text-muted">{text.intro}</p>
+
+      {status.ok ? (
+        <>
+          <dl className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <StatTile label={text.songs} value={count(status.counts.songs)} />
+            <StatTile
+              label={text.indexed}
+              value={count(status.counts.indexed)}
+              detail={[
+                plural(text.sections, status.counts.sections),
+                status.counts.awaitingEmbedding > 0 ? plural(text.awaitingEmbedding, status.counts.awaitingEmbedding) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            />
+            <StatTile
+              label={text.outOfDate}
+              value={status.outOfDate === null ? content.month.none : count(status.outOfDate)}
+              detail={status.outOfDate === 0 ? text.upToDate : text.outOfDateDetail}
+            />
+            <StatTile label={text.noSource} value={count(status.counts.noSource)} detail={text.noSourceDetail} />
+            <StatTile label={text.noLyrics} value={count(status.counts.noLyrics)} detail={text.noLyricsDetail} />
+            <StatTile label={text.failed} value={count(status.counts.failed)} detail={text.failedDetail} />
+          </dl>
+
+          <Card className="mt-6 p-4 sm:p-6">
+            <SectionLabel>{text.refreshHeading}</SectionLabel>
+            <p className="mt-1 mb-5 max-w-3xl text-sm text-muted">{text.refreshBody}</p>
+            <LibraryIndexRefresh disabled={!canRefresh} />
+            <dl className="mt-6 space-y-3 border-t border-line pt-4 text-sm">
+              <Row label={text.refreshed}>
+                <span className="tnum">{status.counts.refreshedAt ? formatDateTime(status.counts.refreshedAt) : text.never}</span>
+              </Row>
+              <Row label={text.embeddingModel}>
+                <span className="break-all">{status.embeddingModel}</span>
+              </Row>
+            </dl>
+            <LibraryIndexProblems problems={status.problems} />
+          </Card>
+        </>
+      ) : (
+        <Notice tone="warning" title={text.unavailable.title} className="mt-5">
+          {text.unavailable.body}
+        </Notice>
+      )}
+    </>
+  );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -205,6 +272,7 @@ function Usage({
           <Breakdown heading={content.breakdown.byModel} groups={summary.byModel} name={(key) => key} />
         </div>
       ) : null}
+      {totals.requests > 0 ? <p className="mt-4 max-w-3xl text-sm text-muted">{content.requestsNote}</p> : null}
 
       <h2 className="mt-12 font-display text-2xl text-ink">{content.recent.heading}</h2>
       {recent.length === 0 ? (

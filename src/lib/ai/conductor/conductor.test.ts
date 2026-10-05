@@ -335,10 +335,17 @@ describe("Conductor's instructions", () => {
     expect(calendar).toContain("Sundays from today on: 2026-10-04, 2026-10-11");
   });
 
-  it("states the grounding rule, the lyrics limit and that it only reads", () => {
+  it("states the grounding rule, that lyrics come only from a tool, and that it only reads", () => {
     const text = conductorInstructions({ now, context: null, canPlan: true });
     expect(text).toContain("ONLY from the tools");
-    expect(text).toContain("cannot read song lyrics or sheet music yet");
+    // Lyrics are a fact of this church like any other: looked up, never remembered.
+    expect(text).toContain("ONLY from a lyric tool called in this turn");
+    expect(text).toContain("never give a hymn's words from memory");
+    expect(text).toContain("lyrics are not available here");
+    // The two kinds of search are told apart.
+    expect(text).toContain("find_lyrics");
+    expect(text).toContain("search_songs_by_theme");
+    expect(text).toContain("You cannot read the music itself");
     expect(text).toContain("You only read");
     expect(text).not.toContain("The page behind you");
     expect(text).not.toContain("not drafts");

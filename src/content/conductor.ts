@@ -17,22 +17,23 @@ export const conductorContent = {
 
   /** What it can and cannot do yet, under the conversation. */
   capabilities:
-    "Conductor answers from the site's own records of songs, services and plans. It cannot read lyrics or sheet music yet, and it cannot change anything.",
+    "Conductor answers from the site's own records of songs, services and plans, and from the lyrics in the song library. It cannot read the music itself, and it cannot change anything.",
 
   empty: {
     heading: "What would you like to know?",
-    body: "Conductor looks things up in the song history and the plans. It only reads: nothing you ask can change a service.",
+    body: "Conductor looks things up in the song history, the plans and the lyrics of the song library. It only reads: nothing you ask can change a service.",
     examplesLabel: "Try asking",
     examples: [
       "When did we last sing Blessed Assurance?",
       "What did we sing last Sunday morning?",
       "What is planned for next Sunday night?",
       "Which songs have we not sung in a while?",
+      "Which songs about heaven have we not sung lately?",
       "Explain the circle of fifths.",
     ],
     /** Offered instead, over a page with a service or a song on it. */
     serviceExamples: ["Is anything in this service being repeated too soon?", "When were these songs last sung?"],
-    songExamples: ["When was this last sung?", "What do we usually sing with this song?"],
+    songExamples: ["When was this last sung?", "What do we usually sing with this song?", "Which songs are similar in theme to this one?"],
   },
 
   composer: {
@@ -57,6 +58,8 @@ export const conductorContent = {
     plans: "Checking what is planned…",
     statistics: "Working through the records…",
     planner: "Checking the Service Planner…",
+    lyrics: "Reading the lyrics…",
+    themes: "Searching the song library…",
   },
 
   actions: {

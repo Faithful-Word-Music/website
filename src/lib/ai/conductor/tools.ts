@@ -7,6 +7,8 @@ import type { ConductorStatusKey } from "@/content/conductor";
 import type { Viewer } from "@/lib/auth/session";
 import { isDateString } from "@/lib/availability/occurrences";
 import { SERVICE_TYPES } from "@/lib/service-archive";
+import { searchByTheme, searchLyrics, similarSongs } from "@/lib/library-content/search";
+import { getSongSections, listLibrarySongs, type LibrarySong } from "@/lib/library-content/store";
 import { loadWorkspace } from "@/lib/service-planner/load";
 import { serviceAnchor } from "@/lib/site-search";
 
@@ -28,6 +30,7 @@ import {
   type ConductorData,
 } from "./facts";
 import { clampToolResult } from "./limits";
+import { findLibrarySong, lyricMatches, NOT_INDEXED, similarMatches, songLyrics, themeMatches, THEME_SONGS_MAX } from "./lyrics";
 
 /**
  * Conductor's tools: the ONLY way it learns anything about Faithful Word
@@ -43,8 +46,19 @@ import { clampToolResult } from "./limits";
  *   - Permissions are the person's own: drafts and planner checks need
  *     manage_service_plans as well as use_ai (data.ts, check_service_plan).
  *
- * A new family of tools (searching lyrics, say) is added as another group
- * here with its own status wording; nothing else changes.
+ * Two families so far:
+ *
+ *   the records   what was sung, what is planned, statistics, planner checks
+ *                 (facts.ts, over the site's own read layer)
+ *   the lyrics    what the songs SAY, from the library index
+ *                 (lyrics.ts, over src/lib/library-content) - a song's words,
+ *                 an exact phrase found by plain text matching, songs by
+ *                 theme and songs alike in theme by embeddings. Every lyric
+ *                 result carries the song's history too, so the two families
+ *                 answer together.
+ *
+ * A new family is added as another group here with its own status wording;
+ * nothing else changes.
  */
 
 const date = z
@@ -75,6 +89,10 @@ const TOOL_STATUS = {
   get_year_summary: "statistics",
   check_song_for_service: "plans",
   check_service_plan: "planner",
+  get_song_lyrics: "lyrics",
+  find_lyrics: "lyrics",
+  search_songs_by_theme: "themes",
+  find_similar_songs: "themes",
 } as const satisfies Record<string, ConductorStatusKey>;
 
 export type ConductorToolName = keyof typeof TOOL_STATUS;
@@ -103,7 +121,95 @@ export function conductorTools(viewer: Viewer) {
     }
   };
 
+  // The library's songs, read once for the question too: small rows, no lyrics.
+  let listing: Promise<LibrarySong[]> | null = null;
+  const library = () => (listing ??= listLibrarySongs(viewer.env));
+
+  /**
+   * Runs one read of the lyrics, bounded, and never throws into the model
+   * call. The history is joined when it can be read, and left out when it
+   * cannot: a song's words do not depend on it.
+   */
+  const lyrics = async (name: string, read: (songs: LibrarySong[], loaded: ConductorData) => Promise<Record<string, unknown>>) => {
+    try {
+      const [songs, loaded] = await Promise.all([library(), data()]);
+      if (!songs.some((song) => song.status === "indexed")) return NOT_INDEXED;
+      return clampToolResult(await read(songs, loaded));
+    } catch (error) {
+      console.error(`[conductor] ${name} failed:`, error instanceof Error ? error.message : "unknown error");
+      return UNAVAILABLE;
+    }
+  };
+
+  /** Limits a list by meaning to what the records allow, as the tools take them. */
+  const narrowing = {
+    limit: z.number().int().min(1).max(THEME_SONGS_MAX).optional().describe("How many songs to list. Ten when left out."),
+    notSungForDays: z
+      .number()
+      .int()
+      .min(1)
+      .max(3650)
+      .optional()
+      .describe('Only songs NOT sung here for at least this many days, and not already planned - for "that we have not sung recently". Songs never sung count.'),
+    onlySungBefore: z.boolean().optional().describe("Only songs this church has sung at least once - songs the congregation already knows."),
+  };
+
   return {
+    get_song_lyrics: tool({
+      description:
+        "The words of one song, as this church's own sheet music has them: its verses in order and its refrain. Give a verse number, or ask for the refrain, to get only that part. Use this before quoting, summarising or saying anything about what a song says - for every song, however well known.",
+      inputSchema: z.object({
+        song,
+        verse: z.number().int().min(1).max(30).optional().describe("Only this verse."),
+        refrain: z.boolean().optional().describe("Only the refrain."),
+      }),
+      execute: (input) =>
+        lyrics("get_song_lyrics", async (songs, loaded) => {
+          const found = findLibrarySong(songs, input.song);
+          if (!found.found) return found.answer;
+          const sections = found.song.song.status === "indexed" ? await getSongSections(viewer.env, found.song.song.songId) : [];
+          return songLyrics(found.song, sections, loaded, { verse: input.verse, refrain: input.refrain });
+        }),
+    }),
+
+    find_lyrics: tool({
+      description:
+        'Find songs by the WORDS in them: an exact phrase or line someone remembers ("which song says ..."). Plain text matching, not meaning - for a subject or theme use search_songs_by_theme instead.',
+      inputSchema: z.object({
+        phrase: z.string().trim().min(2).max(200).describe("The words to look for, as they would be sung. A few distinctive words work best."),
+      }),
+      execute: ({ phrase }) =>
+        lyrics("find_lyrics", async (songs, loaded) => lyricMatches(await searchLyrics(viewer, phrase), phrase, songs, loaded)),
+    }),
+
+    search_songs_by_theme: tool({
+      description:
+        'Find songs by what they are ABOUT - a subject, a doctrine, an occasion, a feeling ("the resurrection", "trusting God through trials", "heaven", "missions") - compared by meaning across every song\'s lyrics. Each song comes with when it was last sung here, and the list can be limited to songs not sung recently or songs sung before. Not for exact words: use find_lyrics for those.',
+      inputSchema: z.object({
+        theme: z.string().trim().min(2).max(300).describe("What the songs should be about, in a few words or a sentence."),
+        ...narrowing,
+      }),
+      execute: (input, { abortSignal }) =>
+        lyrics("search_songs_by_theme", async (songs, loaded) => {
+          const found = await searchByTheme(viewer, input.theme, abortSignal);
+          if (!found.ok) return UNAVAILABLE;
+          return themeMatches(found.hits, input.theme, songs, loaded, input);
+        }),
+    }),
+
+    find_similar_songs: tool({
+      description:
+        "Songs whose lyrics are closest in theme to one song's - for something else that says what this song says. Each comes with when it was last sung here, and the list can be limited the same way as search_songs_by_theme.",
+      inputSchema: z.object({ song, ...narrowing }),
+      execute: (input) =>
+        lyrics("find_similar_songs", async (songs, loaded) => {
+          const found = findLibrarySong(songs, input.song);
+          if (!found.found) return found.answer;
+          const hits = found.song.song.status === "indexed" ? await similarSongs(viewer, found.song.song.songId) : null;
+          return similarMatches(found.song, hits, songs, loaded, input);
+        }),
+    }),
+
     find_songs: tool({
       description:
         "Find songs by title, part of a title, or hymnal number. Use it when it is unclear which song is meant, or to check that a song is known at all.",

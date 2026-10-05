@@ -14,6 +14,15 @@
 export const DEFAULT_AI_MODEL = "openai/gpt-5.6-terra";
 
 /**
+ * The embedding model used when AI_EMBEDDING_MODEL is not set: what turns a
+ * song's lyrics, and a question about them, into vectors for the library's
+ * search by theme (src/lib/library-content). Separate from the chat model, and
+ * like it an AI Gateway "provider/model" ID. Changing it re-embeds the library
+ * on the next refresh.
+ */
+export const DEFAULT_AI_EMBEDDING_MODEL = "openai/text-embedding-3-small";
+
+/**
  * The monthly budget shown beside the site's own usage, in US dollars, when
  * AI_MONTHLY_BUDGET_USD is not set. For display only: the limit that actually
  * stops spending is the budget set in Vercel AI Gateway, which should match.
@@ -30,10 +39,10 @@ export const AI_TIMEOUT_MS = 60_000;
 /** "provider/model", as AI Gateway names its models. */
 const MODEL_ID = /^[a-z0-9][a-z0-9-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 
-/** AI_MODEL as a model ID: the default when it is unset, blank or not shaped like one. */
-export function parseModelId(value: string | undefined): string {
+/** AI_MODEL (or another model setting) as a model ID: the default when it is unset, blank or not shaped like one. */
+export function parseModelId(value: string | undefined, fallback: string = DEFAULT_AI_MODEL): string {
   const id = value?.trim() ?? "";
-  return MODEL_ID.test(id) && id.length <= 100 ? id : DEFAULT_AI_MODEL;
+  return MODEL_ID.test(id) && id.length <= 100 ? id : fallback;
 }
 
 /**

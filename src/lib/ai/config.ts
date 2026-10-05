@@ -1,6 +1,6 @@
 import "server-only";
 
-import { AI_GATEWAY_DASHBOARD_URL, parseModelId, parseMonthlyBudget } from "./settings";
+import { AI_GATEWAY_DASHBOARD_URL, DEFAULT_AI_EMBEDDING_MODEL, parseModelId, parseMonthlyBudget } from "./settings";
 
 /**
  * How the AI system is set up in this deployment, from the environment:
@@ -8,6 +8,8 @@ import { AI_GATEWAY_DASHBOARD_URL, parseModelId, parseMonthlyBudget } from "./se
  *   AI_GATEWAY_API_KEY      the Vercel AI Gateway key (secret). On Vercel the
  *                           deployment's own VERCEL_OIDC_TOKEN works instead.
  *   AI_MODEL                the model, e.g. "openai/gpt-5.6-terra" (optional)
+ *   AI_EMBEDDING_MODEL      the embedding model for the library's search by
+ *                           theme, e.g. "openai/text-embedding-3-small" (optional)
  *   AI_MONTHLY_BUDGET_USD   the budget shown beside usage (optional)
  *
  * The key itself is never read here, returned or logged - only whether one is
@@ -19,6 +21,8 @@ export interface AiConfig {
   /** How requests authenticate with the Gateway, or null when they cannot. */
   auth: "api-key" | "oidc" | null;
   model: string;
+  /** The model that embeds lyrics and questions about them. */
+  embeddingModel: string;
   /** The budget to show, in US dollars; null to show none. */
   monthlyBudgetUsd: number | null;
   dashboardUrl: string;
@@ -30,6 +34,7 @@ export function aiConfig(): AiConfig {
     configured: auth !== null,
     auth,
     model: parseModelId(process.env.AI_MODEL),
+    embeddingModel: parseModelId(process.env.AI_EMBEDDING_MODEL, DEFAULT_AI_EMBEDDING_MODEL),
     monthlyBudgetUsd: parseMonthlyBudget(process.env.AI_MONTHLY_BUDGET_USD),
     dashboardUrl: AI_GATEWAY_DASHBOARD_URL,
   };

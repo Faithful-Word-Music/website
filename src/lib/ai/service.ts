@@ -1,6 +1,8 @@
 import "server-only";
 
-import { gateway, generateText, isStepCount, streamText, type ToolSet } from "ai";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+import { embedMany, gateway, generateText, isStepCount, streamText, type ToolSet } from "ai";
 
 import { aiContent } from "@/content/ai";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
@@ -10,9 +12,18 @@ import { aiConfig } from "./config";
 import { classifyAiError, type AiErrorCode } from "./errors";
 import type { AiFeature } from "./features";
 import { AI_TIMEOUT_MS } from "./settings";
-import { listUncostedAiUsage, recordAiUsage, setAiUsageCost } from "./store";
+import { listUncostedAiCalls, recordAiUsage, setAiCallCost } from "./store";
 import { encodeStreamEvent, type AiStreamEvent } from "./stream";
-import { addTokenUsage, NO_TOKEN_USAGE, parseCost, readGatewayMetadata, readTokenUsage, type AiTokenUsage } from "./usage";
+import {
+  NO_TOKEN_USAGE,
+  parseCost,
+  readEmbeddingUsage,
+  readGatewayMetadata,
+  readTokenUsage,
+  sumCalls,
+  type AiCallUsage,
+  type AiTokenUsage,
+} from "./usage";
 
 /**
  * The site's one way of talking to an AI model. EVERY AI request goes through
@@ -33,13 +44,33 @@ import { addTokenUsage, NO_TOKEN_USAGE, parseCost, readGatewayMetadata, readToke
  * The key is read by the AI SDK from the environment; it never passes
  * through this code. See AI.md for the whole system.
  *
- * Two ways to ask, sharing all of the above:
+ * Three ways to ask, sharing all of the above:
  *
  *   generateAiText()  one prompt, one answer, returned whole
  *   streamAiText()    a conversation, optionally with tools the model may
  *                     call, answered as a stream of the site's own events
  *                     (src/lib/ai/stream.ts) - what Conductor uses
+ *   embedAiValues()   texts turned into vectors by the embedding model - what
+ *                     the library's search by theme is built on
+ *
+ * ONE REQUEST, MANY CALLS. What a person calls one request - a Conductor
+ * question, a refresh of the library index - may take several calls to the
+ * Gateway, to more than one model: a chat call for each round of tool use, an
+ * embedding call when a tool searches by theme. It is still ONE row of
+ * ai_usage, with each call kept beneath it (ai_usage_calls). The request in
+ * progress is carried in an AsyncLocalStorage, so an embedding asked for by a
+ * tool, deep inside an answer, joins that answer's row without anything
+ * having to be passed down to it.
  */
+
+/** The request in progress: every Gateway call made while it runs belongs to it. */
+interface AiOperation {
+  calls: AiCallUsage[];
+  /** The first failure of a call made beneath it, for a request that is only its calls (withAiOperation). */
+  failed: ReturnType<typeof classifyAiError> | null;
+}
+
+const operations = new AsyncLocalStorage<AiOperation>();
 
 /** How hard a reasoning model should think; left to the model when not given. */
 export type AiReasoning = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
@@ -122,6 +153,7 @@ export async function generateAiText(request: AiTextRequest): Promise<AiTextResu
     const tokens = readTokenUsage(result.usage);
     const { generationId, costUsd } = readGatewayMetadata(result.providerMetadata);
     const model = result.response?.modelId || config.model;
+    const call: AiCallUsage = { kind: "language", model: config.model, responseModel: model, tokens, costUsd, generationId };
     const empty = result.text.trim() === "";
 
     if (empty) console.error(`[ai] ${feature}: the model returned no text (${result.finishReason}).`);
@@ -134,8 +166,8 @@ export async function generateAiText(request: AiTextRequest): Promise<AiTextResu
       tokens,
       costUsd,
       durationMs,
-      generationId,
       finishReason: result.finishReason,
+      calls: [call],
     });
     if (empty) return failure("invalid-response");
     return { ok: true, text: result.text, model, tokens, costUsd, durationMs };
@@ -201,10 +233,11 @@ export type AiStreamResult =
  * and its result goes back to the model, up to `maxSteps` model calls, and
  * only the answer's text (and a status while a tool runs) reaches the caller.
  *
- * However many model calls an answer takes, it is ONE row in ai_usage: the
- * tokens of every call added up, the Gateway's costs added up, how long the
- * whole thing took and how it ended. A request the person stopped is logged
- * as stopped ("aborted"), with whatever had been used by then.
+ * However many calls an answer takes - model calls, and any embedding a tool
+ * asked for - it is ONE row in ai_usage: the tokens of every call added up,
+ * the Gateway's costs added up, how long the whole thing took and how it
+ * ended, with each call kept beneath it. A request the person stopped is
+ * logged as stopped ("aborted"), with whatever had been used by then.
  *
  * Like generateAiText() it never throws: a refusal comes back as
  * { ok: false }, and a failure once the stream has begun arrives in it as an
@@ -260,9 +293,9 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
         }
       };
 
-      // What is known about the request, gathered as each model call finishes.
-      let tokens = NO_TOKEN_USAGE;
-      let costUsd: number | null = 0;
+      // What is known about the request, gathered as each call finishes: the model's here, a tool's
+      // embedding through embedAiValues(), which finds this operation by itself.
+      const operation: AiOperation = { calls: [], failed: null };
       let steps = 0;
       let generationId: string | null = null;
       let responseModel: string | null = null;
@@ -273,7 +306,7 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
       let cutShort = false;
       let failed: ReturnType<typeof classifyAiError> | null = null;
 
-      try {
+      const answer = async () => {
         const result = streamText({
           model: config.model,
           instructions: request.instructions,
@@ -311,12 +344,17 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
             case "finish-step": {
               steps += 1;
               breakDue = written > 0;
-              tokens = addTokenUsage(tokens, readTokenUsage(part.usage));
               const metadata = readGatewayMetadata(part.providerMetadata);
-              // One call without a cost and the total is not known.
-              costUsd = costUsd === null || metadata.costUsd === null ? null : costUsd + metadata.costUsd;
               generationId = metadata.generationId;
               responseModel = part.response?.modelId || responseModel;
+              operation.calls.push({
+                kind: "language",
+                model: config.model,
+                responseModel: part.response?.modelId || null,
+                tokens: readTokenUsage(part.usage),
+                costUsd: metadata.costUsd,
+                generationId: metadata.generationId,
+              });
               finishReason = part.finishReason;
               break;
             }
@@ -331,6 +369,10 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
               break;
           }
         }
+      };
+
+      try {
+        await operations.run(operation, answer);
       } catch (error) {
         failed = classifyAiError(error);
       }
@@ -350,9 +392,7 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
       }
 
       const durationMs = performance.now() - started;
-      // The Gateway can only be asked later for ONE call's cost, so a late cost is only filled in for a one-call answer.
-      const loggedCost = steps === 0 ? null : costUsd;
-      const loggedGeneration = steps <= 1 ? (generationId ?? failed?.generationId ?? null) : null;
+      const { tokens, costUsd } = sumCalls(operation.calls);
       if (failed) console.error(`[ai] ${feature} failed (${failed.code}): ${failed.detail}`);
       await recordAiUsage({
         ...entry,
@@ -361,10 +401,12 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
         errorCode: failed?.code ?? null,
         errorDetail: failed?.detail ?? null,
         tokens,
-        costUsd: loggedCost,
+        costUsd,
         durationMs,
-        generationId: loggedGeneration,
+        // Only of a call that failed: every call that finished keeps its own, beneath the row.
+        generationId: failed?.generationId ?? null,
         finishReason: aborted ? "aborted" : finishReason,
+        calls: operation.calls,
       });
 
       if (failed) send({ type: "error", code: failed.code, message: aiContent.errors[failed.code] });
@@ -385,21 +427,180 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
   return { ok: true, stream };
 }
 
+// ---------------------------------------------------------------------------
+// Embeddings
+// ---------------------------------------------------------------------------
+
+/** The most texts one embedding request may carry; the Gateway takes 2,048 a call. */
+export const AI_EMBEDDING_BATCH_MAX = 512;
+
+export interface AiEmbeddingRequest {
+  /** Who is asking. Must hold use_ai. */
+  viewer: Viewer;
+  feature: AiFeature;
+  action?: string;
+  /** The texts to embed. Never logged. */
+  values: readonly string[];
+  abortSignal?: AbortSignal;
+}
+
+export type AiEmbeddingResult =
+  /** One vector per value, in the same order, from `model`. */
+  | { ok: true; embeddings: number[][]; model: string }
+  | { ok: false; code: AiErrorCode; message: string };
+
+/**
+ * Turns texts into vectors with the embedding model (AI_EMBEDDING_MODEL),
+ * through the Gateway like every other request. Never throws.
+ *
+ * Asked for while another request is running - a Conductor tool searching by
+ * theme, a batch of the library index - it is one more call beneath THAT
+ * request's row, and makes none of its own, so a question stays one request
+ * however it was answered. Asked for by itself it is logged as its own.
+ */
+export async function embedAiValues(request: AiEmbeddingRequest): Promise<AiEmbeddingResult> {
+  const { viewer, feature } = request;
+  const refuse = (code: AiErrorCode): AiEmbeddingResult => ({ ok: false, code, message: aiContent.errors[code] });
+
+  if (!viewer.can("use_ai")) {
+    console.warn(`[ai] Refused ${feature} for ${viewer.userId}: no use_ai permission.`);
+    return refuse("forbidden");
+  }
+
+  const config = aiConfig();
+  const model = config.embeddingModel;
+  const parent = operations.getStore() ?? null;
+  const entry = { env: viewer.env, feature, action: request.action ?? null, model, userId: viewer.userId };
+
+  if (!config.configured) {
+    console.error("[ai] AI is not configured: neither AI_GATEWAY_API_KEY nor a Vercel deployment token is set.");
+    if (!parent) {
+      await recordAiUsage({ ...entry, status: "error", errorCode: "not-configured", tokens: NO_TOKEN_USAGE, costUsd: null, durationMs: null });
+    }
+    return refuse("not-configured");
+  }
+  if (request.values.length === 0) return { ok: true, embeddings: [], model };
+  if (request.values.length > AI_EMBEDDING_BATCH_MAX) {
+    console.error(`[ai] ${feature}: ${request.values.length} values is more than one embedding request may carry.`);
+    return refuse("invalid-response");
+  }
+
+  const started = performance.now();
+  const timeout = AbortSignal.timeout(AI_TIMEOUT_MS);
+  try {
+    const result = await embedMany({
+      model,
+      values: [...request.values],
+      maxRetries: 1,
+      abortSignal: request.abortSignal ? AbortSignal.any([request.abortSignal, timeout]) : timeout,
+      providerOptions: {
+        gateway: { user: viewer.userId, tags: [`feature:${feature}`, `env:${viewer.env}`] },
+      },
+    });
+    const call: AiCallUsage = {
+      kind: "embedding",
+      model,
+      responseModel: null,
+      tokens: readEmbeddingUsage(result.usage),
+      ...readGatewayMetadata(result.providerMetadata),
+    };
+    const complete = result.embeddings.length === request.values.length;
+    if (!complete) {
+      console.error(`[ai] ${feature}: ${result.embeddings.length} vectors came back for ${request.values.length} values.`);
+    }
+
+    if (parent) parent.calls.push(call);
+    else {
+      await recordAiUsage({
+        ...entry,
+        status: complete ? "success" : "error",
+        errorCode: complete ? null : "invalid-response",
+        ...sumCalls([call]),
+        durationMs: performance.now() - started,
+        calls: [call],
+      });
+    }
+    if (!complete) return refuse("invalid-response");
+    return { ok: true, embeddings: result.embeddings, model };
+  } catch (error) {
+    const failed = classifyAiError(error);
+    console.error(`[ai] ${feature} embedding failed (${failed.code}): ${failed.detail}`);
+    if (parent) parent.failed ??= failed;
+    else {
+      await recordAiUsage({
+        ...entry,
+        status: "error",
+        errorCode: failed.code,
+        errorDetail: failed.detail,
+        tokens: NO_TOKEN_USAGE,
+        costUsd: null,
+        durationMs: performance.now() - started,
+        generationId: failed.generationId,
+      });
+    }
+    return refuse(failed.code);
+  }
+}
+
+/**
+ * Runs `work` as ONE logged request: every AI call it makes (embedAiValues)
+ * is kept beneath a single row of ai_usage, written when it finishes. For
+ * work that is only its calls - a batch of the library index. Work that makes
+ * no call at all logs nothing, because nothing was asked of the Gateway.
+ *
+ * Whatever `work` returns, or throws, is passed straight on.
+ */
+export async function withAiOperation<T>(
+  request: { viewer: Viewer; feature: AiFeature; action?: string },
+  work: () => Promise<T>,
+): Promise<T> {
+  const { viewer, feature } = request;
+  const operation: AiOperation = { calls: [], failed: null };
+  const started = performance.now();
+  const log = async (failed: ReturnType<typeof classifyAiError> | null) => {
+    if (operation.calls.length === 0 && !failed) return;
+    await recordAiUsage({
+      env: viewer.env,
+      feature,
+      action: request.action ?? null,
+      model: operation.calls[0]?.model ?? aiConfig().embeddingModel,
+      userId: viewer.userId,
+      status: failed ? "error" : "success",
+      errorCode: failed?.code ?? null,
+      errorDetail: failed?.detail ?? null,
+      ...sumCalls(operation.calls),
+      durationMs: performance.now() - started,
+      generationId: failed?.generationId ?? null,
+      calls: operation.calls,
+    });
+  };
+
+  try {
+    const result = await operations.run(operation, work);
+    await log(operation.failed);
+    return result;
+  } catch (error) {
+    await log(operation.failed ?? classifyAiError(error));
+    throw error;
+  }
+}
+
 /**
  * Fills in costs the Gateway had not worked out when their requests were
- * logged, by asking it for each generation. Called when usage is viewed, so
- * nothing waits on it. Returns how many were filled in; never throws.
+ * logged, by asking it for each call's generation - every call of a request,
+ * so an answer that took several is priced in full. Called when usage is
+ * viewed, so nothing waits on it. Returns how many were filled in; never throws.
  */
 export async function backfillAiCosts(env: ClerkEnv): Promise<number> {
   if (!aiConfig().configured) return 0;
   try {
-    const waiting = await listUncostedAiUsage(env);
+    const waiting = await listUncostedAiCalls(env);
     const filled = await Promise.all(
       waiting.map(async ({ id, generationId }) => {
         try {
           const costUsd = parseCost((await gateway.getGenerationInfo({ id: generationId })).totalCost);
           if (costUsd === null) return false;
-          await setAiUsageCost(env, id, costUsd);
+          await setAiCallCost(env, id, costUsd);
           return true;
         } catch {
           // Not ready yet, or gone: it is asked for again the next time usage is viewed.

@@ -113,7 +113,7 @@ export interface SongRef {
 }
 
 /** Every song the site knows: sung, planned or in the catalog. */
-function songDirectory(data: ConductorData): SongRef[] {
+export function songDirectory(data: ConductorData): SongRef[] {
   const byId = new Map<string, SongRef>();
   for (const record of buildSongRecords(data.past)) {
     byId.set(record.id, {

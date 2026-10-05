@@ -185,6 +185,15 @@ export const siteConfig = {
      * minute, against the service account's limit of 60.
      */
     revalidateSeconds: 10,
+
+    /**
+     * The sheet music type whose MuseScore files a song's LYRICS are read
+     * from for the library index (src/lib/library-content): its name under
+     * Admin -> Configuration. Only this type is read - the Chords, Capo and
+     * instrument files carry the same words - so a song without a Standard
+     * MuseScore file has no indexed lyrics.
+     */
+    lyricsType: "Standard",
   },
 
   /**

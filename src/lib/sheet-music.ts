@@ -55,6 +55,8 @@ export interface SheetFile {
   driveFileId: string;
   /** When the file last changed in Drive (ISO), for "New sheet music" on the Dashboard. */
   modifiedTime?: string;
+  /** Drive's checksum of the file's bytes: what tells the library index a file has really changed. */
+  md5?: string;
 }
 
 /** One version of a song's sheet music of one type. */
@@ -105,6 +107,7 @@ export interface DriveItem {
   mimeType: string;
   parents?: string[];
   modifiedTime?: string;
+  md5Checksum?: string;
 }
 
 /** The folder everything lives under; paths are read from just below it. */
@@ -192,6 +195,7 @@ export interface DriveFile {
   format: SheetFormat;
   driveFileId: string;
   modifiedTime: string;
+  md5?: string;
 }
 
 /** "(2)", "(Stedfast Baptist Church)", "(Christmas Caroling)" and the space before. */
@@ -211,6 +215,7 @@ export function parseDrivePath(
   name: string,
   driveFileId: string,
   modifiedTime = "",
+  md5?: string,
 ): DriveFile | null {
   const format = formatFromName(name);
   if (!format || /in progress/i.test(name)) return null;
@@ -226,7 +231,7 @@ export function parseDrivePath(
   const title = (numbered ? numbered[2] : base).trim();
   if (!title) return null;
 
-  return { folders, number: numbered ? numbered[1] : null, title, version, format, driveFileId, modifiedTime };
+  return { folders, number: numbered ? numbered[1] : null, title, version, format, driveFileId, modifiedTime, ...(md5 ? { md5 } : {}) };
 }
 
 /** The folder names between "Sheet Music" and the item, or null when it is not inside it. */
@@ -249,7 +254,7 @@ export function sheetsFromDrive(items: DriveItem[]): DriveFile[] {
     if (item.mimeType === FOLDER_MIME) continue;
     const folders = foldersAbove(item, byId);
     if (!folders) continue;
-    const sheet = parseDrivePath(folders, item.name, item.id, item.modifiedTime);
+    const sheet = parseDrivePath(folders, item.name, item.id, item.modifiedTime, item.md5Checksum);
     if (sheet) sheets.push(sheet);
   }
   return sheets;
@@ -523,6 +528,7 @@ export function classify(sources: SheetMusicSources, types: readonly TypeSources
         slug: "",
         driveFileId: file.driveFileId,
         modifiedTime: file.modifiedTime || undefined,
+        ...(file.md5 ? { md5: file.md5 } : {}),
       });
     }
 

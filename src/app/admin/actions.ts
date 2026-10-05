@@ -60,8 +60,12 @@ import {
   setCapoPolicy,
   type OptionList,
 } from "@/lib/auth/store";
+import { siteConfig } from "@/config/site";
+import { aiContent } from "@/content/ai";
 import { generateAiText } from "@/lib/ai/service";
 import type { AiTokenUsage } from "@/lib/ai/usage";
+import { refreshLibraryIndex } from "@/lib/library-content/indexer";
+import type { RefreshReport } from "@/lib/library-content/plan";
 import { MAX_ACCIDENTALS } from "@/lib/capo-policy";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
@@ -759,5 +763,32 @@ export async function testAiConnectionAction(): Promise<ActionResult<AiTestOutco
       },
       message: "The model answered.",
     };
+  });
+}
+
+/** One pass of a refresh of the library index: what it did, and whether embedding stopped short. */
+export interface LibraryRefreshOutcome {
+  report: RefreshReport;
+  /** Why embedding stopped, in words safe to show; null when it did not. */
+  embeddingMessage: string | null;
+}
+
+/**
+ * Admin -> AI's "Refresh library index": one pass of reading the lyrics out
+ * of the Standard MuseScore files into the library index and embedding them
+ * (src/lib/library-content/indexer.ts). A pass works for a limited time and
+ * reports what is left; the page calls again, with `continuing`, until
+ * nothing is. It reads Drive and writes only the index - never a service, a
+ * plan or anything a person made.
+ */
+export async function refreshLibraryIndexAction(continuing: unknown): Promise<ActionResult<LibraryRefreshOutcome>> {
+  return withPermission("use_ai", async (viewer) => {
+    const result = await refreshLibraryIndex(viewer, { continuing: continuing === true });
+    revalidatePath("/admin/ai");
+    if (!result.ok) {
+      const { errors } = aiContent.admin.library;
+      return { ok: false, error: errors[result.reason].replace("{type}", siteConfig.sheetMusic.lyricsType) };
+    }
+    return { ok: true, value: { report: result.report, embeddingMessage: result.embeddingMessage } };
   });
 }

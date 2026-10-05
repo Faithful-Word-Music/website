@@ -63,6 +63,12 @@ export function addTokenUsage(a: AiTokenUsage, b: AiTokenUsage): AiTokenUsage {
   };
 }
 
+/** An embedding call's `usage` ({ tokens }): everything it uses is input. */
+export function readEmbeddingUsage(usage: unknown): AiTokenUsage {
+  const tokens = count(record(usage).tokens);
+  return { ...NO_TOKEN_USAGE, inputTokens: tokens, totalTokens: tokens };
+}
+
 /** A cost in US dollars from a number or a numeric string; null for anything else. */
 export function parseCost(value: unknown): number | null {
   const amount = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
@@ -79,6 +85,49 @@ export function readGatewayMetadata(providerMetadata: unknown): { generationId: 
   const gateway = record(record(providerMetadata).gateway);
   const generationId = typeof gateway.generationId === "string" && gateway.generationId !== "" ? gateway.generationId : null;
   return { generationId, costUsd: parseCost(gateway.cost) ?? parseCost(gateway.totalCost) };
+}
+
+// ---------------------------------------------------------------------------
+// The calls behind one request
+// ---------------------------------------------------------------------------
+
+/**
+ * One actual call to AI Gateway. A request as a person thinks of it (one
+ * Conductor question, one refresh of the library index) is ONE row of
+ * ai_usage however many of these it took: a chat model call for each round of
+ * tool use, an embedding call when a tool searches by theme. Each is kept
+ * beneath its request in ai_usage_calls, so cost is reported by the model
+ * that was really used and every call's cost can be asked for later.
+ */
+export interface AiCallUsage {
+  kind: "language" | "embedding";
+  /** The model asked for. */
+  model: string;
+  /** The model that answered, which differs after a Gateway fallback. */
+  responseModel: string | null;
+  tokens: AiTokenUsage;
+  /** Null when the Gateway had not worked it out. */
+  costUsd: number | null;
+  /** What the Gateway is asked by, later, for a cost it had not worked out. */
+  generationId: string | null;
+}
+
+/** A call whose cost is not known yet but can still be asked for. */
+export const costPending = (call: Pick<AiCallUsage, "costUsd" | "generationId">) =>
+  call.costUsd === null && call.generationId !== null;
+
+/**
+ * What a request used in all: its calls' tokens added up, and their costs -
+ * null while any call's cost is still to come (the row then shows "Cost
+ * pending" and is filled in by the backfill), and null when no call reported
+ * one at all. A call with neither a cost nor a generation ID can never be
+ * priced, so it does not hold the others back.
+ */
+export function sumCalls(calls: readonly AiCallUsage[]): { tokens: AiTokenUsage; costUsd: number | null } {
+  const tokens = calls.reduce((total, call) => addTokenUsage(total, call.tokens), NO_TOKEN_USAGE);
+  const known = calls.filter((call) => call.costUsd !== null);
+  const costUsd = calls.some(costPending) || known.length === 0 ? null : known.reduce((total, call) => total + call.costUsd!, 0);
+  return { tokens, costUsd };
 }
 
 // ---------------------------------------------------------------------------

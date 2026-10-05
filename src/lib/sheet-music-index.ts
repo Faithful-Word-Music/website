@@ -122,7 +122,8 @@ async function listDrive(): Promise<DriveItem[]> {
   for (let page = 0; page < MAX_DRIVE_PAGES; page += 1) {
     const params = new URLSearchParams({
       q: "trashed = false",
-      fields: "nextPageToken,files(id,name,mimeType,parents,modifiedTime)",
+      // md5Checksum is what lets the library index skip a file it has already read, without opening it.
+      fields: "nextPageToken,files(id,name,mimeType,parents,modifiedTime,md5Checksum)",
       pageSize: "1000",
       supportsAllDrives: "true",
       includeItemsFromAllDrives: "true",
@@ -188,6 +189,21 @@ export async function getSheetMusicIndex(): Promise<SheetMusicResult> {
   const [sources, types] = await Promise.all([getSheetMusicSources(), sheetMusicTypesForSite()]);
   if (!sources.ok) return sources;
   return { ok: true, index: classify(sources.sources, types) };
+}
+
+/**
+ * A whole file from Drive, for the server's own reading (the library index
+ * reads lyrics out of MuseScore files - src/lib/library-content). Never sent
+ * to a browser. Throws when Drive will not give it, or it is larger than
+ * `maxBytes`; the message carries the status only, never the file's ID.
+ */
+export async function readDriveFile(driveFileId: string, maxBytes: number): Promise<Uint8Array> {
+  const response = await authorizedFetch(`${DRIVE_API}/${encodeURIComponent(driveFileId)}?alt=media&supportsAllDrives=true`);
+  if (!response.ok) throw new Error(`Google Drive responded with ${response.status}`);
+  if (Number(response.headers.get("content-length") ?? 0) > maxBytes) throw new Error("The file is too large to read.");
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new Error("The file is too large to read.");
+  return bytes;
 }
 
 /**

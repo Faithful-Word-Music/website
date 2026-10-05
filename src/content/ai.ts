@@ -37,6 +37,8 @@ export const aiContent = {
     title: "AI",
     intro:
       "The site's AI features run through Vercel AI Gateway. Every request is logged here by feature, so you can see what is being used and what it costs.",
+    /** A request is one question or one refresh, however many calls to a model it took. */
+    requestsNote: "A request is one thing asked - a Conductor question, a refresh of the library index - however many calls to a model it took. Each call is counted under the model it went to.",
 
     status: {
       heading: "Status",
@@ -106,6 +108,75 @@ export const aiContent = {
       /** A Conductor answer the person stopped before it finished. */
       stopped: "Stopped",
       costPending: "Cost pending",
+    },
+
+    /** The library index: the songs' lyrics, read from the MuseScore files (src/lib/library-content). */
+    library: {
+      heading: "Library index",
+      intro:
+        "The lyrics of the song library, read from the Standard MuseScore files in Drive and kept here so Conductor can read, search and compare them. Nothing refreshes it by itself: refresh it after sheet music is added or changed.",
+      songs: "Songs in the Index",
+      indexed: "Lyrics indexed",
+      /** Under "Lyrics indexed". */
+      sections: ["{count} section", "{count} sections"],
+      noSource: "No MuseScore file",
+      noSourceDetail: "no Standard file to read",
+      noLyrics: "No lyrics in the file",
+      noLyricsDetail: "nothing typed under the notes",
+      failed: "Could not be read",
+      failedDetail: "tried again at each refresh",
+      outOfDate: "Out of date",
+      outOfDateDetail: "new or changed since the last refresh",
+      upToDate: "nothing waiting",
+      awaitingEmbedding: ["{count} song still to embed", "{count} songs still to embed"],
+      embeddingModel: "Embedding model",
+      refreshed: "Last refreshed",
+      never: "Never",
+
+      refreshHeading: "Refresh",
+      refreshBody:
+        "Reads only the files that are new or have changed, and embeds only words it has not embedded before. A library with nothing changed costs nothing to refresh.",
+      button: "Refresh library index",
+      pending: "Refreshing…",
+      done: "Refreshed",
+      /** While a long refresh works. {done} and {total} are counts of files. */
+      progress: "{done} of {total} files read…",
+      embedding: ["Embedding the last {count} text…", "Embedding the last {count} texts…"],
+
+      /** What a refresh reports. Each is left out when its count is zero, except the first. */
+      report: {
+        nothing: "Everything was already up to date.",
+        added: ["{count} song indexed for the first time", "{count} songs indexed for the first time"],
+        updated: ["{count} song updated", "{count} songs updated"],
+        unchanged: ["{count} unchanged", "{count} unchanged"],
+        removed: ["{count} removed", "{count} removed"],
+        embedded: ["{count} text embedded", "{count} texts embedded"],
+        noSource: ["{count} with no MuseScore file", "{count} with no MuseScore file"],
+        noLyrics: ["{count} with no lyrics in the file", "{count} with no lyrics in the file"],
+        failed: ["{count} could not be read", "{count} could not be read"],
+      },
+      /** A refresh that stopped before it had finished. */
+      unfinished: "The refresh stopped before it had finished. Refresh again to carry on from where it left off.",
+      /** {message} is the AI system's own wording for why. */
+      embeddingStopped: "The lyrics are indexed, but embedding stopped: {message} Search by theme will miss what is not embedded yet.",
+
+      problems: {
+        /** {count} is a count of songs. */
+        toggle: ["{count} song has a file that could not be indexed", "{count} songs have a file that could not be indexed"],
+        noLyrics: "No lyrics in the file",
+        failed: "Could not be read",
+      },
+
+      errors: {
+        "not-configured": "The Google service account is not set up here, so the sheet music cannot be read.",
+        unavailable: "The Sheet Music Index or Google Drive could not be read just now. Please try again.",
+        "no-lyrics-type": "No sheet music type is named “{type}”. Lyrics are read from that type's MuseScore files; add it under Admin → Configuration.",
+        database: "The library index could not be reached. Please try again.",
+      },
+      unavailable: {
+        title: "The library index could not be loaded",
+        body: "Its status could not be read just now. Conductor's other answers are not affected.",
+      },
     },
 
     environment: "These figures are for this environment's accounts. The Gateway's budget is shared by every environment.",
