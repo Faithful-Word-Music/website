@@ -167,6 +167,20 @@ export async function setAiUsageCost(env: ClerkEnv, id: number, costUsd: number)
 // Reading
 // ---------------------------------------------------------------------------
 
+/**
+ * How many requests one person has made for a feature since `since` (ISO),
+ * failed ones included - what a feature's own hourly limit counts.
+ */
+export async function countRecentAiUsage(env: ClerkEnv, userId: string, feature: AiFeature, since: string): Promise<number> {
+  const sql = await usageSql();
+  const [row] = (await sql.query(
+    `SELECT count(*) AS requests FROM ai_usage
+      WHERE clerk_env = $1 AND clerk_user_id = $2 AND feature = $3 AND created_at >= $4::timestamptz`,
+    [env, userId, feature, since],
+  )) as Array<{ requests: string | number }>;
+  return Number(row?.requests ?? 0);
+}
+
 export interface AiUsageSummary {
   totals: AiUsageTotals;
   byFeature: AiUsageGroup[];
@@ -248,13 +262,15 @@ export interface AiUsageRecord {
   reasoningTokens: number | null;
   costUsd: number | null;
   durationMs: number | null;
+  /** Why the model stopped; "aborted" when the person stopped it. */
+  finishReason: string | null;
 }
 
 /** The latest requests, newest first. */
 export async function listRecentAiUsage(env: ClerkEnv, limit = 20): Promise<AiUsageRecord[]> {
   const sql = await usageSql();
   const rows = (await sql.query(
-    `SELECT id, created_at, feature, action, model, status, error_code, total_tokens, reasoning_tokens, cost_usd, duration_ms
+    `SELECT id, created_at, feature, action, model, status, error_code, total_tokens, reasoning_tokens, cost_usd, duration_ms, finish_reason
        FROM ai_usage WHERE clerk_env = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
     [env, limit],
   )) as Array<{
@@ -269,6 +285,7 @@ export async function listRecentAiUsage(env: ClerkEnv, limit = 20): Promise<AiUs
     reasoning_tokens: number | null;
     cost_usd: string | number | null;
     duration_ms: number | null;
+    finish_reason: string | null;
   }>;
   return rows.map((row) => ({
     id: Number(row.id),
@@ -282,5 +299,6 @@ export async function listRecentAiUsage(env: ClerkEnv, limit = 20): Promise<AiUs
     reasoningTokens: row.reasoning_tokens,
     costUsd: row.cost_usd === null ? null : Number(row.cost_usd),
     durationMs: row.duration_ms,
+    finishReason: row.finish_reason,
   }));
 }

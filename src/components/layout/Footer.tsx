@@ -22,17 +22,7 @@ export function Footer() {
       // In the installed app's login screen, only the copyright line stays.
       className="mt-24 border-t border-line bg-surface app-login:mt-0 app-login:border-t-0 app-login:bg-transparent"
     >
-      {/* Extra bottom padding from tablet width until the page gutter is wide
-          enough, and only while the "Back to top" button is showing:
-          otherwise the fixed button (48px, 32px from the corner) sits on top
-          of the right-hand account link when the page is scrolled to the end.
-          On a page too short for the button, nothing moves. On phones the row
-          stacks to the left, clear of the button; from 1440px the gutter
-          itself clears it. */}
-      <Container
-        size="wide"
-        className="py-14 transition-[padding] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] sm:max-[1439px]:back-to-top:pb-24 app-login:py-4"
-      >
+      <Container size="wide" className="py-14 app-login:py-4">
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 app-login:hidden">
           {/* Identification */}
           <Reveal className="lg:pr-6">
@@ -92,12 +82,22 @@ export function Footer() {
           </Reveal>
         </div>
 
-        {/* Copyright on the left, the account link on the right; stacked on
-            phones, where the two would not fit side by side comfortably. */}
-        <div className="mt-12 flex flex-col gap-2 border-t border-line pt-6 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6 app-login:mt-0 app-login:items-center app-login:justify-center app-login:border-t-0 app-login:pt-0">
+        {/* The closing line. The bottom right corner of the window belongs to
+            the floating buttons ("Back to top", and Conductor's beneath it),
+            so nothing is laid out there until the page's own gutter is wide
+            enough to clear them:
+
+              phones       copyright, then the account link, stacked
+              to 1439px    the two side by side from the left, a hairline
+                           between them - the corner stays empty
+              from 1440px  copyright left, account link right
+
+            The footer is the same height whichever buttons are showing. */}
+        <div className="mt-12 flex flex-col gap-2 border-t border-line pt-6 sm:flex-row sm:items-center sm:gap-4 min-[1440px]:justify-between min-[1440px]:gap-6 app-login:mt-0 app-login:items-center app-login:justify-center app-login:border-t-0 app-login:pt-0">
           <p className="text-xs text-muted app-login:text-center">
             {footerContent.copyright.replace("{year}", String(year))}
           </p>
+          <span aria-hidden="true" className="hidden h-3 w-px bg-staff sm:block min-[1440px]:hidden app-login:hidden" />
           <div className="app-login:hidden">
             <FooterAccountLink />
           </div>

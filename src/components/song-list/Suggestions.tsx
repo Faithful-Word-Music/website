@@ -138,7 +138,7 @@ export function SuggestionList({
       className={cn(
         "absolute z-30 mt-2 max-h-96 origin-top overflow-auto rounded-card border border-line bg-surface py-1.5 shadow-card",
         "[scrollbar-color:var(--color-staff)_transparent] [scrollbar-width:thin]",
-        "transition-[opacity,transform,visibility] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "transition-[opacity,transform,translate,scale,rotate,visibility] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
         visible
           ? "visible translate-y-0 scale-100 opacity-100"
           : "pointer-events-none invisible -translate-y-1 scale-[0.98] opacity-0",
@@ -190,7 +190,7 @@ export function ClearButton({
       aria-hidden={!show}
       className={cn(
         "mr-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted",
-        "transition-[opacity,transform,color] duration-200 hover:text-ink",
+        "transition-[opacity,transform,translate,scale,rotate,color] duration-200 hover:text-ink",
         show ? "scale-100 opacity-100" : "pointer-events-none scale-75 opacity-0",
       )}
     >

@@ -42,7 +42,7 @@ export function Toaster() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+4.75rem)] print:hidden"
+      className="pointer-events-none fixed left-0 right-(--conductor-inset) top-0 z-[60] flex justify-center px-4 pt-[calc(env(safe-area-inset-top)+4.75rem)] print:hidden"
     >
       {current ? (
         <p

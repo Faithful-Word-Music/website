@@ -23,7 +23,7 @@ export function buttonClasses(variant: Variant, size: Size = "md", className?: s
     // min-h keeps touch targets comfortable on mobile
     "inline-flex min-h-11 items-center justify-center gap-2 rounded-full font-medium",
     // The site's default easing (globals.css), plus a small give when pressed.
-    "transition-[color,background-color,border-color,text-decoration-color,box-shadow,transform,opacity] not-disabled:active:scale-[0.97]",
+    "transition-[color,background-color,border-color,text-decoration-color,box-shadow,transform,translate,scale,rotate,opacity] not-disabled:active:scale-[0.97]",
     // A button at work (data-busy, below) is disabled too, but is not dimmed.
     "disabled:cursor-not-allowed not-data-busy:disabled:opacity-60",
     size === "lg" ? "px-7 text-base" : "px-5 text-sm",

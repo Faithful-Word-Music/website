@@ -7,6 +7,7 @@ import { useAccount } from "@/components/account/AccountContext";
 import { MobileAccountMenu, UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
+import { NavMenu } from "@/components/layout/NavMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useNavFit } from "@/components/layout/use-nav-fit";
 import { CommandPalette } from "@/components/search/CommandPalette";
@@ -27,7 +28,9 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   const items = primaryNav(nav);
   // The links sit in the bar while they fit and go behind the menu button
   // when they don't - how many there are depends on who is signed in.
-  const { mode, rowRef, navRef } = useNavFit(items.map((item) => `${item.href} ${item.label}`).join("|"));
+  const { mode, rowRef, navRef } = useNavFit(
+    items.map((item) => `${item.href} ${item.label}${item.children ? ` +${item.children.length}` : ""}`).join("|"),
+  );
 
   // Close the mobile menu whenever the route changes. Adjusting state during
   // render is React's recommended way to reset state when an input changes -
@@ -84,7 +87,11 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
               {/* The links in a row, while they fit (use-nav-fit.ts) */}
               <nav ref={navRef} aria-label="Primary" className="hidden min-w-0 overflow-hidden nav-wide:block">
                 <ul className="flex items-center gap-1">
-                  {items.map((item) => (
+                  {items.map((item) =>
+                    item.children ? (
+                      // Several destinations behind one label ("Tools").
+                      <NavMenu key={item.label} item={item} isActive={isActive} />
+                    ) : (
                     <li key={item.href}>
                       <Link
                         href={item.href}
@@ -109,7 +116,8 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                         />
                       </Link>
                     </li>
-                  ))}
+                    ),
+                  )}
                 </ul>
               </nav>
 

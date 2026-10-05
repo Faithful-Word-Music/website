@@ -49,7 +49,7 @@ export function LearningScaleInput({
               <span
                 aria-hidden="true"
                 className={cn(
-                  "flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 border-line bg-surface transition-[border-color,background-color,transform]",
+                  "flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-full border-2 border-line bg-surface transition-[border-color,background-color,transform,translate,scale,rotate]",
                   "group-hover:border-gold",
                   "peer-checked:scale-110 peer-checked:border-ink peer-checked:bg-ink",
                   "peer-focus-visible:ring-2 peer-focus-visible:ring-gold/50 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface",

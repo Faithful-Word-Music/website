@@ -47,6 +47,22 @@ export function readTokenUsage(usage: unknown): AiTokenUsage {
   };
 }
 
+/**
+ * Two lots of tokens as one - for an answer that took several model calls,
+ * which is logged as a single request. A figure neither reported stays null;
+ * one that only some calls reported is the sum of those.
+ */
+export function addTokenUsage(a: AiTokenUsage, b: AiTokenUsage): AiTokenUsage {
+  const sum = (x: number | null, y: number | null) => (x === null && y === null ? null : (x ?? 0) + (y ?? 0));
+  return {
+    inputTokens: sum(a.inputTokens, b.inputTokens),
+    outputTokens: sum(a.outputTokens, b.outputTokens),
+    reasoningTokens: sum(a.reasoningTokens, b.reasoningTokens),
+    cachedInputTokens: sum(a.cachedInputTokens, b.cachedInputTokens),
+    totalTokens: sum(a.totalTokens, b.totalTokens),
+  };
+}
+
 /** A cost in US dollars from a number or a numeric string; null for anything else. */
 export function parseCost(value: unknown): number | null {
   const amount = typeof value === "string" && value.trim() !== "" ? Number(value) : value;

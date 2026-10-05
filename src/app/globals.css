@@ -28,11 +28,11 @@
   }
 }
 
-/* While the floating "Back to top" button is showing (BackToTop marks <html>
-   with data-back-to-top) - and not stepped aside for the song list's share
-   bar. The footer makes room for it only then. */
-@custom-variant back-to-top {
-  :where(:root[data-back-to-top]:not([data-share-bar])) & {
+/* While Conductor's floating button is showing (ConductorDock marks <html>
+   with data-conductor="launcher") - and not stepped aside for the share bar.
+   "Back to top" sits above it. */
+@custom-variant conductor-launcher {
+  :where(:root[data-conductor="launcher"]:not([data-share-bar])) & {
     @slot;
   }
 }
@@ -125,6 +125,9 @@
   --shadow-lift: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px -10px rgba(17, 17, 17, 0.3);
   /* The next service's glow (.card-next). */
   --shadow-card-next: 0 1px 2px rgba(17, 17, 17, 0.04), 0 0 28px -6px rgba(176, 141, 87, 0.35);
+  /* The width Conductor's panel takes from the right of the window while it
+     is open beside the page; nothing otherwise. See CONDUCTOR, below. */
+  --conductor-inset: 0px;
 }
 
 /* Composed like Tailwind's own shadow utilities, so a ring on the same
@@ -612,6 +615,173 @@ html[data-splash] .splash {
   }
 }
 
+/* ===========================================================================
+   CONDUCTOR
+   ---------------------------------------------------------------------------
+   The floating assistant (src/components/conductor/ConductorDock.tsx).
+
+   On a wide screen it opens as a column down the right of the window, and the
+   page makes room rather than being covered: the dock writes the column's
+   width to --conductor-inset on <html>, and <body> takes it as a margin. The
+   sticky header, the planner and every page then lay themselves out in the
+   space that is left. Anything `fixed` is positioned against the window, not
+   the body, so it reads the same variable (Back to top, the share bar, the
+   toaster, the mobile menu).
+
+   A margin, not padding: the scroll lock (use-scroll-lock.ts) already uses
+   the body's right padding to stand in for a hidden scrollbar.
+   =========================================================================== */
+body {
+  margin-right: var(--conductor-inset);
+  transition: margin-right 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* While its edge is being dragged the page follows the pointer exactly, and
+   nothing is selected or re-cursored along the way. */
+html[data-conductor-resizing] {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html[data-conductor-resizing] body {
+  transition: none;
+}
+
+/* The panel beside the page: in from the right as the page makes room, and
+   out again as the page takes it back. */
+.conductor-drawer {
+  animation: conductor-drawer-in 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.conductor-drawer[data-leaving] {
+  animation: conductor-drawer-out 240ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
+
+@keyframes conductor-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes conductor-drawer-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* The phone sheet: nearly the full height, the page showing above it. The
+   dock measures the visual viewport (--sheet-space, --sheet-lift), so with
+   the keyboard up the sheet is the space above the keyboard.
+
+   It rises with the long, soft settle of a native sheet while the page behind
+   dims, and leaves the same way in reverse: straight down, a little quicker,
+   the page brightening as it goes - from wherever it is, so a sheet pulled
+   part-way down carries on from under the finger. A transition rather than a
+   keyframe for the way out, because only a transition starts from where the
+   sheet already is. */
+.conductor-sheet {
+  bottom: var(--sheet-lift, 0px);
+  height: min(93dvh, calc(var(--sheet-space, 100dvh) - 0.75rem));
+  animation: conductor-sheet-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.conductor-dialog[data-leaving] .conductor-sheet {
+  transform: translateY(calc(100% + 1rem));
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.7, 0.2);
+}
+
+.conductor-dialog::backdrop {
+  animation: conductor-backdrop-in 320ms ease-out backwards;
+}
+
+.conductor-dialog[data-leaving]::backdrop {
+  animation: conductor-backdrop-out 300ms ease-in forwards;
+}
+
+@keyframes conductor-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes conductor-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes conductor-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* The button. Above the home indicator on a phone, and above a page's own
+   bar of actions (the planner's Save and Publish, marked data-action-bar) so
+   it never sits on a button. */
+.conductor-launcher {
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+}
+
+:root:has([data-action-bar]) .conductor-launcher {
+  bottom: calc(9.75rem + env(safe-area-inset-bottom));
+}
+
+@media (width >= 40rem) {
+  .conductor-launcher {
+    bottom: 2rem;
+  }
+
+  :root:has([data-action-bar]) .conductor-launcher {
+    bottom: 6rem;
+  }
+}
+
+/* From here the planner is two columns and its bar spans only the left one:
+   the corner is free again. */
+@media (width >= 64rem) {
+  :root:has([data-action-bar]) .conductor-launcher {
+    bottom: 2rem;
+  }
+}
+
+/* A slow gold glow breathes around the button: it is there, without asking
+   for attention. The lifted shadow it normally wears is kept in every frame,
+   since an animated box-shadow replaces the whole value. */
+.conductor-launcher {
+  animation: conductor-glow 3.6s ease-in-out infinite;
+}
+@keyframes conductor-glow {
+  0%,
+  100% {
+    box-shadow: var(--shadow-lift), 0 0 0 0 color-mix(in srgb, var(--color-gold) 0%, transparent);
+  }
+  50% {
+    box-shadow: var(--shadow-lift), 0 0 18px 2px color-mix(in srgb, var(--color-gold) 38%, transparent);
+  }
+}
+
+/* "Conductor is thinking": three dots taking turns. */
+.conductor-dot {
+  animation: conductor-dot 1.2s ease-in-out infinite both;
+}
+
+@keyframes conductor-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: none;
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
 /* --- Reduced motion ------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -661,6 +831,11 @@ html[data-splash] .splash {
   body {
     background: #fff !important;
     font-size: 11px;
+  }
+
+  /* Conductor's panel is not printed, so the page takes the full width. */
+  body {
+    margin-right: 0 !important;
   }
 
   /* Paper is white, so a page printed in dark mode prints in the light

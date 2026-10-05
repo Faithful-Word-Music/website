@@ -103,6 +103,8 @@ export const aiContent = {
       heading: "Recent requests",
       empty: "No AI requests have been made yet. Run the connection test to make the first one.",
       answered: "Answered",
+      /** A Conductor answer the person stopped before it finished. */
+      stopped: "Stopped",
       costPending: "Cost pending",
     },
 

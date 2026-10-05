@@ -7,6 +7,7 @@ import { AccountProvider } from "@/components/account/AccountContext";
 import { AppOnly } from "@/components/app/AppOnly";
 import { InstalledApp } from "@/components/app/InstalledApp";
 import { Splash } from "@/components/app/Splash";
+import { ConductorDock } from "@/components/conductor/ConductorDock";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
@@ -189,6 +190,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
           </main>
           <Footer />
+          {/* Conductor, the AI assistant, beside or over whatever page is
+              open - only for someone holding use_ai, and never on its own
+              page. Here, not in a page, so it stays open between pages. */}
+          {authEnabled ? <ConductorDock /> : null}
         </AccountsProvider>
         {/* Site-wide: appears on any page once it has been scrolled more
             than a screen, so short pages never show it. */}

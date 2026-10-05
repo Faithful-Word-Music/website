@@ -117,7 +117,8 @@ export function QueueView({
       </section>
 
       {selected.length > 0 || result ? (
-        <div className="sticky bottom-4 z-10">
+        // data-action-bar: Conductor's floating button moves up out of its way (globals.css).
+        <div data-action-bar="" className="sticky bottom-4 z-10">
           <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-lift">
             {selected.length > 0 ? (
               <>
@@ -251,7 +252,7 @@ function QueueItem({
             {statusLine(row)}
           </Pill>
         </span>
-        <Chevron className="shrink-0 transition-[transform,color] group-hover/row:translate-x-0.5 group-hover/row:text-ink" />
+        <Chevron className="shrink-0 transition-[transform,translate,scale,rotate,color] group-hover/row:translate-x-0.5 group-hover/row:text-ink" />
       </Link>
     </li>
   );

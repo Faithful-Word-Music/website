@@ -55,7 +55,7 @@ export function ShareBar({
   }, []);
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex flex-col items-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="pointer-events-none fixed bottom-0 left-0 right-(--conductor-inset) z-40 flex flex-col items-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       {/* Announced as it appears; keyed so each new tap replays its entrance. */}
       <p aria-live="assertive" className="min-h-8">
         {showLimit ? (

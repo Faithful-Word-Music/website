@@ -99,6 +99,7 @@ export function backLabel(entry: string): string {
     "/": labels.home,
     "/dashboard": labels.dashboard,
     "/service-planner": labels.servicePlanner,
+    "/conductor": labels.conductor,
     "/service-planner/inserts": labels.inserts,
     "/song-list/archive/services": labels.serviceArchive,
     "/availability": labels.availability,

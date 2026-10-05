@@ -6,6 +6,9 @@
 export const navigationContent = {
   dashboard: "Dashboard",
   servicePlanner: "Service Planner",
+  conductor: "Conductor",
+  /** The menu holding the Service Planner and Conductor, for someone who may open both. */
+  tools: "Tools",
   availability: "Availability",
   profile: "Profile",
   accountSettings: "Account settings",
@@ -19,6 +22,7 @@ export const navigationContent = {
   back: {
     dashboard: "Back to Dashboard",
     servicePlanner: "Back to the Service Planner",
+    conductor: "Back to Conductor",
     inserts: "Back to Inserts",
     serviceArchive: "Back to service plans",
     service: "Back to the service",

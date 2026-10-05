@@ -11,7 +11,7 @@
  */
 export const AI_FEATURES = {
   connection_test: { label: "Connection test" },
-  assistant: { label: "AI Assistant" },
+  assistant: { label: "Conductor" },
   generate_service_plan: { label: "Generate Service Plan" },
   replace_song: { label: "Replace Song with AI" },
   library_indexing: { label: "Library Indexing / Embeddings" },

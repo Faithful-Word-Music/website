@@ -166,7 +166,7 @@ function ServiceChip({
       aria-label={serviceLabel(service, view)}
       aria-haspopup="dialog"
       className={cn(
-        "flex min-h-9 w-full items-center gap-1.5 rounded-lg border px-2 text-left text-xs transition-[border-color,box-shadow,transform]",
+        "flex min-h-9 w-full items-center gap-1.5 rounded-lg border px-2 text-left text-xs transition-[border-color,box-shadow,transform,translate,scale,rotate]",
         "hover:border-gold hover:shadow-card active:scale-[0.98]",
         stateTone(state),
         !service.editable && "opacity-60",

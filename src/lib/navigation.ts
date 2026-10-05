@@ -12,6 +12,10 @@
  * a convenience: the page itself must still check that permission on the
  * server (src/lib/auth/session.ts).
  *
+ * The working tools (the Service Planner, Conductor) share one "Tools" menu,
+ * so the bar does not grow a link for each. A person who may open only one
+ * of them sees that one as a plain link - never a menu of one.
+ *
  * Pure - no server-only import - so the browser can use it and it can be
  * unit tested.
  */
@@ -23,7 +27,10 @@ import { canAccessAdmin, type Permission } from "./auth/permissions";
 
 export interface NavItem {
   label: string;
+  /** Where it leads. For a menu, its first link - so anything that treats it as a link still works. */
   href: string;
+  /** Set on a menu ("Tools"): the links inside it, always two or more. */
+  children?: NavItem[];
 }
 
 export interface NavContext {
@@ -32,11 +39,16 @@ export interface NavContext {
   permissions: ReadonlySet<Permission>;
 }
 
-interface NavEntry extends NavItem {
+interface NavEntry {
+  label: string;
+  /** Left out on a menu, which leads nowhere itself. */
+  href?: string;
   /** Shown only to someone holding this permission. */
   permission?: Permission;
   /** Shown only when this returns true (for rules a single permission cannot express). */
   when?: (context: NavContext) => boolean;
+  /** A menu's links, each with its own permission. */
+  children?: NavEntry[];
 }
 
 export const SIGNED_OUT: NavContext = { signedIn: false, permissions: new Set() };
@@ -54,13 +66,20 @@ function publicPage(href: string): NavEntry {
 
 /**
  * The signed-in primary navigation, in order: the Dashboard in Home's place,
- * then where the song list is built, where it is read, and the rest. Each
- * application page carries the permission that opens it.
+ * then the tools the song list is built with, where it is read, and the
+ * rest. Each application page carries the permission that opens it.
  */
 const APP_NAV: NavEntry[] = [
   { label: navigationContent.dashboard, href: "/dashboard" },
-  // The Music Director's - drafts and long-range plans are nobody else's business.
-  { label: navigationContent.servicePlanner, href: "/service-planner", permission: "manage_service_plans" },
+  {
+    label: navigationContent.tools,
+    children: [
+      // The Music Director's - drafts and long-range plans are nobody else's business.
+      { label: navigationContent.servicePlanner, href: "/service-planner", permission: "manage_service_plans" },
+      // The AI assistant: every question is paid for.
+      { label: navigationContent.conductor, href: "/conductor", permission: "use_ai" },
+    ],
+  },
   publicPage("/song-list"),
   publicPage("/library"),
   // The music ministry's participants only - never a Member-only account.
@@ -80,13 +99,27 @@ function allowed(entries: NavEntry[], context: NavContext): NavItem[] {
   return entries
     .filter((entry) => !entry.permission || context.permissions.has(entry.permission))
     .filter((entry) => !entry.when || entry.when(context))
-    .map(({ label, href }) => ({ label, href }));
+    .flatMap((entry): NavItem[] => {
+      if (!entry.children) return entry.href ? [{ label: entry.label, href: entry.href }] : [];
+      // A menu with nothing in it is not shown, and one link needs no menu.
+      const children = allowed(entry.children, context);
+      if (children.length < 2) return children;
+      return [{ label: entry.label, href: children[0].href, children }];
+    });
 }
 
-/** The main navigation: header, mobile menu and footer. */
+/**
+ * The main navigation, as the header and the mobile menu show it: links, and
+ * menus of links (an item with `children`).
+ */
 export function primaryNav(context: NavContext): NavItem[] {
   if (!context.signedIn) return siteConfig.nav.map(({ label, href }) => ({ label, href }));
   return allowed(APP_NAV, context);
+}
+
+/** The same links with each menu opened out in place, for a plain list (the footer). */
+export function flatNav(items: readonly NavItem[]): NavItem[] {
+  return items.flatMap((item) => (item.children ? flatNav(item.children) : [{ label: item.label, href: item.href }]));
 }
 
 /** The account menu's links. Empty for visitors. */
@@ -96,7 +129,7 @@ export function accountMenu(context: NavContext): NavItem[] {
 }
 
 /** The pages only a signed-in person can reach (the proxy sends anyone else to /login). */
-const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/availability", "/profile", "/account", "/admin"];
+const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/profile", "/account", "/admin"];
 
 /**
  * Whether this page can only be open to someone signed in. While Clerk is

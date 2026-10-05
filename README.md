@@ -158,6 +158,8 @@ src/
 │   ├── login/  request-access/  accept-invite/   Member log in, account requests, invitations (Clerk)
 │   ├── dashboard/                    The signed-in home
 │   ├── service-planner/              The Service Planner: queue, one service, inserts, exports, server actions
+│   ├── conductor/                    Conductor, the AI assistant, as a full page
+│   ├── api/conductor/                Conductor's questions, answered as a stream
 │   ├── availability/                 The availability board and its server actions
 │   ├── profile/                      A member's own profile and profile editor
 │   ├── account/                      Account settings (Clerk: email, password, devices)
@@ -171,6 +173,7 @@ src/
 │   ├── account/  admin/              Account pages' forms, the account context and menu, and the admin editors
 │   ├── dashboard/                    The Dashboard's sections
 │   ├── service-planner/              The planner's queue, workspace, song picker and inserts
+│   ├── conductor/                    Conductor: the shared conversation, its one view, and the floating panel
 │   ├── availability/                 The availability calendar, dialogs and editors
 │   ├── ui/                           Shared pieces: Button, Card, Reveal, BackToTop…
 │   └── layout/  home/  contact/
@@ -211,9 +214,9 @@ src/
 | `auth/store.ts`, `auth/schema.mjs` | The account tables in Neon, each row tagged with its Clerk instance (server-only) |
 | `auth/clerk.ts`, `auth/clerk-env.ts` | Every Clerk Backend API call, and which Clerk instance may be used where |
 | `auth/profile-visibility.ts` | Which profile fields each audience (self, staff, later other members) may see (pure) |
-| `navigation.ts` | Which links the header, mobile menu, footer and account menu show, for visitors and per permission (pure) |
+| `navigation.ts` | Which links and menus ("Tools") the header, mobile menu, footer and account menu show, for visitors and per permission (pure) |
 | `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up`, `repertoire`, `sheet-gaps`, `new-sheet-music` and `people` (pure); `load.ts` does the reads (server-only) |
-| `ai/` | The AI system (see [AI.md](./AI.md)): `service.ts`, the one place a model is called (server-only); `store.ts`, the usage log (server-only); `config.ts`; and `features`, `settings`, `errors`, `usage`, `format` (pure) |
+| `ai/` | The AI system (see [AI.md](./AI.md)): `service.ts`, the one place a model is called (server-only); `store.ts`, the usage log (server-only); `config.ts`; `stream.ts`, the streamed answer's format; and `features`, `settings`, `errors`, `usage`, `format` (pure). `ai/conductor/` is the assistant: `tools`, `data`, `conductor` (server-only); `facts`, `instructions`, `context`, `limits`, `protocol`, `session`, `drawer`, `markdown` (pure) |
 | `availability/` | Availability: `occurrences` (which services happen), `effective` (normal + exception = effective, the one rule), `board`, `summary`, `range`, `access` (who is on the board, whose records someone may change), `forms`, `format` (pure); `store.ts` and `load.ts` (server-only) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
@@ -682,12 +685,15 @@ Neither is protection; members' pages still check on the server.
 
 ### AI
 
-The site has an internal AI system, built in phases; **[AI.md](./AI.md)** tracks the phases and holds the design. So far there is only the foundation: no assistant and no AI in the Service Planner yet.
+The site has an internal AI system, built in phases; **[AI.md](./AI.md)** tracks the phases and holds the design. So far: the foundation, and **Conductor**, the assistant. There is no AI in the Service Planner yet, and nothing AI can change.
 
 - **Who:** only people holding **`use_ai`** ("Use AI features"): Administrator always, and Music Director by default. Musicians, song leaders, members and visitors can never make an AI request.
-- **One way in.** Every AI request goes through `generateAiText()` in `src/lib/ai/service.ts`, the only file allowed to import the AI SDK (an ESLint rule enforces it). It checks `use_ai` again, calls the model through **Vercel AI Gateway**, logs the request and never throws: a failure comes back as `{ ok: false, code, message }` with wording that is safe to show (`src/content/ai.ts`).
+- **One way in.** Every AI request goes through `src/lib/ai/service.ts` (`generateAiText()`, or `streamAiText()` for a streamed answer with tools), the only file allowed to import the AI SDK (an ESLint rule enforces it). It checks `use_ai` again, calls the model through **Vercel AI Gateway**, logs the request and never throws: a failure comes back with a code and wording that is safe to show (`src/content/ai.ts`).
+- **Conductor** answers questions about the church's songs, services and plans, and general music and audio questions. Anything about this church comes from **read-only tools** over the site's own data (`src/lib/ai/conductor/tools.ts`: the same functions the pages use), never from the model's memory; it cannot read lyrics or sheet music yet, and it cannot change anything. Drafts are only read for someone who also holds `manage_service_plans`.
+- **Two ways to reach it, one conversation:** the **Conductor** page (`/conductor`, under **Tools** in the navigation), and a round floating button on every other signed-in page. On a wide screen the button opens a panel beside the page, which makes room for it and can be dragged wider or narrower; on a phone it opens a sheet over the page. The conversation is kept in the browser tab only (`sessionStorage`); nothing about it is stored on the server.
+- **Bounds:** 2,000 characters a question, 6 model calls and 60 seconds an answer, 40 questions per person an hour (`src/lib/ai/conductor/limits.ts`).
 - **The model is configuration:** `AI_MODEL`, an AI Gateway `provider/model` ID. Nothing in the code is tied to one provider.
-- **Usage log:** one row per request in `ai_usage` (created on first use, tagged `clerk_env`): when, feature, model, who, input, output and reasoning tokens, cost, duration, and how it ended. Prompts and answers are **not** stored.
+- **Usage log:** one row per request (one per Conductor question, however many model calls it took) in `ai_usage` (created on first use, tagged `clerk_env`): when, feature, model, who, input, output and reasoning tokens, cost, duration, and how it ended. Prompts and answers are **not** stored.
 - **Budget:** the limit that stops spending is the budget set in Vercel AI Gateway. `AI_MONTHLY_BUDGET_USD` only sets the figure shown beside the site's own totals.
 - **Admin → AI** (`/admin/ai`): whether AI is connected, **Run test request** (one fixed, tiny request that proves the key, model and log end to end), this month's cost against the budget, usage by feature and by model, and the latest requests.
 - **Without a key** the site is unchanged: the page says "Not set up" and no request is made.
@@ -709,6 +715,7 @@ The site has an internal AI system, built in phases; **[AI.md](./AI.md)** tracks
 - **Motion:** every hover and state change shares one easing, set site-wide in `globals.css` (`--default-transition-duration: 250ms` with the site's ease-out curve). So a plain `transition-colors` already matches everything else; avoid one-off durations.
   - **Page transitions** use React's `<ViewTransition>` through `components/ui/PageTransition.tsx`, placed in each page (not the layout, which never re-mounts).
   - **Planner months** joining or leaving a list ("Start planning" / "Not yet") fade in and out through `components/service-planner/MonthTransition.tsx`, and what sits below slides to its new place (`MovesWithMonths`).
+  - **Moving, growing and turning:** Tailwind v4 writes `translate-*`, `scale-*` and `rotate-*` as the `translate`, `scale` and `rotate` properties, not `transform`. So a hand-written list must name them (`transition-[opacity,transform,translate,scale,rotate]`), or the movement snaps instead of easing. `transition-transform` and plain `transition` already cover all four.
   - **Underlines** fade in rather than snap: `underline decoration-transparent hover:decoration-current` with a transition that covers `text-decoration-color` (as the quiet `Button` does). Never `hover:underline`.
   - **Page-loading bar** (`components/ui/NavigationProgress.tsx`, in the root layout): a thin gold bar across the top of the window while the next page loads. It appears the moment a link is clicked and stays up for at least 300ms, so even an instant page change gets a short sweep. It ignores `#section` jumps and links that open in a new tab.
   - **Folds** (anything that opens and closes in place) use `Collapse` (`components/ui/Collapse.tsx`) behind a button with `aria-expanded`, so they slide open rather than pop. Never a bare `<details>`.
@@ -719,6 +726,9 @@ The site has an internal AI system, built in phases; **[AI.md](./AI.md)** tracks
 - **Phones first:** the page never scrolls sideways. Tab bars wrap (`AdminNav`), except Admin's seven tabs, which use `overflow="scroll"`: one row that scrolls on its own, with a fade and chevron on the side with more tabs. A row that holds a title plus controls puts the controls on a second line below `sm`, so the title keeps the width. Every responsive grid starts from `grid-cols-1` (`grid grid-cols-1 md:grid-cols-2`); without it the implicit column grows to fit a long truncated line and pushes the page wider than the screen.
 - **Cards with hover rows** get `overflow-hidden` (or rounded last cells, for a table with a sticky header), so a row's hover background stays inside the card's rounded corners and gold barline.
 - **Badges:** the Next/Now badge is `StatusPill` from `components/song-list/ServiceBits.tsx`, and only for the next service to actually happen. Other labels (the planner's "Plan next") use `Pill` (`components/admin/StatusPill.tsx`).
+- **The bottom right corner belongs to the floating buttons:** "Back to top", and Conductor's button beneath it (which wears a slow gold glow). Nothing is laid out there: below 1440px the footer's closing line keeps to the left, so the footer never has to grow or move to clear them. A page with its own sticky bar of actions marks it `data-action-bar`, and Conductor's button sits above it.
+- **Conductor's panel takes room, it does not cover:** while it is open beside the page, `--conductor-inset` on `<html>` holds its width and `<body>` takes it as a right margin. Anything `position: fixed` that spans the window uses `left-0 right-(--conductor-inset)` rather than `inset-x-0`, so it stops at the panel.
+- **Menus in the header** ("Tools") use `NavMenu` (`components/layout/NavMenu.tsx`); a menu is an entry with `children` in `src/lib/navigation.ts`, and one that would hold a single link shows that link instead.
 - **Planner lists** show a month at a time (`src/lib/service-planner/planning-window.ts`): the month being planned, the next one from a week before it starts, and earlier only through "Start planning <month>" / "Not yet" (`PlanAhead`).
 
 ---
@@ -740,10 +750,11 @@ Vitest covers the pure logic in `src/lib`:
 - the shared text format (`share-services.test.ts`)
 - the light/dark choice and its no-flash script (`theme.test.ts`)
 - the year in song (`year-recap.test.ts`)
-- permissions, navigation per permission, and profile visibility (`auth/permissions.test.ts`, `navigation.test.ts`, `auth/profile-visibility.test.ts`)
+- permissions, navigation per permission (the Tools menu included), and profile visibility (`auth/permissions.test.ts`, `navigation.test.ts`, `auth/profile-visibility.test.ts`)
 - the Dashboard's focus, attention list, coming services and sheet-music choice (`dashboard/dashboard.test.ts`)
 - a song's own key and the capo policy: thresholds, a rule switched off, one song's setting (`capo-policy.test.ts`)
 - the AI system: sorting failures into codes (a spent budget included), keeping credentials out of logged details, tokens and cost, the month and its budget, settings (`ai/errors.test.ts`, `ai/usage.test.ts`)
+- Conductor: what each tool returns from the history and the plans, song matching, church-time dates, result sizes, drafts withheld (`ai/conductor/facts.test.ts`); the conversation sent to the model, page context, the request body, the stream format, the shared conversation and its storage, the panel's width, answers as Markdown, the instructions (`ai/conductor/conductor.test.ts`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.

@@ -227,14 +227,19 @@ function Usage({
                   <p className="tnum text-xs text-muted">
                     {[
                       item.totalTokens === null ? null : plural(content.breakdown.tokens, item.totalTokens),
-                      item.status === "error" ? null : item.costUsd === null ? content.recent.costPending : formatUsd(item.costUsd),
+                      // A failure costs nothing known, and neither does an answer stopped before the model had replied.
+                      item.status === "error" || (item.finishReason === "aborted" && item.costUsd === null)
+                        ? null
+                        : item.costUsd === null
+                          ? content.recent.costPending
+                          : formatUsd(item.costUsd),
                       item.durationMs === null ? null : formatDuration(item.durationMs),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
                   {item.status === "success" ? (
-                    <Pill tone="muted">{content.recent.answered}</Pill>
+                    <Pill tone="muted">{item.finishReason === "aborted" ? content.recent.stopped : content.recent.answered}</Pill>
                   ) : (
                     <Pill tone="warning">
                       {aiContent.errorLabels[item.errorCode as AiErrorCode] ?? aiContent.errorLabels.unknown}

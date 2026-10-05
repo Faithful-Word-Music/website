@@ -4,6 +4,7 @@ import { DEFAULT_ROLES, resolvePermissions, type Permission } from "@/lib/auth/p
 import {
   SIGNED_OUT,
   accountMenu,
+  flatNav,
   homeHref,
   isActivePath,
   isMemberPath,
@@ -36,18 +37,51 @@ describe("primaryNav", () => {
   });
 
   it("puts the Service Planner right after the Dashboard for whoever manages service plans", () => {
-    expect(hrefs(primaryNav(signedIn(["music_director"])))).toEqual([
+    expect(hrefs(primaryNav(signedIn([], ["manage_service_plans"])))).toEqual(["/dashboard", "/service-planner", "/song-list", "/library", "/contact"]);
+    expect(hrefs(primaryNav(signedIn(["musician"])))).not.toContain("/service-planner");
+    expect(hrefs(primaryNav(signedIn(["song_leader"])))).not.toContain("/service-planner");
+    expect(isMemberPath("/service-planner/2026-10-11-am")).toBe(true);
+  });
+
+  it("gathers the Service Planner and Conductor into one Tools menu for someone who may open both", () => {
+    const nav = primaryNav(signedIn(["music_director"]));
+    expect(nav.map((item) => item.label)).toEqual(["Dashboard", "Tools", "Song List", "Library", "Availability", "Contact"]);
+    expect(nav[1].children).toEqual([
+      { label: "Service Planner", href: "/service-planner" },
+      { label: "Conductor", href: "/conductor" },
+    ]);
+    // Treated as a link, the menu leads to its first page.
+    expect(nav[1].href).toBe("/service-planner");
+    expect(hrefs(flatNav(nav))).toEqual([
       "/dashboard",
       "/service-planner",
+      "/conductor",
       "/song-list",
       "/library",
       "/availability",
       "/contact",
     ]);
-    expect(hrefs(primaryNav(signedIn(["musician"])))).not.toContain("/service-planner");
-    expect(hrefs(primaryNav(signedIn(["song_leader"])))).not.toContain("/service-planner");
-    expect(hrefs(primaryNav(signedIn([], ["manage_service_plans"])))).toContain("/service-planner");
-    expect(isMemberPath("/service-planner/2026-10-11-am")).toBe(true);
+  });
+
+  it("shows one tool as a plain link - never a menu of one - and no menu for none", () => {
+    const plannerOnly = primaryNav(signedIn([], ["manage_service_plans"]));
+    expect(plannerOnly[1]).toEqual({ label: "Service Planner", href: "/service-planner" });
+
+    const conductorOnly = primaryNav(signedIn([], ["use_ai"]));
+    expect(conductorOnly[1]).toEqual({ label: "Conductor", href: "/conductor" });
+    expect(hrefs(conductorOnly)).not.toContain("/service-planner");
+
+    const neither = primaryNav(signedIn(["musician"]));
+    expect(neither.some((item) => item.children)).toBe(false);
+    expect(neither.map((item) => item.label)).not.toContain("Tools");
+  });
+
+  it("offers Conductor only to someone holding use_ai", () => {
+    for (const role of ["musician", "song_leader", "member"]) {
+      expect(hrefs(flatNav(primaryNav(signedIn([role]))))).not.toContain("/conductor");
+    }
+    expect(hrefs(flatNav(primaryNav(signedIn(["administrator"]))))).toContain("/conductor");
+    expect(isMemberPath("/conductor")).toBe(true);
   });
 
   it("does not show Availability to a Member-only account", () => {

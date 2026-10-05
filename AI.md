@@ -6,160 +6,210 @@ The internal AI system of the Faithful Word Music website: where it stands, how 
 
 | Phase | What | Status |
 |---|---|---|
-| **1** | **AI foundation:** the shared AI layer, the `use_ai` permission, the usage log, Admin → AI | **Complete** (live request confirmed 2026-10-05: answer, tokens and cost logged) |
-| 2 | To be scoped | Not started |
+| **1** | **AI foundation:** the shared AI layer, the `use_ai` permission, the usage log, Admin → AI | **Complete** (2026-10-05) |
+| **2** | **Conductor:** the assistant. Read-only tools over the site's own data, streaming, the Conductor page and the floating panel | **Complete** (2026-10-05) |
 | 3 | To be scoped | Not started |
 | 4 | To be scoped | Not started |
 | 5 | To be scoped | Not started |
 
-Where the later phases are headed, in no fixed order yet: structured tools that answer from the real database (song usage, dates, statistics, past and upcoming services), the song library's lyrics and content indexed from the MuseScore files in Google Drive (embeddings, semantic search), the Music Director's planning-philosophy document, the **AI Assistant**, and **Generate with AI** / **Replace Song with AI** in the Service Planner. Fill in the table as each phase is scoped.
+Where the later phases are headed, in no fixed order yet: the song library's lyrics and content indexed from the MuseScore files in Google Drive (embeddings, semantic search) as a further family of Conductor tools, the Music Director's planning-philosophy document, and **Generate with AI** / **Replace Song with AI** in the Service Planner.
 
-**Not built yet, on purpose:** any chat interface, conversation history, Drive or MuseScore ingestion, lyrics, embeddings, pgvector, RAG, song-theme analysis, planning-philosophy ingestion, and anything AI in the Service Planner.
+**Not built yet, on purpose:** lyric extraction, MuseScore parsing, Drive indexing, embeddings, pgvector, semantic or full-text lyric search, planning-philosophy ingestion, anything that lets AI change a service plan (generate, replace, reorder, save, publish), conversation history kept on the server, notifications, model routing, scheduled indexing jobs.
+
+## Conductor
+
+**Conductor** is the site's AI assistant ("Faithful Word Music AI Assistant" where a longer name helps). It is for the Music Director and administrators while they plan and review congregational singing, and answers two kinds of question:
+
+- **About this church's music** (when a song was last sung, how often, in what key, what was sung at a service, what is planned, what goes together, whether something is being repeated too soon): **only from the site's own data, through tools.** The model interprets and explains what a tool returned; it never supplies a date, count, key or song from memory.
+- **About music in general** (theory, arranging, instruments, audio, equipment): from the model's own knowledge.
+
+It only reads. Nothing a person asks can create, change, publish or delete anything.
 
 ## Architecture
 
 ```
-page / server action / route          checks use_ai (withPermission, requireAnyPermission)
-        │
-        ▼
-src/lib/ai/service.ts                 the ONLY file that imports the AI SDK
-  generateAiText()                    checks use_ai again · times the request · never throws
-        │                     │
-        ▼                     ▼
-Vercel AI SDK  ──►  Vercel AI Gateway  ──►  the model (AI_MODEL)
-                    budget · keys · logs
-        │
-        ▼
-src/lib/ai/store.ts  ──►  Neon: ai_usage      one row per request, success or failure
-        │
-        ▼
-/admin/ai                              status · connection test · this month's usage
+Conductor page (/conductor)        floating panel (every other signed-in page)
+        │                                   │   drawer on wide screens, sheet on phones
+        └────────────┬──────────────────────┘
+                     ▼
+   src/components/conductor/conductor-store.ts     ONE conversation per tab (sessionStorage)
+                     │  POST { messages, context }
+                     ▼
+   src/app/api/conductor/route.ts                  checks use_ai · validates the body
+                     ▼
+   src/lib/ai/conductor/conductor.ts               hourly cap · trims history · instructions · tools
+                     ▼
+   src/lib/ai/service.ts  streamAiText()           the ONLY file that calls the AI SDK
+     checks use_ai again · bounded model calls     · never throws · one ai_usage row
+        │                         │
+        ▼                         ▼
+   Vercel AI Gateway         tools.ts → facts.ts → the site's own read layer
+   → the model (AI_MODEL)    (song-archive, schedule, song-stats, service-archive,
+                              service-planner/intelligence, year-recap)
 ```
 
 | File | Job |
 |---|---|
-| `src/lib/ai/service.ts` | `generateAiText()`: the one way to call a model. `backfillAiCosts()`: fills in costs the Gateway reports late (server-only) |
-| `src/lib/ai/store.ts` | The `ai_usage` table: `recordAiUsage()` (never throws), `getAiUsageSummary()`, `listRecentAiUsage()` (server-only) |
-| `src/lib/ai/config.ts` | `aiConfig()`: model, display budget, whether credentials are present. Never reads or returns the key itself (server-only) |
-| `src/lib/ai/features.ts` | `AI_FEATURES`: the features a request can belong to, which is what cost is reported by (pure) |
-| `src/lib/ai/errors.ts` | `classifyAiError()`: any failure → one of ten codes, plus a credential-free detail for the log (pure) |
-| `src/lib/ai/usage.ts`, `format.ts`, `settings.ts` | Token and cost reading, the month and its budget, how figures are written, defaults and env parsing (pure) |
-| `src/content/ai.ts` | Every word a person sees: error messages by code, and the Admin → AI page |
-| `src/app/admin/ai/page.tsx`, `src/components/admin/AiConnectionTest.tsx` | Admin → AI |
-| `testAiConnectionAction` in `src/app/admin/actions.ts` | The connection test |
+| `src/lib/ai/service.ts` | `generateAiText()` (one prompt, one answer) and `streamAiText()` (a conversation, with tools, streamed). `backfillAiCosts()` (server-only) |
+| `src/lib/ai/stream.ts` | The stream's wire format: one JSON event per line (pure) |
+| `src/lib/ai/store.ts` | `ai_usage`: `recordAiUsage()`, `countRecentAiUsage()`, the summaries Admin → AI reads (server-only) |
+| `src/lib/ai/config.ts`, `settings.ts`, `features.ts`, `errors.ts`, `usage.ts`, `format.ts` | Configuration, feature keys, failure codes, token and cost arithmetic (as in Phase 1) |
+| `src/lib/ai/conductor/conductor.ts` | `answerConductor()`: one question, start to finish (server-only) |
+| `src/lib/ai/conductor/tools.ts` | The tool definitions: names, descriptions, zod input schemas (server-only) |
+| `src/lib/ai/conductor/data.ts` | `loadConductorData()`: one read of history, plans and catalog per question (server-only) |
+| `src/lib/ai/conductor/facts.ts` | Domain data → small, bounded tool results (pure) |
+| `src/lib/ai/conductor/instructions.ts` | What Conductor is told: the grounding rule, its limits, the calendar (pure) |
+| `src/lib/ai/conductor/context.ts` | Page context: from a path, validated, described (pure) |
+| `src/lib/ai/conductor/limits.ts` | Every bound, `trimConversation()`, `clampToolResult()` (pure) |
+| `src/lib/ai/conductor/protocol.ts` | The request body's schema (pure) |
+| `src/lib/ai/conductor/session.ts` | The conversation's reducer and how it is stored (pure) |
+| `src/lib/ai/conductor/drawer.ts` | The panel's width: default, bounds, clamping, storage (pure) |
+| `src/lib/ai/conductor/markdown.ts` | The little Markdown answers use, parsed to data (pure) |
+| `src/components/conductor/` | `conductor-store.ts`, `ConductorChat`, `ConductorDock` (launcher, drawer, sheet), `ConductorWorkspace` (the page), `ConductorMarkdown`, `ConductorMark` |
+| `src/content/conductor.ts` | Every word of Conductor's interface |
+| `src/content/ai.ts` | Failure wording by code, and Admin → AI |
 
-### Making an AI request (what Phase 2 builds on)
+### Rules for anything added later
 
-```ts
-const result = await generateAiText({
-  viewer,                         // from withPermission("use_ai", ...) or getViewer()
-  feature: "assistant",           // a key of AI_FEATURES
-  action: "answer",               // optional: what the feature is doing
-  instructions: "...",            // the standing instructions
-  prompt: "...",
-  maxOutputTokens: 800,           // optional
-  reasoning: "low",               // optional
-});
-if (!result.ok) return { ok: false, error: result.message }; // safe to show
-result.text; result.tokens; result.costUsd; result.durationMs;
+1. **Never import `ai` or `@ai-sdk/*` outside `src/lib/ai/`.** ESLint refuses it. That is why there is no `useChat`: the browser reads the site's own stream format. New capabilities (structured output, embeddings) are further functions in `service.ts`.
+2. **Check `use_ai` where the request arrives**, and let the service check again.
+3. **Name the feature** in `AI_FEATURES` before its first request. Conductor is `assistant`.
+4. **Facts come from the site's data, through tools.** A new kind of fact is a new tool over an existing read function, never a prompt that asks the model to remember.
+5. **Tools read. They never write.** A tool that changes something belongs to a later phase and needs its own design (approval, audit).
+6. **Never store prompts, answers or tool results** in `ai_usage`, or anywhere else on the server.
+7. **Words go in `src/content/`**, and a provider's own error text never reaches the browser.
+
+## Tools
+
+All in `src/lib/ai/conductor/tools.ts`. Each is one question the site can already answer; there is no SQL or general query tool. Inputs are validated with zod before a tool runs. Results are plain objects with capped lists (`truncated: true` when cut), bounded to `toolResultChars`. Dates are `YYYY-MM-DD` in church time (never the first ten characters of a timestamp: the archive stores instants in UTC, where a Wednesday evening is already Thursday).
+
+| Tool | Answers | Built on |
+|---|---|---|
+| `find_songs` | Which song is meant; its number, times sung, last sung | `buildSongRecords`, `matchesSong`, the planner catalog |
+| `get_song` | Last and first sung, counts, keys used, rank, how often it comes round, usual service and place, songs habitually sung with it, the whole service it was last in, latest dates, where it is planned | `buildSongStats`, `buildCompanions` |
+| `count_song_uses` | Times sung between two dates, with dates and keys | `usageCount` |
+| `get_services_on_date` | The songs of the service(s) on a date, past or planned | the history, the schedule, `serviceOccurrences` |
+| `list_services` | Services in a range, by kind or containing a song (12 at most) | `toArchive`, `filterArchive` |
+| `list_upcoming_services` | What is planned from today, or where a song is planned | the schedule (and drafts, for a planner) |
+| `song_usage` | Most or least used songs in a period | `buildSongRecords`, `usageCount` |
+| `songs_not_sung_recently` | Songs gone quiet and not planned | `buildSongRecords`, `christmasSongs` |
+| `get_year_summary` | A year in song | `buildYearRecap` |
+| `check_song_for_service` | Would this song be repeated too soon there, or is it planned nearby | `buildCandidates`, `candidateFacts`, `servicePlanner.recentDays` |
+| `check_service_plan` | What the Service Planner itself notices about a **saved** plan, and who is expected | `loadWorkspace`, `serviceSignals` (exactly as the workspace computes them) |
+
+One song may be asked for by title, part of a title or hymnal number. When more than one fits, the tool returns the candidates and the model asks; it never picks.
+
+A tool that cannot read its data returns `{ unavailable: true }` and the model says so. The browser is told only a status key while a tool runs ("Checking the song history…"); tool names, inputs and results never leave the server.
+
+**Adding a tool family** (lyric search in Phase 3): another group in `tools.ts` over its own read functions, a status key in `src/content/conductor.ts`, and a paragraph in `instructions.ts`. Nothing else changes.
+
+## Grounding
+
+`instructions.ts` tells the model, every question:
+
+- This church's facts come **only** from a tool called in this turn. Earlier answers are not a source. Say only what a tool returned; with no tool or an empty result, say the information is not available. Never estimate.
+- General music questions need no tool.
+- It cannot read lyrics or sheet music, and must not quote a song's words from memory as though it had looked them up.
+- It only reads, and must not say or imply it changed anything.
+- Today's date and the dates of the surrounding Sundays and Wednesdays, written out, so "three Sundays ago" is looked up rather than calculated.
+
+Supporting that in code: earlier turns go back to the model as **text only** (never tool results), so a fact is fetched again rather than recalled; results carry `recordsBegin` so "never" is read as "not in these records"; ambiguous songs are returned, not resolved.
+
+## Permissions
+
+- `use_ai` is checked in `route.ts` (401 signed out, 403 without it) and again in `streamAiText()`.
+- **Drafts need `manage_service_plans` as well.** `data.ts` reads the planner's drafts only for someone who holds it; `check_service_plan` refuses without it. `use_ai` alone knows exactly what the public song list shows.
+- The page (`/conductor`), the navigation entry and the floating button all follow `use_ai`. Hiding them is a convenience; the route is the protection.
+- `/conductor` and `/api/conductor` are in the proxy's matcher (`src/proxy.ts`).
+
+## Streaming
+
+`streamAiText()` calls the SDK's `streamText` with the tools and `stopWhen: isStepCount(maxSteps)`, then turns the SDK's stream into the site's own (`stream.ts`), newline-delimited JSON:
+
+```
+{"type":"status","key":"songs"}     a tool started (a content key)
+{"type":"text","delta":"Blessed "}  the answer
+{"type":"done"}
+{"type":"error","code":"timeout","message":"…"}   safe wording from src/content/ai.ts
 ```
 
-Rules for anything added later:
+The store reads it with `fetch` and a reader. The view shows the text at a steady pace as it arrives (`useFlowingText` in `ConductorChat`), so uneven chunks do not stutter. **Stop** aborts the request; the server sees the abort and stops the model. A stream that ends without `done` or `error` is shown as a lost connection, with **Try again**.
 
-1. **Never import `ai` or `@ai-sdk/*` outside `src/lib/ai/`.** ESLint refuses it. Streaming, tool calling, structured output and embeddings are added as further functions in `service.ts`, sharing the same permission check, logging and error handling.
-2. **Check `use_ai` where the request arrives** (`withPermission("use_ai", …)` for an action, `getViewer()` + `viewer.can("use_ai")` for a route), exactly like every other protected feature. The service checks again, but it is the backstop, not the gate.
-3. **Name the feature.** Add it to `AI_FEATURES` first; its usage is then reported separately with no other change.
-4. **Facts come from the database, not the model.** Song usage, dates, statistics and service history are to be given to the model by tools that run real queries (`lib/song-archive.ts`, `lib/schedule.ts`, `lib/service-planner/intelligence.ts`), never guessed by it.
-5. **Never store prompts or answers in `ai_usage`.** Conversation history gets its own tables.
-6. **Words go in `src/content/ai.ts`**, and a provider's own error text never reaches the browser.
+## The two interfaces
 
-## Access
+Both render `ConductorChat` over the same store, so they cannot differ.
 
-Only people holding the **`use_ai`** permission ("Use AI features", `src/lib/auth/permissions.ts`):
+**The Conductor page** (`/conductor`): the conversation given the whole page. Nothing scrolls inside it: the conversation is part of the page and the window scrolls, while the box to type in stays at the bottom of the window ("Back to top" stands down there). In the navigation under **Tools** (with the Service Planner; someone with only one of the two sees it as a plain link).
 
-- **Administrator** holds every permission, always.
-- **Music Director** holds it by default. Existing sites get it once per environment through `PERMISSION_FIXUPS` (`2026-10-ai-permission`), so an administrator who later removes it does not see it come back.
-- Song Leader, Musician, Member and visitors do not, and cannot make an AI request: the action refuses, and so does the service.
+**The floating panel** (`ConductorDock`, mounted once in the root layout): a round button in the bottom right corner of every signed-in page, for someone holding `use_ai`. It is not shown on `/conductor` or the login screens, steps aside for the song list's share bar, and sits above a page's own bar of actions (`data-action-bar`: the planner's Save and Publish). "Back to top" stacks above it. The footer leaves that corner empty below 1440px, so neither button ever covers it.
 
-It is a permission, like everything else on the site, rather than a check of role names. So an administrator can deliberately give it to another role or person under Admin → Roles. `use_ai` also opens the Admin area, where the AI tab lives.
+- **Wide screens (1024px and up): a drawer beside the page.** Not a dialog: the page stays live. The dock writes the drawer's width to `--conductor-inset` on `<html>` and `<body>` takes it as a right margin, so the header, the planner and every page **reflow** into the space left; fixed controls read the same variable.
+- **Resizing:** the left edge drags (`role="separator"`, pointer capture). While it moves, the width is written to the CSS variable once a frame with no React render, and nothing is selected. Default 420px, minimum 340px, maximum the smaller of *window − 520px* and *62% of the window*, re-clamped when the window changes. Arrow keys move it 24px, Home and End go to the limits, a double-click resets it. The width released at is kept in `localStorage` (`fwm:conductor-width`).
+- **Phones and tablets (below 1024px): a sheet over the page.** A modal `<dialog>` (the site's `useModalDialog`) that rises to 93% of the height, with the page visible above it. It follows the visual viewport, so with the keyboard up it is the space above the keyboard. Close with the button, Escape, a tap outside, or by pulling the handle down; it slides away from wherever it is. The page beneath is never unmounted, scrolled or navigated.
+- **Open full Conductor** ("Full page") goes to `/conductor` with the conversation intact.
+
+## The conversation
+
+- **One per browser tab**, in `conductor-store.ts`, shared by the page and the panel. The store owns the request, so an answer keeps streaming when the panel closes or the page changes.
+- Kept in `sessionStorage` (`fwm:conductor-session`) with its owner's user ID: it survives a reload, ends when the tab or the installed app closes, and is discarded if someone else signs in.
+- **New conversation** clears it everywhere.
+- **Nothing is stored on the server.** There are no conversation tables.
+
+## Page context
+
+So "this service" and "this song" mean something, each question carries a small typed context worked out from the page's **address** (`pageContextFor`): the area of the site and, where the path has one, a service anchor (`2026-10-18-pm`), a song slug or a year. The server discards anything that is not shaped like one (`normalizePageContext`) and describes it to the model in one line. An identifier only ever becomes the input of a read-only tool, which applies the person's own permissions.
+
+It is deliberately not the page's content: nothing is scraped from the DOM, and a planner's **unsaved** changes are not known (`check_service_plan` says so). `ConductorPageContext` is where richer planner state would be added later.
+
+## Limits
+
+In `src/lib/ai/conductor/limits.ts`:
+
+| | |
+|---|---|
+| A question | 2,000 characters |
+| History sent back | the last 12 turns, 12,000 characters, an earlier answer cut to 4,000 |
+| Model calls per question | 6 (each round of tool use is one, the answer is one) |
+| Output | 1,500 tokens, `reasoning: "low"` |
+| A tool result | 6,000 characters |
+| Time | 60 seconds in all, 10 per tool |
+| Per person | 40 questions an hour (counted from `ai_usage`) |
+
+A typical question costs a fraction of a cent to about a cent. AI Gateway's budget remains what stops spending.
 
 ## Provider and Gateway
 
-- **Vercel AI SDK** (`ai`, version 7) calling **Vercel AI Gateway**. Models are plain `provider/model` strings, so no provider package is installed and nothing is tied to OpenAI.
-- **Model:** `AI_MODEL`, default `openai/gpt-5.6-terra` (`src/lib/ai/settings.ts`). Changing model or provider is that one variable. Current IDs: <https://ai-gateway.vercel.sh/v1/models>.
-- **Credentials:** `AI_GATEWAY_API_KEY`, read by the SDK from the environment. On Vercel a deployment's own `VERCEL_OIDC_TOKEN` works when no key is set; the key wins when both are. Server-side only, never in `NEXT_PUBLIC_*`, never logged.
-- **Each request** is tagged for the Gateway's own reports with `feature:<key>` and `env:<development|production>`, and carries the person's Clerk user ID as the Gateway `user`.
-- **Limits per request:** 60 seconds (`AI_TIMEOUT_MS`) and one retry.
+- **Vercel AI SDK** (`ai`, version 7) calling **Vercel AI Gateway**. Models are plain `provider/model` strings.
+- **Model:** `AI_MODEL`, default `openai/gpt-5.6-terra`. Conductor uses the same one; it must support tool calling.
+- **Credentials:** `AI_GATEWAY_API_KEY`, or the deployment's `VERCEL_OIDC_TOKEN` on Vercel. Server-side only.
+- Each request is tagged `feature:<key>` and `env:<development|production>` and carries the person's Clerk user ID.
 
 ## Budget
 
-- **Vercel AI Gateway enforces the budget.** Once it is spent the Gateway answers `402`, which the site reports as "This month's AI budget has been used up".
-- The site never tries to enforce a limit itself. `AI_MONTHLY_BUDGET_USD` (default `10`) is only the figure shown beside the site's own totals on Admin → AI; keep it equal to the Gateway's. `0` shows no budget.
-- The month is the UTC calendar month, the clock the Gateway's monthly budgets reset on.
+Vercel AI Gateway enforces the budget (a spent one comes back as "This month's AI budget has been used up"). `AI_MONTHLY_BUDGET_USD` (default `10`) only sets the figure shown on Admin → AI.
 
 ## Database
 
-One table, created on first use like the planner's and tagged `clerk_env` like every account table (there is no migration step):
+One table, unchanged since Phase 1, created on first use and tagged `clerk_env`: **`ai_usage`**, one row per request.
 
-**`ai_usage`** - one row per request, successful or not.
+`id`, `clerk_env`, `created_at`, `feature`, `action`, `model`, `response_model`, `clerk_user_id`, `status`, `error_code`, `error_detail`, token columns, `cost_usd`, `duration_ms`, `generation_id`, `finish_reason`.
 
-| Column | Holds |
-|---|---|
-| `id`, `clerk_env`, `created_at` | Identity, environment, when |
-| `feature`, `action` | Which feature (`AI_FEATURES`), and what it was doing |
-| `model`, `response_model` | The model asked for, and the one that answered |
-| `clerk_user_id` | Who asked |
-| `status`, `error_code`, `error_detail` | `success` or `error`; the failure code; a short credential-free detail |
-| `input_tokens`, `output_tokens`, `reasoning_tokens`, `cached_input_tokens`, `total_tokens` | Tokens, each null when the provider did not report it |
-| `cost_usd` | The Gateway's cost. Null until known |
-| `duration_ms` | How long the request took |
-| `generation_id`, `finish_reason` | The Gateway's ID for the request, and why the model stopped |
-
-Indexes: `(clerk_env, created_at DESC)` and `(clerk_env, feature, created_at)`.
-
-**Cost** is the Gateway's own figure. It is taken from the response when the response carries it; otherwise the row is logged with its `generation_id` and the cost is filled in from `gateway.getGenerationInfo()` the next time Admin → AI is opened.
+**A Conductor question is one row** (`assistant` · `answer`) however many model calls it took: their tokens added together, their costs added together, the whole duration. An answer the person stopped is logged with `finish_reason = 'aborted'` and shows as **Stopped**. No prompt, answer, tool input or tool result is ever written.
 
 ## Failures
 
-`generateAiText()` never throws. Every failure is sorted into a code, logged as `[ai] <feature> failed (<code>): <detail>`, recorded in `ai_usage`, and returned with wording from `src/content/ai.ts`:
-
-| Code | When |
-|---|---|
-| `forbidden` | The person lacks `use_ai` (not logged to the table) |
-| `not-configured` | No Gateway credentials reach the server |
-| `auth` | The Gateway refused the credentials (401, 403) |
-| `budget` | The Gateway budget or credits are spent (402, also when the SDK reports it as an internal error) |
-| `rate-limited` | 429 |
-| `model-unavailable` | `AI_MODEL` names a model the Gateway does not have |
-| `timeout` | No answer within 60 seconds |
-| `invalid-response` | An empty or unparseable answer |
-| `provider` | Any other Gateway or provider failure |
-| `unknown` | Anything else |
-
-A failure to write the usage row is logged and swallowed, so it never turns an answer into an error. Admin → AI still shows its status and test button when the usage log cannot be read.
-
-## Conventions followed
-
-- **Permissions, not role names**, checked on the server with `withPermission` / `requireAnyPermission` (`src/lib/auth/session.ts`).
-- **Pure logic apart from I/O**, as in `lib/service-planner/` and `lib/availability/`: pure modules with Vitest tests, and a `server-only` store.
-- **Tables created on first use**, tagged `clerk_env`, with raw SQL through `getSql()` (`src/lib/db.ts`).
-- **Server actions return `ActionResult`**; buttons use `useAction`, `Button state` and `ActionMessage`.
-- **Copy in `src/content/`**, design tokens only (no hex, no `dark:`), `Card` / `StatTile` / `Pill` / `SectionLabel` / `Notice`, grids from `grid-cols-1`.
-- **A missing key never breaks a page:** the feature says it is not set up.
-- **New to the codebase:** the ESLint `no-restricted-imports` rule that keeps the AI SDK inside `src/lib/ai/`. Nothing existing enforced a boundary like this; a rule was the lightest way to make "one shared layer" hold.
-
-## Manual setup
-
-1. **Vercel → AI Gateway:** open it for the team, and add credits or a payment method (a budget limits spending; it does not provide it).
-2. **Create an API key** (AI Gateway → API Keys → Create key) with a **$10 monthly budget** on it. Copy it once.
-3. **Add `AI_GATEWAY_API_KEY`** in Vercel → Settings → Environment Variables for Production, Preview and Development, and in `.env.local`. Optionally `AI_MODEL` and `AI_MONTHLY_BUDGET_USD`.
-4. **Redeploy**, then open **Admin → AI** and press **Run test request**.
+Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into a code (`errors.ts`), logged as `[ai] <feature> failed (<code>): <detail>`, recorded, and reported with wording from `src/content/ai.ts`: `forbidden`, `not-configured`, `auth`, `budget`, `rate-limited`, `model-unavailable`, `timeout`, `invalid-response`, `provider`, `unknown`. Before a stream starts it is a JSON response with a status code; once it has started it is an `error` event. Either way the conversation shows the message under the question, with **Try again**, and keeps any text already written.
 
 ## Known limitations
 
-- **Text generation only.** No streaming, tool calling, structured output or embeddings yet.
-- **Usage is per environment, the budget is not.** Rows are tagged `clerk_env`, so Admin → AI on Production does not count requests made locally or on Preview, while the Gateway's budget covers all three when they share a key.
-- **Cost can arrive late.** The Gateway normally returns the cost with the answer (as it did in the first live test). Should it not, the request shows "Cost pending" and is filled in when Admin → AI is next opened; that fallback has not been seen in practice yet.
-- **A request that fails before reaching the Gateway has no tokens or cost**, by nature.
-- **No rate limit of the site's own.** Only two roles can make requests and the Gateway caps spending; a per-person limit belongs with the Assistant.
-- **Admin → AI is a starting point**, not the finished usage page: no history beyond the current month, no charts, no error or latency breakdown.
+- **No lyrics or song content.** Conductor says so when asked.
+- **Saved plans only.** Unsaved changes in the planner are not known.
+- **History begins October 2025**, so "usual" and "never" are only as good as the records.
+- **Cost of a multi-call answer:** the Gateway reports a cost per model call and these are summed. If any call's cost is missing, the row shows "Cost pending", and the later backfill only runs for one-call answers (the Gateway is asked per call, and only the last call's ID is kept).
+- **The hourly cap counts rows in `ai_usage`**, so it is per environment, like the usage figures.
+- **The conversation is per tab.** A second tab starts its own.
+- **Not verified live in Phase 2:** a signed-in person without `use_ai` (no such test account; covered by the route's check, the 401 for a signed-out request, and the navigation tests), and a provider failure mid-stream (the path is the Phase 1 classifier).
+
+## Manual setup
+
+Nothing new for Phase 2: no environment variables, no schema change. From Phase 1: an AI Gateway key with a monthly budget in `AI_GATEWAY_API_KEY`, optionally `AI_MODEL` and `AI_MONTHLY_BUDGET_USD`.

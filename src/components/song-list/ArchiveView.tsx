@@ -359,7 +359,7 @@ function SortHeader({
           height="10"
           viewBox="0 0 10 10"
           className={cn(
-            "shrink-0 transition-[opacity,transform] duration-200",
+            "shrink-0 transition-[opacity,transform,translate,scale,rotate] duration-200",
             direction === "asc" && "rotate-180",
             active ? "opacity-100" : "opacity-0 group-hover:opacity-40",
           )}
