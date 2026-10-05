@@ -1,15 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type RefObject,
-} from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 
 import {
   canCopyPicture,
@@ -26,8 +17,9 @@ import {
 } from "@/components/song-list/share-actions";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Menu, type MenuItem } from "@/components/ui/Menu";
 import { songListContent } from "@/content/song-list";
-import { formatServicesText, inDateOrder, shareTitle, SONG_LIST_URL } from "@/lib/share-services";
+import { formatServicesText, inDateOrder, shareTitle } from "@/lib/share-services";
 import { monthSlug } from "@/lib/song-list-pdf";
 import type { Service } from "@/types/song-list";
 
@@ -38,7 +30,8 @@ import type { Service } from "@/types/song-list";
  * Either way it opens a small menu first, since there are two formats. The
  * picture comes first - it is what people send most:
  *   - Phone: "Send as picture" / "Send as text", each into the share sheet.
- *     The picture goes with the song list link beside it.
+ *     The picture goes on its own (its footer names the song list); the text
+ *     ends with the link.
  *   - Computer: copy or save the picture, copy the text, start an email, or
  *     (where the browser has one) the system share panel.
  *
@@ -46,8 +39,7 @@ import type { Service } from "@/types/song-list";
  * be fetched after "Send as picture" is tapped. It is fetched the moment the
  * menu opens instead, and is ready by the time the choice is made.
  *
- * The menu is portalled to <body> and placed against the button, so no card
- * that follows - or the page's own stacking - can cover it.
+ * The menu itself is the site's Menu (src/components/ui/Menu.tsx).
  */
 export function ShareButton({
   services,
@@ -95,7 +87,7 @@ export function ShareButton({
   /** Runs a menu choice: closes the menu, then reports how it went, if it says. */
   async function select(item: MenuItem) {
     close({ refocus: true });
-    const message = await item.run();
+    const message = await item.run?.();
     if (message) setStatus(message);
   }
 
@@ -119,8 +111,7 @@ export function ShareButton({
               icon: ICONS.picture,
               busy: pictureBusy,
               disabled: !file,
-              run: () =>
-                file ? void sharePicture(file, { title: payload.title, url: SONG_LIST_URL }) : null,
+              run: () => (file ? void sharePicture(file, { title: payload.title }) : null),
             },
       );
       items.push({
@@ -167,6 +158,7 @@ export function ShareButton({
           key: "more",
           label: share.systemShare,
           icon: ICONS.more,
+          heavyIcon: true,
           run: () => void shareNatively(payload),
         });
       }
@@ -213,7 +205,7 @@ export function ShareButton({
       </span>
 
       {open ? (
-        <ShareMenu
+        <Menu
           id={menuId}
           menuRef={menuRef}
           triggerRef={triggerRef}
@@ -269,156 +261,6 @@ function usePicture(url: string | null, name: string): Picture {
   return picture?.url === url ? picture.value : { state: "loading" };
 }
 
-type MenuItem = {
-  key: string;
-  label: string;
-  icon: string;
-  /** What choosing it does; a returned string is shown as confirmation. */
-  run: () => Promise<string | null> | string | null | void;
-  /** A link instead of a button (the mailto:). */
-  href?: string;
-  disabled?: boolean;
-  /** The picture is still being made: show a spinner. */
-  busy?: boolean;
-  /** A short note under the label, e.g. when the picture failed. */
-  hint?: string;
-};
-
-function ShareMenu({
-  id,
-  menuRef,
-  triggerRef,
-  placement,
-  items,
-  onSelect,
-  onClose,
-}: {
-  id: string;
-  menuRef: RefObject<HTMLDivElement | null>;
-  triggerRef: RefObject<HTMLButtonElement | null>;
-  placement: "below" | "above";
-  items: MenuItem[];
-  onSelect: (item: MenuItem) => void;
-  onClose: (options?: { refocus?: boolean }) => void;
-}) {
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
-
-  // Sit against the button, right edges aligned, and follow it on scroll.
-  useLayoutEffect(() => {
-    function place() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      const menu = menuRef.current;
-      if (!rect || !menu) return;
-      const gap = 8;
-      const top =
-        placement === "below" ? rect.bottom + gap : rect.top - gap - menu.offsetHeight;
-      setPosition({ top, right: Math.max(8, window.innerWidth - rect.right) });
-    }
-    place();
-    window.addEventListener("scroll", place, { passive: true });
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place);
-      window.removeEventListener("resize", place);
-    };
-  }, [menuRef, triggerRef, placement]);
-
-  // The latest onClose, read by the listener below without re-subscribing it
-  // on every render (the page re-renders each time its clock ticks).
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  // Focus the first choice on opening; close on a press anywhere else.
-  useEffect(() => {
-    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus({ preventScroll: true });
-
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      onCloseRef.current();
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [menuRef, triggerRef]);
-
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const all = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
-    const index = all.indexOf(document.activeElement as HTMLElement);
-
-    if (event.key === "Escape") {
-      // Handled here, so it does not also leave select mode.
-      event.preventDefault();
-      event.stopPropagation();
-      onClose({ refocus: true });
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      all[(index + step + all.length) % all.length]?.focus();
-    } else if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      all[event.key === "Home" ? 0 : all.length - 1]?.focus();
-    } else if (event.key === "Tab") {
-      onClose();
-    }
-  }
-
-  const itemClass =
-    "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-ink-soft transition-colors hover:bg-paper hover:text-ink focus:bg-paper focus:text-ink focus:outline-none aria-disabled:cursor-default aria-disabled:hover:bg-transparent aria-disabled:hover:text-ink-soft";
-
-  return createPortal(
-    <div
-      id={id}
-      ref={menuRef}
-      role="menu"
-      onKeyDown={onKeyDown}
-      style={{
-        position: "fixed",
-        top: position?.top ?? -9999,
-        right: position?.right ?? 0,
-      }}
-      className={cn(
-        "animate-enter z-50 min-w-52 rounded-card border border-line bg-surface p-1.5 shadow-card",
-        // Transparent, not hidden, until placed: a hidden menu could not take focus.
-        !position && "opacity-0",
-      )}
-    >
-      {items.map((item) => {
-        const content = (
-          <>
-            {item.busy ? <Spinner /> : <MenuIcon d={item.icon} />}
-            <span className="flex min-w-0 flex-col">
-              <span>{item.label}</span>
-              {item.hint ? <span className="text-xs text-muted">{item.hint}</span> : null}
-            </span>
-          </>
-        );
-        return item.href ? (
-          <a key={item.key} href={item.href} role="menuitem" onClick={() => onSelect(item)} className={itemClass}>
-            {content}
-          </a>
-        ) : (
-          // aria-disabled rather than disabled, so a choice that is still
-          // loading can hold keyboard focus instead of vanishing from it.
-          <button
-            key={item.key}
-            type="button"
-            role="menuitem"
-            aria-disabled={item.disabled || undefined}
-            aria-busy={item.busy || undefined}
-            onClick={item.disabled ? undefined : () => onSelect(item)}
-            className={cn(itemClass, item.disabled && "text-muted")}
-          >
-            {content}
-          </button>
-        );
-      })}
-    </div>,
-    document.body,
-  );
-}
-
 /** 16px line icons for the menu. */
 const ICONS = {
   text: "M3 4h10M3 7h10M3 10h6.5M3 13h4",
@@ -429,29 +271,6 @@ const ICONS = {
   mail: "M2 4h12v8.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V4Zm0 0 6 5 6-5",
   more: "M4 8h.01M8 8h.01M12 8h.01",
 } as const;
-
-function MenuIcon({ d }: { d: string }) {
-  return (
-    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-muted">
-      <path
-        d={d}
-        stroke="currentColor"
-        strokeWidth={d === ICONS.more ? 2.4 : 1.3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 animate-spin text-muted">
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeOpacity="0.25" strokeWidth="1.5" />
-      <path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 /** The familiar box with an arrow leaving it. */
 function ShareIcon() {

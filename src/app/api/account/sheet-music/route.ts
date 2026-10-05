@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getViewer } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
-import { servicePackets } from "@/lib/dashboard/coming-up";
+import { servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
 import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
@@ -18,6 +18,9 @@ import { getSheetMusicIndex } from "@/lib/sheet-music-index";
  *   { assigned: false }                              no sheet music types assigned
  *   { assigned: true, packets: { "2026-10-04-am": {...} | null, ... } }
  *
+ * Someone who looks after the sheet music (manage_sheet_music) also gets
+ * `types`: for each service, every sheet music type it can be printed in.
+ *
  * Describes only the person asking. The PDF route checks everything again.
  */
 export async function GET() {
@@ -31,17 +34,19 @@ export async function GET() {
     if (!viewer) return NextResponse.json({ signedIn: false }, { status: 401, headers });
 
     const sheetTypes = await getSheetMusicTypes(viewer.env, viewer.userId);
-    if (sheetTypes.length === 0) return NextResponse.json({ assigned: false }, { headers });
+    const printsForOthers = viewer.can("manage_sheet_music");
+    if (sheetTypes.length === 0 && !printsForOthers) return NextResponse.json({ assigned: false }, { headers });
 
     const [schedule, index] = await reads;
     if (!schedule.ok || !index.ok) return NextResponse.json({ assigned: true, unavailable: true }, { status: 503, headers });
 
-    const packets = servicePackets(schedule.months.flatMap((month) => month.services), {
-      index: index.index,
-      sheetTypes,
-      viewer: viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER,
-    });
-    return NextResponse.json({ assigned: true, packets }, { headers });
+    const services = schedule.months.flatMap((month) => month.services);
+    const sheetViewer = viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER;
+    const types = printsForOthers ? servicePacketTypes(services, { index: index.index, viewer: sheetViewer }) : undefined;
+    if (sheetTypes.length === 0) return NextResponse.json({ assigned: false, types }, { headers });
+
+    const packets = servicePackets(services, { index: index.index, sheetTypes, viewer: sheetViewer });
+    return NextResponse.json({ assigned: true, packets, types }, { headers });
   } catch (error) {
     console.error("[sheet-music] /api/account/sheet-music failed:", error instanceof Error ? error.message : "unknown error");
     return NextResponse.json({ assigned: true, unavailable: true }, { status: 500, headers });

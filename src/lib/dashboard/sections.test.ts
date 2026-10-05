@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_ROLES, resolvePermissions } from "@/lib/auth/permissions";
+import { DEFAULT_CAPO_POLICY, type CapoRules } from "@/lib/capo-policy";
 import { buildFocus, type DashboardFocus } from "@/lib/dashboard/focus";
 import { newSheetMusic } from "@/lib/dashboard/new-sheet-music";
 import { groupPeople, invitationFollowUps, musiciansWithoutInstruments } from "@/lib/dashboard/people";
@@ -61,6 +62,24 @@ function dated(startsAt: string, titles: Array<[string, string | null]>): DatedS
   };
 }
 
+describe("the quarter at a glance", () => {
+  it("counts an insert by the week when naming the most sung", () => {
+    const insert: [string, string | null] = ["Psalm 100", null];
+    const hymn: [string, string | null] = ["Blessed Assurance", "5"];
+    const past = [
+      dated("2026-07-05T10:30:00-07:00", [insert, hymn]),
+      dated("2026-07-05T18:00:00-07:00", [insert]),
+      dated("2026-07-08T19:00:00-07:00", [insert]),
+      dated("2026-07-12T10:30:00-07:00", [hymn]),
+    ];
+    // Psalm 100 was sung three times, but in one week; the hymn came round twice.
+    expect(quarterGlance(past, Date.parse("2026-08-01T12:00:00-07:00"))?.mostSung).toMatchObject({
+      title: "Blessed Assurance",
+      count: 2,
+    });
+  });
+});
+
 describe("sheet-music gaps", () => {
   it("finds nothing wrong when every type has a PDF and the rights are settled", () => {
     const complete = song([
@@ -88,6 +107,29 @@ describe("sheet-music gaps", () => {
     expect(gapsFor(song([version(STANDARD, [file("standard-1.pdf")])], "needs-review"), STANDARD)).toEqual([
       { kind: "rights" },
     ]);
+  });
+
+  it("flags a song whose key needs capo sheet music it does not have", () => {
+    const rules: CapoRules = { policy: { ...DEFAULT_CAPO_POLICY, typeId: CAPO.id }, overrides: {} };
+    const capo = (overrides: CapoRules["overrides"] = {}) => ({
+      title: "Like a River Glorious",
+      rules: { ...rules, overrides },
+      label: CAPO.label,
+    });
+    const inKey = (keys: string, versions: SongVersion[]) => ({ ...song(versions), keys });
+    const standardOnly = [version(STANDARD, [file("standard-1.pdf")])];
+    const gap = [{ kind: "no-capo", type: "Capo (Chords)" }];
+
+    // Three flats: needed. One sharp: not.
+    expect(gapsFor(inKey("Eb", standardOnly), STANDARD, capo())).toEqual(gap);
+    expect(gapsFor(inKey("G", standardOnly), STANDARD, capo())).toEqual([]);
+    // It has it: nothing to finish.
+    expect(gapsFor(inKey("Eb", [...standardOnly, version(CAPO, [file("capo-chords-1.pdf")])]), STANDARD, capo())).toEqual([]);
+    // The song's own setting wins over the policy, both ways.
+    expect(gapsFor(inKey("G", standardOnly), STANDARD, capo({ "like a river glorious": "always" }))).toEqual(gap);
+    expect(gapsFor(inKey("Eb", standardOnly), STANDARD, capo({ "like a river glorious": "never" }))).toEqual([]);
+    // Not asked about at all without the rules.
+    expect(gapsFor(inKey("Eb", standardOnly), STANDARD)).toEqual([]);
   });
 
   it("looks only at the next three services, however far ahead the month is planned", () => {

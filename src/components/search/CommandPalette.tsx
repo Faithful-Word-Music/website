@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import { useAccount } from "@/components/account/AccountContext";
 import { toggleTheme, useTheme } from "@/components/layout/ThemeToggle";
 import { NoteMark } from "@/components/library/SongIndex";
+import { songLinkProps } from "@/components/song-list/SongLink";
 import { Highlight, searchPillClass } from "@/components/song-list/Suggestions";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
@@ -455,7 +456,7 @@ function Option({
   }
 
   return (
-    <Link {...common} href={entry.href} onClick={onChoose}>
+    <Link {...common} href={entry.href} {...(entry.songPage ? songLinkProps : {})} onClick={onChoose}>
       {content}
     </Link>
   );

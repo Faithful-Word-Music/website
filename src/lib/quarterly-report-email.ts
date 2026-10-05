@@ -8,6 +8,7 @@ import {
   type ReportSong,
 } from "@/lib/quarterly-report";
 import { churchDay, formatLongDate, formatShortDate } from "@/lib/service-time";
+import { countsByWeek } from "@/lib/song-history";
 import { songPath, songSlug } from "@/lib/song-list";
 
 /**
@@ -77,6 +78,8 @@ const songUrl = (song: Pick<ReportSong, "title">) =>
 
 const times = (count: number) => (count === 1 ? "once" : count === 2 ? "twice" : `${count} times`);
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+/** A song's uses in words: "4 times", or for an insert - counted by the week - "4 weeks". */
+const uses = (song: ReportSong & { count: number }) => (countsByWeek(song) ? plural(song.count, "week") : times(song.count));
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 const weeks = (days: number) => (days < 14 ? plural(days, "day") : plural(Math.round(days / 7), "week"));
 /** "2026-11-26" -> "Thu, Nov 26" */
@@ -230,7 +233,7 @@ function actions(report: QuarterlyReport): Section[] {
       intro: `Sung often before, but not in the last ${Math.round(FORGOTTEN_DAYS / 30)} months.`,
       rows: report.forgotten
         .slice(0, LIST_ITEMS)
-        .map((song) => songRow(song, times(song.count), `Last sung ${formatLongDate(song.last)}`)),
+        .map((song) => songRow(song, uses(song), `Last sung ${formatLongDate(song.last)}`)),
     });
   }
 
@@ -251,7 +254,7 @@ function actions(report: QuarterlyReport): Section[] {
     list.push({
       title: "For the Christmas season",
       intro: `Starting at the first service after Thanksgiving (${formatWeekdayDate(christmas.thanksgiving)}). Last year's Christmas songs, most sung first.`,
-      rows: christmas.songs.slice(0, SEASONAL_ITEMS).map((song) => songRow(song, times(song.count))),
+      rows: christmas.songs.slice(0, SEASONAL_ITEMS).map((song) => songRow(song, uses(song))),
       footer: more > 0 ? `And ${more} more from last Christmas.` : undefined,
     });
   }
@@ -278,7 +281,7 @@ function recap(report: QuarterlyReport): Section[] {
     list.push({
       title: "Most sung",
       intro: "Sung more than a week's worth (three services) this quarter.",
-      rows: standouts.slice(0, LIST_ITEMS).map((song) => songRow(song, times(song.count))),
+      rows: standouts.slice(0, LIST_ITEMS).map((song) => songRow(song, uses(song))),
     });
   }
 

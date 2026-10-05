@@ -2,6 +2,7 @@ import "server-only";
 
 import type { NeonQueryFunction } from "@neondatabase/serverless";
 
+import { NO_CAPO_RULES, parseCapoPolicy, type CapoPolicy, type CapoRules, type SongCapoRule } from "@/lib/capo-policy";
 import { getSql } from "@/lib/db";
 import { ANYWHERE } from "@/lib/sheet-music";
 import {
@@ -946,6 +947,85 @@ export async function renameSheetMusicType(env: ClerkEnv, id: number, label: str
 export async function deleteSheetMusicType(env: ClerkEnv, id: number): Promise<void> {
   const sql = await db(env);
   await sql.query(`DELETE FROM sheet_music_types WHERE clerk_env = $1 AND id = $2`, [env, id]);
+}
+
+// --- Capo sheet music (src/lib/capo-policy.ts) --------------------------------
+
+const CAPO_POLICY_KEY = "capo_policy";
+
+/**
+ * When a song needs capo sheet music: the saved policy, or the default. The
+ * capo type is the one saved ("none" included; a type since deleted counts as
+ * none). Until a policy has been saved at all, it is the starting
+ * "Capo (Chords)" type, or failing that the first type with "capo" in its
+ * name - so the default works without anyone setting it up.
+ */
+export async function getCapoPolicy(env: ClerkEnv): Promise<CapoPolicy> {
+  const sql = await db(env);
+  const [settings, types] = (await Promise.all([
+    sql.query(`SELECT value FROM site_settings WHERE clerk_env = $1 AND key = $2`, [env, CAPO_POLICY_KEY]),
+    sql.query(`SELECT id, label, legacy_key FROM sheet_music_types WHERE clerk_env = $1 ORDER BY sort_order, label`, [env]),
+  ])) as [Array<{ value: unknown }>, Array<{ id: number; label: string; legacy_key: string | null }>];
+  const policy = parseCapoPolicy(settings[0]?.value);
+  if (settings.length > 0) {
+    return { ...policy, typeId: types.some((type) => type.id === policy.typeId) ? policy.typeId : null };
+  }
+  const starting =
+    types.find((type) => legacyVariant(type.legacy_key) === "Capo") ?? types.find((type) => /\bcapo\b/i.test(type.label));
+  return { ...policy, typeId: starting?.id ?? null };
+}
+
+export async function setCapoPolicy(env: ClerkEnv, policy: CapoPolicy, actor: string): Promise<void> {
+  const sql = await db(env);
+  await sql.query(
+    `INSERT INTO site_settings (clerk_env, key, value, updated_by) VALUES ($1, $2, $3::jsonb, $4)
+     ON CONFLICT (clerk_env, key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [env, CAPO_POLICY_KEY, JSON.stringify(policy), actor],
+  );
+}
+
+/** Each song with its own capo setting, by songKey(). */
+async function songCapoRules(env: ClerkEnv): Promise<CapoRules["overrides"]> {
+  const sql = await db(env);
+  const rows = (await sql.query(`SELECT title_key, capo_rule FROM song_settings WHERE clerk_env = $1`, [env])) as Array<{
+    title_key: string;
+    capo_rule: "always" | "never";
+  }>;
+  return Object.fromEntries(rows.map((row) => [row.title_key, row.capo_rule]));
+}
+
+/** Sets one song's capo setting; "global" puts it back on the policy. */
+export async function setSongCapoRule(env: ClerkEnv, titleKey: string, rule: SongCapoRule, actor: string): Promise<void> {
+  const sql = await db(env);
+  if (rule === "global") {
+    await sql.query(`DELETE FROM song_settings WHERE clerk_env = $1 AND title_key = $2`, [env, titleKey]);
+    return;
+  }
+  await sql.query(
+    `INSERT INTO song_settings (clerk_env, title_key, capo_rule, updated_by) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (clerk_env, title_key)
+     DO UPDATE SET capo_rule = EXCLUDED.capo_rule, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [env, titleKey, rule, actor],
+  );
+}
+
+/** The policy and every song's own setting, as the checks take them. */
+export async function getCapoRules(env: ClerkEnv): Promise<CapoRules> {
+  const [policy, overrides] = await Promise.all([getCapoPolicy(env), songCapoRules(env)]);
+  return { policy, overrides };
+}
+
+/**
+ * The capo rules for a check that must never fail over them: when they cannot
+ * be read, no capo sheet music is asked for at all.
+ */
+export async function capoRulesOrNone(env: ClerkEnv): Promise<CapoRules> {
+  try {
+    return await getCapoRules(env);
+  } catch (error) {
+    console.error("[sheet-music] Could not read the capo rules:", error instanceof Error ? error.message : "unknown error");
+    return NO_CAPO_RULES;
+  }
 }
 
 /** Swaps a type with its neighbour in the list. */

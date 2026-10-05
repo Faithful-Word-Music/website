@@ -72,8 +72,26 @@ describe("buildYearRecap", () => {
 
   it("names the year's first song and the songs sung once", () => {
     expect(recap.firstSong?.title).toBe("The Great Physician");
-    expect(recap.once.map((song) => song.title)).toEqual(["Psalm 23", "Holy Holy Holy", "It Is Well"]);
-    expect(recap.once[0].startsAt).toBe("2026-03-04T19:00:00-07:00");
+    // Oldest first: the page's few and the "more" list read in one order.
+    expect(recap.once.map((song) => song.title)).toEqual(["It Is Well", "Holy Holy Holy", "Psalm 23"]);
+    expect(recap.once[2].startsAt).toBe("2026-03-04T19:00:00-07:00");
+  });
+
+  it("counts an insert sung through one week as one use, and a hymn every time", () => {
+    const week: DatedService[] = [
+      service("2026-05-03", "AM", [[null, "Psalm 100", "G"], ["5", "Blessed Assurance", "D"]]),
+      service("2026-05-03", "PM", [[null, "Psalm 100", "G"], ["5", "Blessed Assurance", "D"]]),
+      service("2026-05-06", "PM", [[null, "Psalm 100", "G"]]),
+      service("2026-05-10", "AM", [["5", "Blessed Assurance", "D"]]),
+    ];
+    const weekly = buildYearRecap(week, 2026, septemberNow)!;
+    expect(weekly.topSongs.map((song) => [song.title, song.count, song.weekly])).toEqual([
+      ["Blessed Assurance", 3, false],
+      ["Psalm 100", 1, true],
+    ]);
+    expect(weekly.once.map((song) => song.title)).toEqual(["Psalm 100"]);
+    // Every performance is still counted where the figure is a literal one.
+    expect(weekly.songsSung).toBe(6);
   });
 
   it("marks the year the records began, blanking the months before", () => {

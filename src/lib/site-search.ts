@@ -46,6 +46,8 @@ export interface SearchEntry {
   href?: string;
   /** Opens outside the site: a new tab, or the mail app. */
   external?: boolean;
+  /** A song's page: on this site, but opened in a new tab (songLinkProps). */
+  songPage?: boolean;
   action?: "toggle-theme";
   /** Extra words that find it, never shown. */
   keywords?: string;
@@ -139,6 +141,7 @@ function songEntry(song: SearchIndex["songs"][number]): SearchEntry {
     number: song.number,
     sheetMusic: song.sheetMusic,
     href: songPath(song.slug),
+    songPage: true,
   };
 }
 

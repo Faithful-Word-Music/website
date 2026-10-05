@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { createSong } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
@@ -52,6 +52,11 @@ export function matchRank(candidate: Pick<CandidateSong, "title" | "number" | "i
  *
  * With nothing typed, it lists familiar songs not sung for the longest, as
  * a starting point.
+ *
+ * Follows the ARIA combobox pattern, as the site search does: arrows move
+ * through the results and Enter picks the highlighted one. Typing highlights
+ * the best match; the starting list highlights nothing until an arrow does,
+ * so a stray Enter picks no song.
  */
 export function SongPicker({
   candidates,
@@ -70,6 +75,8 @@ export function SongPicker({
 }) {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
+  const [active, setActive] = useState(-1);
+  const listId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
   // Straight into the search box once the dialog has opened (and back from
   // adding a song) - with a mouse and keyboard. On a touch screen that would
@@ -96,6 +103,42 @@ export function SongPicker({
       .map(({ candidate }) => ({ candidate, facts: candidateFacts(candidate, serviceStartsAt) }));
   }, [candidates, query, serviceStartsAt]);
 
+  const activeIndex = Math.min(active, results.length - 1);
+  const optionId = (i: number) => `${listId}-${i}`;
+
+  // Keep the highlighted song in view as the arrows move it.
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: "nearest" });
+    // optionId only depends on listId, which never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex]);
+
+  function choose({ candidate, facts }: (typeof results)[number]) {
+    onChoose({ title: candidate.title, number: candidate.number, key: facts.suggestedKey });
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const count = results.length;
+    if (count === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive((activeIndex + 1) % count);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(activeIndex <= 0 ? count - 1 : activeIndex - 1);
+    } else if (event.key === "Home" && event.ctrlKey) {
+      event.preventDefault();
+      setActive(0);
+    } else if (event.key === "End" && event.ctrlKey) {
+      event.preventDefault();
+      setActive(count - 1);
+    } else if (event.key === "Enter" && !event.nativeEvent.isComposing && activeIndex >= 0) {
+      event.preventDefault();
+      choose(results[activeIndex]);
+    }
+  }
+
   return (
     <Modal title={adding ? copy.newSong.title : title} closeLabel={copy.picker.close} onClose={onClose}>
       {adding ? (
@@ -105,8 +148,11 @@ export function SongPicker({
           onCancel={() => setAdding(false)}
         />
       ) : (
-        <>
-          <div>
+        // One child of the dialog's body, so its own spacing rules leave the margins here alone.
+        <div className="flex flex-col">
+          {/* Stays put while the list scrolls under it, so what was typed is always in sight.
+              -top-5: sticking is measured inside the body's padding, which this covers. */}
+          <div className="sticky -top-5 z-10 -mx-2 -mt-5 bg-surface px-2 pb-3 pt-5">
             <label htmlFor="song-search" className="sr-only">
               {copy.picker.searchLabel}
             </label>
@@ -114,32 +160,51 @@ export function SongPicker({
               id="song-search"
               ref={searchRef}
               type="search"
+              role="combobox"
+              aria-expanded={results.length > 0}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
               autoComplete="off"
               value={query}
               placeholder={copy.picker.search}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && results[0] && query.trim() !== "") {
-                  event.preventDefault();
-                  const { candidate, facts } = results[0];
-                  onChoose({ title: candidate.title, number: candidate.number, key: facts.suggestedKey });
-                }
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(event.target.value.trim() === "" ? -1 : 0);
               }}
+              onKeyDown={onKeyDown}
               className="w-full rounded-lg border border-line bg-surface px-4 py-3 text-base text-ink placeholder:text-muted"
             />
           </div>
 
           {results.length === 0 ? (
-            <p className="text-sm text-muted">{copy.picker.noResults.replace("{query}", query.trim())}</p>
+            <p className="mt-3 text-sm text-muted">{copy.picker.noResults.replace("{query}", query.trim())}</p>
           ) : (
-            <ul className="-mx-2 divide-y divide-line">
-              {results.map(({ candidate, facts }) => (
-                <li key={candidate.id}>
+            <ul id={listId} role="listbox" aria-label={copy.picker.searchLabel} className="-mx-2 mt-3 divide-y divide-line">
+              {results.map(({ candidate, facts }, i) => (
+                <li key={candidate.id} role="presentation">
                   <button
                     type="button"
-                    onClick={() => onChoose({ title: candidate.title, number: candidate.number, key: facts.suggestedKey })}
-                    className="flex w-full flex-col gap-1 rounded-lg px-2 py-3 text-left transition-colors hover:bg-paper focus-visible:bg-paper"
+                    id={optionId(i)}
+                    role="option"
+                    aria-selected={i === activeIndex}
+                    tabIndex={-1}
+                    // Move, not enter: a row scrolling under a resting pointer keeps the arrows' highlight.
+                    onMouseMove={() => setActive(i)}
+                    onClick={() => choose({ candidate, facts })}
+                    className={cn(
+                      "relative flex w-full scroll-mt-24 flex-col gap-1 rounded-lg px-3 py-3 text-left transition-colors",
+                      i === activeIndex ? "bg-gold/10" : "hover:bg-gold/5",
+                    )}
                   >
+                    {/* The site's barline marker, on the highlighted row. */}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute left-0.5 top-1/2 h-8 w-0.5 -translate-y-1/2 rounded-full transition-colors",
+                        i === activeIndex ? "bg-gold" : "bg-transparent",
+                      )}
+                    />
                     <span className="flex flex-wrap items-baseline gap-2">
                       {candidate.number ? <span className="text-sm tabular-nums text-muted">{candidate.number}</span> : null}
                       <span className="font-medium text-ink">{candidate.title}</span>
@@ -174,11 +239,11 @@ export function SongPicker({
           )}
 
           {query.trim() !== "" ? (
-            <Button type="button" variant="secondary" onClick={() => setAdding(true)} className="w-full">
+            <Button type="button" variant="secondary" onClick={() => setAdding(true)} className="mt-6 w-full">
               {copy.picker.createNew.replace("{query}", query.trim())}
             </Button>
           ) : null}
-        </>
+        </div>
       )}
     </Modal>
   );

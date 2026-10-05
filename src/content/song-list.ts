@@ -15,6 +15,9 @@ export const songListContent = {
    */
   pdfLabel: "PDF",
 
+  /** For screen readers, after a song title that opens its page (SongLink). */
+  newTab: "(opens in a new tab)",
+
   /** Link from the schedule to the archive. */
   archiveLinkLabel: "Browse every song we've sung",
 
@@ -208,6 +211,32 @@ export const songListContent = {
       newTab: " (PDF, opens in a new tab)",
       museScoreHint: "Opens in MuseScore, the free notation program.",
     },
+    /**
+     * Whether the song needs capo sheet music, and its own setting - shown only
+     * to people who look after the sheet music (SongCapoSetting).
+     */
+    capo: {
+      title: "Capo sheet music",
+      required: "Needed",
+      notRequired: "Not needed",
+      /** Why: {key} is e.g. "Eb · 3 flats". */
+      reasonPolicy: "from its key, {key}",
+      reasonNoKey: "no key on record for this song",
+      reasonSong: "set for this song",
+      noType: "No capo sheet music type is chosen under Admin, Configuration, so nothing asks for it yet.",
+      label: "For this song",
+      rules: {
+        /** {outcome} is policyYes or policyNo: what the site's policy says for this song. */
+        global: "Use the site's capo policy ({outcome})",
+        always: "Always need capo sheet music",
+        never: "Never need capo sheet music",
+      },
+      policyYes: "needed",
+      policyNo: "not needed",
+      save: "Save",
+      saved: "Saved.",
+      note: "Only people who manage sheet music see this. The Service Planner's checks and the Dashboard's sheet music list follow it.",
+    },
     /** Songs without a hymnal number are inserts, printed in the front of every hymnal. */
     fallbackEyebrow: "Insert",
     stats: {
@@ -356,6 +385,8 @@ export const songListContent = {
       title: "Most sung",
       caption: "The songs we came back to most often this year.",
       times: ["once", "{count} times"],
+      /** For an insert, which is counted by the week: sung at all of a week's services is one. */
+      weeks: ["1 week", "{count} weeks"],
     },
     months: {
       title: "Month by month",
@@ -385,6 +416,8 @@ export const songListContent = {
       onceMoreLead: ["{count} more song sung only once, oldest first.", "{count} more songs sung only once, oldest first."],
       close: "Close",
       timesSung: ["Sung once", "Sung {count} times"],
+      /** For an insert, counted by the week. */
+      weeksSung: ["Sung in 1 week", "Sung in {count} weeks"],
     },
     notFoundTitle: "No songs recorded for that year",
     errorTitle: "The year in song is temporarily unavailable",

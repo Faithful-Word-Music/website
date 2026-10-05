@@ -205,10 +205,11 @@ describe("renderQuarterlyReport", () => {
     service("2026-07-12", "AM", ["A", "B", "C", "D", "E", "F", "G", "H"].map((letter): [string, string, string] => ["9", `Song ${letter}`, "F"])),
   ];
   const email = renderQuarterlyReport(buildQuarterlyReport(history, [], at("2026-10-01")));
-  // The same quarter with a song sung across four weeks, so "Most sung" has something to show.
+  // The same quarter with an insert sung in four separate weeks (its Sunday and
+  // Wednesday of July 5 are one), so "Most sung" has something to show.
   const standout = [
     ...history,
-    ...["2026-08-02", "2026-08-16"].map((date) => service(date, "AM", [[null, "<script>alert(1)</script>", "G"]])),
+    ...["2026-08-02", "2026-08-16", "2026-08-30"].map((date) => service(date, "AM", [[null, "<script>alert(1)</script>", "G"]])),
   ];
   const busyEmail = renderQuarterlyReport(buildQuarterlyReport(standout, [], at("2026-10-01")));
 
@@ -234,7 +235,8 @@ describe("renderQuarterlyReport", () => {
   });
 
   it("lists only songs that stand out as most sung, and keeps the list short", () => {
-    // Six songs each sung in four separate weeks: all stand out, five are shown.
+    // Six inserts each sung in four separate weeks: all stand out, five are shown,
+    // counted as inserts are - by the week.
     const busy = [...history];
     for (const date of ["2026-07-19", "2026-08-02", "2026-08-16", "2026-08-30"]) {
       busy.push(service(date, "AM", ["P", "Q", "R", "S", "T", "U"].map((letter): [null, string, string] => [null, `Busy ${letter}`, "D"])));
@@ -242,7 +244,7 @@ describe("renderQuarterlyReport", () => {
     const text = renderQuarterlyReport(buildQuarterlyReport(busy, [], at("2026-10-01"))).text;
     const lines = text.split("MOST SUNG")[1].split("\n\n")[0].split("\n").filter((line) => line.startsWith("- "));
     expect(lines).toHaveLength(LIST_ITEMS);
-    expect(lines.every((line) => line.includes("4 times"))).toBe(true);
+    expect(lines.every((line) => line.includes("4 weeks"))).toBe(true);
   });
 
   it("leaves out sections with nothing to say", () => {

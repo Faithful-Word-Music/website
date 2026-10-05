@@ -19,7 +19,12 @@ import { serviceAnchor } from "@/lib/site-search";
  * Dashboard's links, with access decided here on the server, never trusted
  * from the page.
  *
+ * With ?type=<id>, the service in that one sheet music type instead, whoever
+ * it is assigned to - for the people who look after the sheet music and print
+ * for others (manage_sheet_music). Without it, nothing here changes.
+ *
  *   signed out                 -> 401 (the proxy sends them to sign in first)
+ *   ?type without the permission -> 403; an unknown type -> 404
  *   no types assigned          -> 404
  *   unknown service, or none of
  *   its songs has their music  -> 404
@@ -44,17 +49,22 @@ async function readDriveFile(driveFileId: string): Promise<Uint8Array | null> {
   }
 }
 
-export async function GET(_request: Request, ctx: RouteContext<"/dashboard/sheet-music/[service]">) {
+export async function GET(request: Request, ctx: RouteContext<"/dashboard/sheet-music/[service]">) {
   const { service: anchor } = await ctx.params;
 
   const viewer = await getViewer().catch(() => null);
   if (!viewer) return jsonError(401, "sign-in-required");
 
-  const sheetTypes = await getSheetMusicTypes(viewer.env, viewer.userId);
+  // One chosen type, for someone who prints for others - or the person's own.
+  const chosen = new URL(request.url).searchParams.get("type");
+  if (chosen !== null && !viewer.can("manage_sheet_music")) return jsonError(403, "forbidden");
+  const sheetTypes = chosen !== null ? [Number(chosen)] : await getSheetMusicTypes(viewer.env, viewer.userId);
   if (sheetTypes.length === 0) return jsonError(404, "no-sheet-music-type");
 
   const [songList, sheetMusic] = await Promise.all([getSchedule(), getSheetMusicIndex()]);
   if (!songList.ok || !sheetMusic.ok) return jsonError(503, "unavailable");
+  const chosenType = chosen !== null ? sheetMusic.index.types.find((type) => type.id === sheetTypes[0]) : null;
+  if (chosen !== null && !chosenType) return jsonError(404, "no-sheet-music-type");
 
   const service = songList.months
     .flatMap((month) => month.services)
@@ -78,10 +88,11 @@ export async function GET(_request: Request, ctx: RouteContext<"/dashboard/sheet
   ).filter((song) => song !== null);
 
   const label = [service.dateLabel, service.serviceLabel].filter(Boolean).join(" · ");
-  const pdf = songs.length > 0 ? await buildServicePacket(`Sheet Music · ${label}`, songs) : null;
+  const kind = chosenType ? `Sheet Music (${chosenType.label})` : "Sheet Music";
+  const pdf = songs.length > 0 ? await buildServicePacket(`${kind} · ${label}`, songs) : null;
   if (!pdf) return jsonError(502, "unavailable");
 
-  const fileName = `${service.date}${service.serviceLabel ? ` ${service.serviceLabel}` : ""} - Sheet Music.pdf`;
+  const fileName = `${service.date}${service.serviceLabel ? ` ${service.serviceLabel}` : ""} - ${kind}.pdf`;
   const plain = fileName.replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "");
 
   return new Response(new Uint8Array(pdf), {

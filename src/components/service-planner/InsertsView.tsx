@@ -19,6 +19,7 @@ import { monthDay, serviceDate, serviceTitle } from "@/lib/service-planner/forma
 import type { InsertMonth } from "@/lib/service-planner/inserts";
 import type { CandidateSong } from "@/lib/service-planner/intelligence";
 import { followsWeek, type InsertWeek, type PlannerService } from "@/lib/service-planner/model";
+import { normalizeKey, songKey } from "@/lib/song-list";
 
 import { MonthTransition } from "./MonthTransition";
 import { Chevron } from "./Panel";
@@ -54,6 +55,16 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
     void runAction(action, { key: `${weekStart}:${button}` });
   }
 
+  /**
+   * The song's own key (the candidates carry it), when the week's insert was
+   * saved in another: offered, never applied - the saved key is the plan.
+   */
+  const currentKeyOf = (insert: InsertWeek | null): string | null => {
+    if (!insert) return null;
+    const current = candidates.find((candidate) => candidate.id === songKey(insert.title))?.defaultKey ?? null;
+    return current && (!insert.key || normalizeKey(insert.key) !== normalizeKey(current)) ? current : null;
+  };
+
   const weekList = (month: InsertMonthRow) => (
     <Card className="overflow-hidden">
       <ul className="divide-y divide-line">
@@ -68,6 +79,14 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
               // A week's last message goes as soon as something new is done to it.
               if (acted === week.weekStart) clear();
               setChoosing(week.weekStart);
+            }}
+            currentKey={currentKeyOf(week.insert)}
+            onUseCurrentKey={(key) => {
+              const { insert } = week;
+              if (!insert) return;
+              run(week.weekStart, "key", () =>
+                setInsertWeek({ weekStart: week.weekStart, song: { title: insert.title, number: insert.number, key } }),
+              );
             }}
             onClear={() => run(week.weekStart, "clear", () => setInsertWeek({ weekStart: week.weekStart, song: null }))}
             onUpdatePublished={() => run(week.weekStart, "update", () => applyInsertToPublished({ weekStart: week.weekStart }))}
@@ -121,18 +140,23 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
 }
 
 /** A week's actions: setting its insert, clearing it, and updating its published services. */
-type WeekButton = "set" | "clear" | "update";
+type WeekButton = "set" | "clear" | "update" | "key";
 
 function WeekRow({
   week,
   pending,
   result,
   stateOf,
+  currentKey,
+  onUseCurrentKey,
   onChoose,
   onClear,
   onUpdatePublished,
 }: {
   week: InsertWeekRow;
+  /** The song's own key, when the insert was saved in another (or none). */
+  currentKey: string | null;
+  onUseCurrentKey: (key: string) => void;
   pending: boolean;
   result: ActionOutcome | null;
   stateOf: (button: WeekButton) => ActionState;
@@ -161,6 +185,24 @@ function WeekRow({
         ) : (
           <p className="italic text-muted">{copy.none}</p>
         )}
+        {currentKey ? (
+          <p className="mt-1 text-xs text-gold-dark">
+            {copy.currentKey.replace("{key}", currentKey)}{" "}
+            <button
+              type="button"
+              disabled={pending}
+              aria-busy={stateOf("key") === "pending" || undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 font-medium underline decoration-gold underline-offset-4 transition-colors not-disabled:hover:text-ink",
+                stateOf("key") !== "pending" && "disabled:opacity-60",
+              )}
+              onClick={() => onUseCurrentKey(currentKey)}
+            >
+              {stateOf("key") === "pending" ? <Spinner className="size-3" /> : null}
+              {stateOf("key") === "pending" ? words.updating : copy.useCurrentKey}
+            </button>
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-muted">
           {week.services.map((service, index) => (
             <span key={service.anchor}>

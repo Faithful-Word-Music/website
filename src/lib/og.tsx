@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
 import { siteConfig } from "@/config/site";
+import { PAPER_DARK, PAPER_LIGHT } from "@/lib/theme";
 
 /**
  * The social share card - the image that shows when a link to the site is
@@ -37,7 +38,7 @@ import { siteConfig } from "@/config/site";
  * Tokens, mirroring src/app/globals.css. Satori cannot read CSS variables.
  * Shared with the song list's service picture (src/lib/service-picture.tsx).
  */
-export const PAPER = "#faf9f6";
+export const PAPER = PAPER_LIGHT;
 export const SURFACE = "#ffffff";
 export const INK = "#111111";
 export const INK_SOFT = "#2a2a28";
@@ -47,7 +48,7 @@ export const GOLD = "#b08d57";
 export const GOLD_DARK = "#84683f";
 const STAFF = "#d2d1ca";
 /** Dark mode's paper and ink (globals.css, DARK MODE). */
-const DARK_PAPER = "#141412";
+const DARK_PAPER = PAPER_DARK;
 const DARK_INK = "#f2f0ea";
 
 const CARD_WIDTH = 1200;

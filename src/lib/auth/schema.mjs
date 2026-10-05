@@ -241,6 +241,29 @@ export const AUTH_SCHEMA = [
    )`,
   `CREATE INDEX IF NOT EXISTS availability_exceptions_date
      ON availability_exceptions (clerk_env, service_date)`,
+  // Site-wide settings changed under Admin -> Configuration, one row per
+  // setting: 'capo_policy' is when a song needs capo sheet music
+  // (src/lib/capo-policy.ts). A setting never saved has no row, and its
+  // default in code applies.
+  `CREATE TABLE IF NOT EXISTS site_settings (
+     ${ENV},
+     key        text        NOT NULL,
+     value      jsonb       NOT NULL,
+     updated_by text,
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, key)
+   )`,
+  // One song's own settings, by its normalized title (songKey() - the same
+  // identity as its page and the archive). capo_rule overrides the capo
+  // policy for that song; a song following the policy has no row.
+  `CREATE TABLE IF NOT EXISTS song_settings (
+     ${ENV},
+     title_key  text        NOT NULL,
+     capo_rule  text        NOT NULL CHECK (capo_rule IN ('always', 'never')),
+     updated_by text,
+     updated_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, title_key)
+   )`,
 ];
 
 /** The administrator role row, which the bootstrap script needs before it can assign it. */

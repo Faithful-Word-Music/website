@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { deleteSpecialService, publishServices, saveService, setServiceStatus } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -12,9 +12,11 @@ import { SongLink } from "@/components/song-list/SongLink";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { Modal } from "@/components/ui/Modal";
 import { RehearsalMark } from "@/components/ui/SectionHeading";
 import { useAction } from "@/components/ui/use-action";
 import { useFlip } from "@/components/ui/use-flip";
+import { useUnsavedGuard } from "@/components/ui/use-unsaved-guard";
 import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { ActionResult } from "@/lib/auth/session";
@@ -82,13 +84,6 @@ export function Workspace(props: WorkspaceProps) {
   );
   const dirty = JSON.stringify([slots, label, time]) !== initial;
   const filled = slots.filter(Boolean).length;
-
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
 
   const candidateMap = useMemo(() => new Map(candidates.map((candidate) => [candidate.id, candidate])), [candidates]);
   const signals = useMemo(
@@ -167,6 +162,8 @@ export function Workspace(props: WorkspaceProps) {
   // Saved, but the fresh copy has not arrived yet: nothing here is unsaved, and nothing can be saved twice.
   const settled = ["save", "publish", "status", "delete"].some((key) => stateOf(key) === "done");
   const locking = pending || settled;
+  // Leaving with changes not saved asks first, however the page is left.
+  const guard = useUnsavedGuard(dirty && !settled);
 
   return (
     <>
@@ -515,6 +512,26 @@ export function Workspace(props: WorkspaceProps) {
         </aside>
       </div>
 
+      {guard.pending ? (
+        <Modal
+          title={ws.leaveTitle}
+          closeLabel={ws.leaveStay}
+          onClose={guard.stay}
+          footer={
+            <>
+              <Button type="button" variant="secondary" onClick={guard.stay}>
+                {ws.leaveStay}
+              </Button>
+              <Button type="button" onClick={guard.leave}>
+                {ws.leaveConfirm}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-ink-soft">{ws.leaveWarning}</p>
+        </Modal>
+      ) : null}
+
       {picker ? (
         <SongPicker
           candidates={candidates}
@@ -578,7 +595,14 @@ function IconButton({
 }
 
 /** Which checks are worth a second look (gold) rather than simply worth knowing. */
-const NOTABLE = new Set<PlanningSignal["kind"]>(["duplicate", "recently-sung", "sheet-music-gap", "out-of-season"]);
+const NOTABLE = new Set<PlanningSignal["kind"]>([
+  "duplicate",
+  "recently-sung",
+  "sheet-music-gap",
+  "capo-needed",
+  "no-sheet-music",
+  "out-of-season",
+]);
 
 /** The service's checks, in words. They inform; nothing here stops a save. */
 function Checks({
@@ -610,7 +634,15 @@ function Checks({
       case "no-sheet-music-entry":
         return c.noSheetEntry.replace("{title}", signal.title);
       case "sheet-music-gap":
-        return c.sheetGap.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
+        return signal.everyone
+          ? c.sheetGapEveryone.replace("{title}", signal.title)
+          : c.sheetGap.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
+      case "capo-needed":
+        return c.capoNeeded.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
+      case "no-sheet-music":
+        return signal.anyFiles ? c.noSheetMusicForAnyone : c.noSheetMusic;
+      case "key-differs":
+        return c.keyDiffers.replace("{title}", signal.title).replace("{key}", signal.key).replace("{current}", signal.current);
       case "empty-places":
         return signal.count === 1 ? c.emptyPlace : c.emptyPlaces.replace("{count}", String(signal.count));
     }

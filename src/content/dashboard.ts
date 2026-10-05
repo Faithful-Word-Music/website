@@ -90,6 +90,8 @@ export const dashboardContent = {
       noFiles: "No files in Drive",
       /** {type} is replaced with the first sheet music type, e.g. "Standard". */
       noMainType: "No {type} sheet music",
+      /** {type} is the capo type, e.g. "Capo (Chords)": the song's key calls for it. */
+      noCapo: "Needs {type} sheet music for its key",
       /** {types} is replaced, e.g. "Standard, Capo (Chords)". */
       missingPdf: "No PDF for {types}",
       rights: "Rights need review",
@@ -149,6 +151,15 @@ export const dashboardContent = {
       /** {count} songs in it. */
       count: ["{count} song · PDF", "{count} songs · PDF"],
       newTab: "(PDF, opens in a new tab)",
+      /**
+       * The three dots beside it, for people who look after the sheet music:
+       * the service in any sheet music type, whoever it is assigned to.
+       */
+      types: {
+        toggle: "Print another sheet music type",
+        /** In place of the button, for someone with no sheet music types of their own. */
+        only: "Sheet music for this service, by type",
+      },
       /** The "i" beside it: a dialog on how to print all of it, or only some. */
       help: {
         toggle: "How to print",

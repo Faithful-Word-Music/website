@@ -22,7 +22,7 @@ import { installPromptCaptureScript } from "@/lib/install";
 import { launchScreenLinks } from "@/lib/launch-screens";
 import { packetsInitScript } from "@/lib/service-packets";
 import { splashInitScript } from "@/lib/splash";
-import { themeInitScript } from "@/lib/theme";
+import { canvasStyle, PAPER_DARK, PAPER_LIGHT, themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -82,11 +82,16 @@ export const metadata: Metadata = {
   },
 };
 
-/** The browser bar matches the page: paper in light mode, dark paper in dark. */
+/**
+ * The browser bar matches the page: paper in light mode, dark paper in dark.
+ * colorScheme tells the browser both themes exist before any CSS has loaded,
+ * so the empty canvas it shows first is already dark on a dark device.
+ */
 export const viewport: Viewport = {
+  colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
-    { media: "(prefers-color-scheme: dark)", color: "#141412" },
+    { media: "(prefers-color-scheme: light)", color: PAPER_LIGHT },
+    { media: "(prefers-color-scheme: dark)", color: PAPER_DARK },
   ],
 };
 
@@ -141,6 +146,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${sourceSerif.variable} ${inter.variable} h-full antialiased`}
     >
       <head>
+        {/* The page's paper colour, before the stylesheet: nothing lighter (or
+            darker) ever shows first. See canvasStyle in src/lib/theme.ts. */}
+        <style dangerouslySetInnerHTML={{ __html: canvasStyle }} />
         {/* Applies a saved light/dark choice before the first paint, so the
             page never flashes the other theme. See src/lib/theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

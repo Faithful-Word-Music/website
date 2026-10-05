@@ -335,6 +335,27 @@ describe("buildComingUp", () => {
   const index: SheetMusicIndex = { songs: [fullSong], types: TYPES };
   const services = [service("a", "2026-10-04T10:30:00-07:00", [{ number: "233", title: "Like a River Glorious", key: "Ab" }])];
 
+  it("offers every type a service can be printed in only to someone who prints for others", () => {
+    const partial: SheetMusicIndex = {
+      songs: [song([version(STANDARD, [file("standard-1.pdf")]), version(CAPO, [file("capo-chords-1.mscz", "musescore")])])],
+      types: TYPES,
+    };
+    const [own] = buildComingUp(services, NOW, focusFor(["musician"]), { index: partial, sheetTypes: [STANDARD] });
+    expect(own.packetTypes).toEqual([]);
+
+    const [director] = buildComingUp(services, NOW, focusFor(["music_director"]), {
+      index: partial,
+      sheetTypes: [],
+      anyType: true,
+    });
+    // Standard has a PDF. Capo has only a MuseScore file, and the others nothing: not offered.
+    expect(director.packetTypes).toEqual([
+      { typeId: STANDARD, label: "Standard", href: "/dashboard/sheet-music/2026-10-04-am?type=1", songs: 1 },
+    ]);
+    // Their own button is unchanged: no types of their own, so none.
+    expect(director.packetHref).toBeNull();
+  });
+
   it("puts a song in the service PDF when it has the assigned type", () => {
     const [first] = buildComingUp(services, NOW, focusFor(["musician"]), { index, sheetTypes: [CAPO] });
     expect(first.packetSongs.map((song) => song.title)).toEqual(["Like a River Glorious"]);

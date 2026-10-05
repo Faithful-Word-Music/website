@@ -1,4 +1,4 @@
-import { churchDay, churchYear, dayOfWeek } from "@/lib/service-time";
+import { churchDay, churchWeek, churchYear, dayOfWeek } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { DatedService, SongRecord } from "@/types/song-list";
 
@@ -81,6 +81,27 @@ export function buildSongRecords(services: DatedService[]): SongRecord[] {
   }
 
   return [...records.values()];
+}
+
+/**
+ * Whether a song's uses are counted by the week: a song without a hymnal
+ * number is an insert (isInsert in src/lib/service-planner/model.ts), and the
+ * week's insert is sung at every service of its week on purpose.
+ */
+export function countsByWeek(song: { number: string | null }): boolean {
+  return song.number === null;
+}
+
+/**
+ * How often a song has been used, for anything that measures frequency,
+ * rotation or overuse (most sung, rank, favourites, sung just once): a hymn
+ * counts every time it was sung; an insert counts each church week it was
+ * sung in once, however many of that week's services it was in. Literal
+ * counts ("times sung", the history itself) use plays.length instead.
+ */
+export function usageCount(song: { number: string | null }, plays: ReadonlyArray<{ startsAt: string }>): number {
+  if (!countsByWeek(song)) return plays.length;
+  return new Set(plays.map((play) => churchWeek(Date.parse(play.startsAt)))).size;
 }
 
 /** A song that is habitually sung in the same service as another. */

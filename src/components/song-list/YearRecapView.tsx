@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { MoreSongs } from "@/components/song-list/MoreSongs";
-import { songLinkClasses, songLinkGroupClasses } from "@/components/song-list/SongLink";
+import { NewTabNote, songLinkClasses, songLinkGroupClasses, songLinkProps } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
@@ -75,6 +75,7 @@ export function MostSung({ songs }: { songs: YearRecap["topSongs"] }) {
           <li key={song.id} className="border-b border-line last:border-b-0">
             <Link
               href={songHref(song)}
+              {...songLinkProps}
               className="group grid grid-cols-[2.75rem_1fr_auto_auto] items-baseline gap-x-3 py-2.5 sm:grid-cols-[3rem_1fr_auto_5.5rem]"
             >
               <span className="tnum text-sm font-medium text-muted sm:text-base">
@@ -82,12 +83,13 @@ export function MostSung({ songs }: { songs: YearRecap["topSongs"] }) {
               </span>
               <span className={cn("min-w-0 text-[0.95rem] leading-snug text-ink sm:text-base", songLinkGroupClasses)}>
                 {song.title}
+                <NewTabNote />
               </span>
               <span className="tnum hidden whitespace-nowrap text-right text-sm font-medium text-gold-dark sm:block sm:text-base">
                 {song.key ?? ""}
               </span>
               <span className="tnum whitespace-nowrap text-right text-sm text-muted">
-                {plural(copy.board.times, song.count)}
+                {plural(song.weekly ? copy.board.weeks : copy.board.times, song.count)}
               </span>
             </Link>
           </li>
@@ -201,8 +203,10 @@ export function RecapFacts({ recap }: { recap: YearRecap }) {
   const items: Array<{ label: string; song?: RecapSong; value?: string; detail: string }> = [];
 
   const { AM, PM } = recap.favourites;
-  if (AM) items.push({ label: facts.morning, song: AM, detail: plural(facts.timesSung, AM.count) });
-  if (PM) items.push({ label: facts.evening, song: PM, detail: plural(facts.timesSung, PM.count) });
+  const sung = (song: { count: number; weekly: boolean }) =>
+    plural(song.weekly ? facts.weeksSung : facts.timesSung, song.count);
+  if (AM) items.push({ label: facts.morning, song: AM, detail: sung(AM) });
+  if (PM) items.push({ label: facts.evening, song: PM, detail: sung(PM) });
   if (recap.longestWait) {
     items.push({
       label: facts.welcomeBack,
@@ -236,9 +240,10 @@ export function RecapFacts({ recap }: { recap: YearRecap }) {
           </h3>
           <p className="mt-2 font-display text-xl leading-snug text-ink">
             {item.song ? (
-              <Link href={songHref(item.song)} className={songLinkClasses}>
+              <Link href={songHref(item.song)} {...songLinkProps} className={songLinkClasses}>
                 {item.song.number ? <span className="tnum text-gold-dark">{item.song.number} </span> : null}
                 {item.song.title}
+                <NewTabNote />
               </Link>
             ) : (
               item.value
@@ -259,10 +264,12 @@ export function RecapFacts({ recap }: { recap: YearRecap }) {
               <li key={song.id}>
                 <Link
                   href={songHref(song)}
+                  {...songLinkProps}
                   className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-paper px-3.5 text-sm text-ink transition-colors hover:border-gold"
                 >
                   {song.number ? <span className="tnum text-gold-dark">{song.number}</span> : null}
                   {song.title}
+                  <NewTabNote />
                 </Link>
               </li>
             ))}

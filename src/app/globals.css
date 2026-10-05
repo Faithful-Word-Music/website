@@ -196,6 +196,16 @@
 /* ===========================================================================
    BASE
    =========================================================================== */
+
+/* The canvas itself is paper, not only <body>: it is what shows before
+   anything has painted, and wherever the body does not reach. layout.tsx sets
+   the same colour inline in <head> for the moments before this file arrives
+   (canvasStyle in src/lib/theme.ts). Outside the base layer on purpose, so it
+   outranks that inline rule and print's light paper applies. */
+html {
+  background-color: var(--color-paper);
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;

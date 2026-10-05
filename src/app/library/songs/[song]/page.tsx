@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
+import { SongCapoSetting } from "@/components/song-list/SongCapoSetting";
 import { SongLink } from "@/components/song-list/SongLink";
 import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
 import { BackLink } from "@/components/ui/BackLink";
@@ -80,6 +81,9 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
             className="mt-10"
           />
         ) : null}
+
+        {/* For people who look after the sheet music only; nothing for anyone else. */}
+        <SongCapoSetting title={title} number={number} className="mt-10" />
 
         {sheetMusic ? (
           <h2 id="singing" className="mt-12 font-display text-2xl text-ink">

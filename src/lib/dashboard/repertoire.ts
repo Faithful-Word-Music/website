@@ -19,7 +19,7 @@ import {
   sameQuarter,
   type Quarter,
 } from "@/lib/quarterly-report";
-import { buildSongRecords } from "@/lib/song-history";
+import { buildSongRecords, usageCount } from "@/lib/song-history";
 import { songKey, songSlug } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
@@ -89,6 +89,7 @@ export interface QuarterGlance {
   current: boolean;
   services: number;
   differentSongs: number;
+  /** The song used most (usageCount: an insert's weeks, a hymn's times), when more than once. */
   mostSung: { title: string; slug: string; count: number } | null;
 }
 
@@ -110,7 +111,9 @@ export function quarterGlance(past: readonly DatedService[], now: number): Quart
   if (services.length === 0) return null;
 
   const records = buildSongRecords(services);
-  const top = [...records].sort((a, b) => b.plays.length - a.plays.length || a.title.localeCompare(b.title))[0];
+  const top = records
+    .map((record) => ({ title: record.title, count: usageCount(record, record.plays) }))
+    .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))[0];
 
   return {
     quarter,
@@ -118,6 +121,6 @@ export function quarterGlance(past: readonly DatedService[], now: number): Quart
     current: sameQuarter(quarter, thisQuarter),
     services: services.length,
     differentSongs: records.length,
-    mostSung: top && top.plays.length > 1 ? { title: top.title, slug: songSlug(top.title), count: top.plays.length } : null,
+    mostSung: top && top.count > 1 ? { title: top.title, slug: songSlug(top.title), count: top.count } : null,
   };
 }

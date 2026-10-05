@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useMemo, useRef, useState } from "react";
 
+import { NewTabNote, songLinkProps } from "@/components/song-list/SongLink";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
@@ -143,10 +144,12 @@ function IndexEntry({ song }: { song: LibrarySong }) {
   return (
     <Link
       href={songPath(song.slug)}
+      {...songLinkProps}
       className="group flex min-h-11 items-baseline gap-2 rounded-sm py-2 focus-visible:outline-offset-4"
     >
       <span className="min-w-0 font-display text-[1.0625rem] leading-snug text-ink transition-colors group-hover:text-gold-dark">
         {song.title}
+        <NewTabNote />
         {song.sheetMusic ? (
           <>
             {/* A no-break space keeps the note with the last word when the title wraps. */}

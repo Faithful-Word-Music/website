@@ -20,6 +20,7 @@ import { summarize } from "@/lib/auth/clerk";
 import { missingProfileItems } from "@/lib/auth/profile-completeness";
 import { requireViewer } from "@/lib/auth/session";
 import {
+  capoRulesOrNone,
   countRequestsByStatus,
   getProfile,
   getSheetMusicTypes,
@@ -27,7 +28,7 @@ import {
   getUserTitles,
 } from "@/lib/auth/store";
 import { collectAttention } from "@/lib/dashboard/attention";
-import { buildComingUp, servicePackets } from "@/lib/dashboard/coming-up";
+import { buildComingUp, servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
 import { loadAvailabilitySummary, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
 import { loadPlannerWork } from "@/lib/service-planner/load";
@@ -102,8 +103,9 @@ export default async function DashboardPage() {
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
-  const [music, requests, people, invitations, availability, plannerWork] = await Promise.all([
+  const [music, capoRules, requests, people, invitations, availability, plannerWork] = await Promise.all([
     loadMusicData(),
+    focus.managesSheetMusic ? capoRulesOrNone(viewer.env) : undefined,
     focus.reviewsAccounts ? countRequestsByStatus(viewer.env).catch(() => null) : null,
     focus.seesPeople ? loadPeople(viewer) : null,
     focus.reviewsAccounts ? loadInvitationFollowUps() : null,
@@ -115,20 +117,32 @@ export default async function DashboardPage() {
 
   // --- What the data says, for this person ----------------------------------
   const comingUp = music.services
-    ? buildComingUp(music.services, now, focus, { index: music.index, sheetTypes })
+    ? buildComingUp(music.services, now, focus, { index: music.index, sheetTypes, anyType: focus.managesSheetMusic })
     : [];
   const brushUp = servesInMusic(focus) ? brushUpSongs(music.past, music.upcoming, now) : [];
-  const gaps = focus.managesSheetMusic && music.index ? findSheetGaps(music.upcoming, music.index, hymnalCollection) : null;
+  const gaps = focus.managesSheetMusic && music.index ? findSheetGaps(music.upcoming, music.index, hymnalCollection, capoRules) : null;
   const glance = focus.seesAnalytics ? quarterGlance(music.past, now) : null;
 
   const viewerKind = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
   // The song list's sheet music buttons, worked out here anyway - handed to
   // it so it opens complete (src/lib/service-packets.ts).
+  // Someone who looks after the sheet music can print a service in any type.
+  const packetTypes =
+    focus.managesSheetMusic && music.services && music.index
+      ? { types: servicePacketTypes(music.services, { index: music.index, viewer: viewerKind }) }
+      : {};
   const packetSeed: Packets | null =
     sheetTypes.length === 0
-      ? { assigned: false }
+      ? // Without the types' answer, leave what the song list has: it asks for itself.
+        focus.managesSheetMusic && !("types" in packetTypes)
+        ? null
+        : { assigned: false, ...packetTypes }
       : music.services && music.index
-        ? { assigned: true, packets: servicePackets(music.services, { index: music.index, sheetTypes, viewer: viewerKind }) }
+        ? {
+            assigned: true,
+            packets: servicePackets(music.services, { index: music.index, sheetTypes, viewer: viewerKind }),
+            ...packetTypes,
+          }
         : null;
   const upcomingKeys = new Set(music.upcoming.flatMap((service) => service.songs.map((song) => songKey(song.title))));
   const recentSheets = music.index

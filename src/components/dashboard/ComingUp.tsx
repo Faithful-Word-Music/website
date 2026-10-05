@@ -114,11 +114,12 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
             songs={service.packetSongs}
             showLabels={service.showLabels}
             label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
+            types={service.packetTypes}
           />
         </div>
-      ) : service.sheetMusicChecked && hasSongs ? (
+      ) : hasSongs && (service.sheetMusicChecked || service.packetTypes.length > 0) ? (
         <div className="mt-auto pt-5">
-          <NoServiceSheetMusic />
+          <NoServiceSheetMusic types={service.packetTypes} own={service.sheetMusicChecked} />
         </div>
       ) : null}
     </Card>

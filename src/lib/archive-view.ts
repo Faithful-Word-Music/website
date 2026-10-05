@@ -31,8 +31,17 @@ function inRange(startsAt: string, range: ArchiveRange, now: number): boolean {
   return true;
 }
 
-/** One summary per song sung at least once in the period. */
-export function summarize(records: SongRecord[], range: ArchiveRange, now: number): SongSummary[] {
+/**
+ * One summary per song sung at least once in the period. `countOf` is how the
+ * plays are counted: every one by default (the archive's "times sung"), or
+ * usageCount (src/lib/song-history.ts) where the figure measures frequency.
+ */
+export function summarize(
+  records: SongRecord[],
+  range: ArchiveRange,
+  now: number,
+  countOf: (record: SongRecord, plays: SongRecord["plays"]) => number = (_record, plays) => plays.length,
+): SongSummary[] {
   const summaries: SongSummary[] = [];
 
   for (const record of records) {
@@ -54,7 +63,7 @@ export function summarize(records: SongRecord[], range: ArchiveRange, now: numbe
       id: record.id,
       title: record.title,
       number: record.number,
-      count: plays.length,
+      count: countOf(record, plays),
       last,
       keys: [...keys.values()].sort((a, b) => b.count - a.count),
     });

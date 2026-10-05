@@ -57,8 +57,10 @@ import {
   moveSheetMusicType,
   removeSheetMusicSource,
   renameSheetMusicType,
+  setCapoPolicy,
   type OptionList,
 } from "@/lib/auth/store";
+import { MAX_ACCIDENTALS } from "@/lib/capo-policy";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
 import { describeSource } from "@/lib/sheet-music-type";
@@ -576,6 +578,31 @@ function revalidateSheetMusicTypes() {
   revalidatePath("/admin/users", "layout");
   revalidatePath("/dashboard");
   revalidatePath("/library/songs", "layout");
+}
+
+/** A capo threshold: 1 to 7 flats or sharps, or null for "off". */
+function parseThreshold(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_ACCIDENTALS ? value : undefined;
+}
+
+/** Saves when a song needs capo sheet music, and which type that is (src/lib/capo-policy.ts). */
+export async function setCapoPolicyAction(input: unknown): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async (viewer) => {
+    const value = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+    const minFlats = parseThreshold(value.minFlats);
+    const minSharps = parseThreshold(value.minSharps);
+    if (minFlats === undefined || minSharps === undefined) return { ok: false, error: "Choose 1 to 7, or Off." };
+    const typeId = value.typeId === null ? null : parseId(value.typeId);
+    if (value.typeId !== null && !typeId) return { ok: false, error: "Unknown type." };
+    if (typeId && !(await listSheetMusicTypes(viewer.env)).some((type) => type.id === typeId)) {
+      return { ok: false, error: "Unknown type." };
+    }
+    await setCapoPolicy(viewer.env, { minFlats, minSharps, typeId }, viewer.userId);
+    revalidateSheetMusicTypes();
+    revalidatePath("/service-planner", "layout");
+    return { ok: true, value: null, message: "Saved." };
+  });
 }
 
 export async function addSheetMusicTypeAction(label: unknown): Promise<ActionResult> {

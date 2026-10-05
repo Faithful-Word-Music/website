@@ -95,6 +95,8 @@ export interface ComingUpService {
   showLabels: boolean;
   /** Whether their sheet music was looked for at all (types assigned, Index read): only then is "none" worth saying. */
   sheetMusicChecked: boolean;
+  /** Every type the service can be printed in - only for someone who prints for others (serviceTypeOptions). */
+  packetTypes: PacketTypeOption[];
   /** Not posted yet, but its week's insert is planned: that song (plannedInserts). */
   plannedInsert: Song | null;
 }
@@ -178,6 +180,49 @@ export function servicePackets(services: readonly Service[], options: SheetOptio
   return packets;
 }
 
+/** One sheet music type a service's sheet music can be printed in, whoever it is assigned to. */
+export interface PacketTypeOption {
+  typeId: number;
+  /** The type's name: "Capo (Chords)". */
+  label: string;
+  /** The service's sheet music of that type as one PDF. */
+  href: string;
+  /** How many of the service's songs have it. */
+  songs: number;
+}
+
+/**
+ * Every sheet music type a service can be printed in: each configured type
+ * at least one of its songs has a PDF of, in the types' order. For the people
+ * who look after the sheet music (manage_sheet_music), who print for others -
+ * beside their own button, which keeps to their own types. Built on
+ * serviceSheets(), so a type's PDF holds exactly what its entry here counts.
+ */
+export function serviceTypeOptions(
+  service: Service,
+  options: Pick<SheetOptions, "index" | "viewer">,
+): PacketTypeOption[] {
+  const path = servicePacketPath(service);
+  if (!path) return [];
+  return options.index.types.flatMap((type) => {
+    const songs = serviceSheets(service, { ...options, sheetTypes: [type.id] }).filter((sheet) => sheet.found).length;
+    return songs > 0 ? [{ typeId: type.id, label: type.label, href: `${path}?type=${type.id}`, songs }] : [];
+  });
+}
+
+/** serviceTypeOptions() for every published service with songs, by service id. */
+export function servicePacketTypes(
+  services: readonly Service[],
+  options: Pick<SheetOptions, "index" | "viewer">,
+): Record<string, PacketTypeOption[]> {
+  const types: Record<string, PacketTypeOption[]> = {};
+  for (const service of services) {
+    if (service.placeholder || !service.date || service.songs.length === 0) continue;
+    types[service.id] = serviceTypeOptions(service, options);
+  }
+  return types;
+}
+
 /** Where a service's sheet music PDF is: /dashboard/sheet-music/2026-10-04-am. */
 export function servicePacketPath(service: Pick<Service, "date" | "slot">): string | null {
   return service.date ? `/dashboard/sheet-music/${serviceAnchor(service.date, service.slot)}` : null;
@@ -206,7 +251,12 @@ export function buildComingUp(
   services: readonly Service[],
   now: number,
   focus: DashboardFocus,
-  options: { index: SheetMusicIndex | null; sheetTypes: readonly number[] },
+  options: {
+    index: SheetMusicIndex | null;
+    sheetTypes: readonly number[];
+    /** Offer every type's PDF as well (manage_sheet_music). */
+    anyType?: boolean;
+  },
 ): ComingUpService[] {
   const viewer = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
   const { index, sheetTypes } = options;
@@ -231,6 +281,7 @@ export function buildComingUp(
       packetSongs: packet?.songs ?? [],
       showLabels: sheetTypes.length > 1,
       sheetMusicChecked: sheetOptions !== null,
+      packetTypes: options.anyType && index ? serviceTypeOptions(service, { index, viewer }) : [],
       plannedInsert: service.plannedInsert ?? null,
     };
   });

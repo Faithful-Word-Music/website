@@ -14,10 +14,13 @@ import { siteConfig } from "@/config/site";
 import type { RosterPerson } from "@/lib/availability/board";
 import { effectiveAvailability, type ExceptionStatus } from "@/lib/availability/effective";
 import type { Occurrence } from "@/lib/availability/occurrences";
+import { capoMissing, NO_CAPO_RULES, type CapoRules } from "@/lib/capo-policy";
 import { christmasSongs, inChristmasSeason } from "@/lib/church-calendar";
 import { matchIndexSong, type IndexSong, type SheetMusicIndex } from "@/lib/sheet-music";
 import { assignedFiles } from "@/lib/sheet-music-type";
-import { songKey } from "@/lib/song-list";
+import { usageCount } from "@/lib/song-history";
+import { canonicalKey } from "@/lib/song-key";
+import { normalizeKey, songKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
 import { weekStartOf, type PlanSlots } from "./model";
@@ -43,7 +46,11 @@ export interface CandidateSong {
   playCount: number;
   /** Start times of other services it is already planned for (drafts included), soonest first. */
   upcoming: string[];
-  /** The planner catalog's default key, or the Index's first key. */
+  /**
+   * The key it is sung in now (canonicalKey in src/lib/song-key.ts): the
+   * Index's first key, else the planner catalog's usual key. Not a key it
+   * happened to be sung in - those are in `plays`.
+   */
   defaultKey: string | null;
   sheetMusic: SheetMusicStatus;
   /** Only ever sung in the Christmas season (src/lib/church-calendar.ts). */
@@ -54,16 +61,14 @@ export interface CandidateSong {
   inIndex: boolean;
   /** Musicians expected at the service being planned who have none of their sheet music types for it. */
   missingFor: string[];
+  /** That is every expected musician with sheet music types (and there are several): say so, rather than name them. */
+  missingForAll: boolean;
+  /** Musicians who have other sheet music for it, but not the capo sheet music its key calls for. */
+  capoFor: string[];
 }
 
 /** How many past plays travel with each candidate - enough for every fact the picker shows. */
 export const RECENT_PLAYS = 40;
-
-/** "G, Ab" (the Index's Key(s) column) -> "G". */
-export function firstKey(keys: string | null | undefined): string | null {
-  const first = keys?.split(/[,/;]/)[0]?.trim();
-  return first ? first : null;
-}
 
 /** Whether a song in the Index has sheet music: every version with a PDF, some, or none. */
 export function sheetMusicStatus(song: IndexSong | null): SheetMusicStatus {
@@ -87,9 +92,14 @@ export function buildCandidates(input: {
   catalog: ReadonlyArray<{ title: string; number: string | null; collection: string | null; defaultKey: string | null }>;
   index: SheetMusicIndex | null;
   hymnalCollection: string;
+  /** The capo sheet music rules (src/lib/capo-policy.ts); none asked for when left out. */
+  capo?: CapoRules;
 }): CandidateSong[] {
   const { past, planned, catalog, index, hymnalCollection } = input;
+  const capo = input.capo ?? NO_CAPO_RULES;
   const byId = new Map<string, CandidateSong>();
+  /** The catalog's usual key, by song: the canonical key of a song the Index does not hold. */
+  const catalogKeys = new Map<string, string | null>();
   const seasonal = christmasSongs([...past]);
 
   const ensure = (title: string, number: string | null, collection: string | null): CandidateSong | null => {
@@ -111,6 +121,8 @@ export function buildCandidates(input: {
         isNew: false,
         inIndex: false,
         missingFor: [],
+        missingForAll: false,
+        capoFor: [],
       };
       byId.set(id, entry);
     }
@@ -134,7 +146,7 @@ export function buildCandidates(input: {
     const known = byId.has(songKey(song.title));
     const entry = ensure(song.title, song.number, song.collection);
     if (!entry) continue;
-    entry.defaultKey = song.defaultKey ?? entry.defaultKey;
+    catalogKeys.set(entry.id, song.defaultKey);
     if (!known) entry.isNew = true;
   }
 
@@ -154,17 +166,29 @@ export function buildCandidates(input: {
     const indexSong = index ? matchIndexSong(index, entry, hymnalCollection) : null;
     if (index) entry.sheetMusic = sheetMusicStatus(indexSong);
     entry.inIndex = indexSong !== null;
-    if (indexSong) entry.missingFor = missingSheetMusic(indexSong, input.musicians ?? []);
-    entry.defaultKey ??= firstKey(indexSong?.keys);
+    entry.defaultKey = canonicalKey({ indexKeys: indexSong?.keys, catalogKey: catalogKeys.get(entry.id) });
+    if (indexSong) {
+      const missing = missingSheetMusic(indexSong, input.musicians ?? [], {
+        song: { title: entry.title, key: entry.defaultKey },
+        rules: capo,
+      });
+      entry.missingFor = missing.none;
+      entry.missingForAll = missing.everyone;
+      entry.capoFor = missing.capo;
+    }
     entry.collection ??= indexSong?.collection ?? null;
   }
 
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** The key to offer for a song: the key it was last sung in, else its default. */
+/**
+ * The key to offer for a song: its own key (defaultKey, the canonical one).
+ * Only a song with none - not in the Index, no usual key - falls back to the
+ * key it was last sung in, which may be an old one.
+ */
 export function suggestKey(candidate: Pick<CandidateSong, "plays" | "defaultKey"> | null | undefined): string | null {
-  return candidate?.plays.find((play) => play.key)?.key ?? candidate?.defaultKey ?? null;
+  return candidate?.defaultKey ?? candidate?.plays.find((play) => play.key)?.key ?? null;
 }
 
 /** The facts the picker shows for a song, looking from a service at `serviceStartsAt`. */
@@ -173,7 +197,10 @@ export interface CandidateFacts {
   lastSung: string | null;
   /** Whole days from then to the service. */
   daysSince: number | null;
-  /** Times sung in the 12 months before the service. */
+  /**
+   * How often it came round in the 12 months before the service: times sung,
+   * or for an insert the weeks it was sung in (usageCount).
+   */
   lastYear: number;
   /** Times sung so far in the service's calendar year. */
   thisYear: number;
@@ -196,7 +223,10 @@ export function candidateFacts(candidate: CandidateSong, serviceStartsAt: string
   return {
     lastSung: last?.at ?? null,
     daysSince: last ? Math.floor((start - Date.parse(last.at)) / DAY_MS) : null,
-    lastYear: before.filter((play) => Date.parse(play.at) > start - 365 * DAY_MS).length,
+    lastYear: usageCount(
+      candidate,
+      before.filter((play) => Date.parse(play.at) > start - 365 * DAY_MS).map((play) => ({ startsAt: play.at })),
+    ),
     thisYear: before.filter((play) => play.at.slice(0, 4) === year).length,
     recentKeys: keys.slice(0, 3),
     upcoming: candidate.upcoming.filter((at) => at !== serviceStartsAt),
@@ -221,8 +251,21 @@ export type PlanningSignal =
   | { kind: "out-of-season"; title: string }
   /** Not in the Sheet Music Index at all. */
   | { kind: "no-sheet-music-entry"; title: string }
-  /** Expected musicians who have none of their assigned sheet music types for it. */
-  | { kind: "sheet-music-gap"; title: string; people: string[] }
+  /**
+   * Expected musicians who have none of their assigned sheet music types for
+   * it. `everyone`: that is all of them, so they need not be named.
+   */
+  | { kind: "sheet-music-gap"; title: string; people: string[]; everyone: boolean }
+  /** Musicians with other sheet music for it, but not the capo sheet music its key calls for. */
+  | { kind: "capo-needed"; title: string; people: string[] }
+  /**
+   * None of the service's songs has sheet music for anyone - said once, in
+   * place of a line for every song. `anyFiles`: some have files, though of no
+   * type the expected musicians use.
+   */
+  | { kind: "no-sheet-music"; anyFiles: boolean }
+  /** Planned in a key other than the song's own (canonical) key. */
+  | { kind: "key-differs"; title: string; key: string; current: string }
   /** Places not filled yet. */
   | { kind: "empty-places"; count: number };
 
@@ -238,14 +281,55 @@ export interface PlannerMusician {
 }
 
 /** What the sheet music check says about one song. */
-export type SheetMusicCheck = (song: { title: string; number: string | null }) => { inIndex: boolean; missing: string[] };
+export interface SheetMusicFinding {
+  inIndex: boolean;
+  /** It has files in Drive (of any type). */
+  hasFiles: boolean;
+  /** Expected musicians with none of their sheet music types for it, by name. */
+  missing: string[];
+  /** Those are every expected musician with sheet music types, and there are several. */
+  everyone: boolean;
+  /** Musicians with other sheet music for it, but not the capo sheet music it needs. */
+  capo: string[];
+  /** The song's own key (canonicalKey), to compare the planned key with. */
+  key: string | null;
+}
 
-/** The expected musicians who have none of their assigned sheet music types for a song. */
-export function missingSheetMusic(song: IndexSong, musicians: readonly PlannerMusician[]): string[] {
-  return musicians
-    .filter((person) => person.typeIds.length > 0)
-    .filter((person) => assignedFiles(song, person.typeIds, () => true).length === 0)
-    .map((person) => person.name);
+export type SheetMusicCheck = (song: { title: string; number: string | null }) => SheetMusicFinding;
+
+/** Who is missing a song's sheet music, and how. */
+export interface MissingSheetMusic {
+  /** None of their assigned types has a PDF. */
+  none: string[];
+  /** `none` is every expected musician with types, and there are at least two. */
+  everyone: boolean;
+  /** Another of their types has one, but the song needs capo sheet music and has none. */
+  capo: string[];
+}
+
+/**
+ * The expected musicians a song's sheet music falls short for. Someone is
+ * left with none when no type on their list has a PDF. Someone whose list
+ * holds the capo type is also named when the song needs capo sheet music
+ * (capoMissing in src/lib/capo-policy.ts) and has none - another type of
+ * theirs is no substitute in that key. A song that needs none is not held to
+ * it: their other types serve.
+ */
+export function missingSheetMusic(
+  song: IndexSong,
+  musicians: readonly PlannerMusician[],
+  capo?: { song: { title: string; key: string | null }; rules: CapoRules },
+): MissingSheetMusic {
+  const relevant = musicians.filter((person) => person.typeIds.length > 0);
+  const none = relevant.filter((person) => assignedFiles(song, person.typeIds, () => true).length === 0);
+  const capoTypeId = capo && capoMissing(song, capo.song, capo.rules) ? capo.rules.policy.typeId : null;
+  const withoutCapo =
+    capoTypeId === null ? [] : relevant.filter((person) => person.typeIds.includes(capoTypeId) && !none.includes(person));
+  return {
+    none: none.map((person) => person.name),
+    everyone: relevant.length > 1 && none.length === relevant.length,
+    capo: withoutCapo.map((person) => person.name),
+  };
 }
 
 /** The sheet music check, straight from the Index (the browser uses the candidates' copy instead). */
@@ -253,18 +337,36 @@ export function indexSheetMusicCheck(
   index: SheetMusicIndex,
   hymnalCollection: string,
   musicians: readonly PlannerMusician[],
+  capo: CapoRules = NO_CAPO_RULES,
 ): SheetMusicCheck {
   return (song) => {
     const indexSong = matchIndexSong(index, song, hymnalCollection);
-    return indexSong ? { inIndex: true, missing: missingSheetMusic(indexSong, musicians) } : { inIndex: false, missing: [] };
+    if (!indexSong) return { inIndex: false, hasFiles: false, missing: [], everyone: false, capo: [], key: null };
+    const key = canonicalKey({ indexKeys: indexSong.keys });
+    const missing = missingSheetMusic(indexSong, musicians, { song: { title: song.title, key }, rules: capo });
+    return {
+      inIndex: true,
+      hasFiles: sheetMusicStatus(indexSong) !== "none",
+      missing: missing.none,
+      everyone: missing.everyone,
+      capo: missing.capo,
+      key,
+    };
   };
 }
 
-/** The sheet music check from the picker's candidates, for the browser. */
+/** The sheet music check from the picker's candidates, which carry it to the browser. */
 export function candidateSheetMusicCheck(candidates: ReadonlyMap<string, CandidateSong>): SheetMusicCheck {
   return (song) => {
     const candidate = candidates.get(songKey(song.title));
-    return { inIndex: candidate?.inIndex ?? false, missing: candidate?.missingFor ?? [] };
+    return {
+      inIndex: candidate?.inIndex ?? false,
+      hasFiles: candidate?.sheetMusic === "complete" || candidate?.sheetMusic === "partial",
+      missing: candidate?.missingFor ?? [],
+      everyone: candidate?.missingForAll ?? false,
+      capo: candidate?.capoFor ?? [],
+      key: candidate?.defaultKey ?? null,
+    };
   };
 }
 
@@ -295,6 +397,7 @@ export function serviceSignals(input: {
     .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
   const seasonal = christmasSongs([...past]);
   const inSeason = inChristmasSeason(service.date);
+  const findings: Array<{ song: (typeof songs)[number]; finding: SheetMusicFinding }> = [];
 
   for (const id of seen) {
     const song = songs.find((candidate) => songKey(candidate.title) === id)!;
@@ -318,10 +421,28 @@ export function serviceSignals(input: {
 
     if (!inSeason && seasonal.has(id)) signals.push({ kind: "out-of-season", title: song.title });
 
-    if (sheetMusic) {
-      const check = sheetMusic(song);
-      if (!check.inIndex) signals.push({ kind: "no-sheet-music-entry", title: song.title });
-      else if (check.missing.length > 0) signals.push({ kind: "sheet-music-gap", title: song.title, people: check.missing });
+    if (sheetMusic) findings.push({ song, finding: sheetMusic(song) });
+  }
+
+  // Sheet music, said as briefly as it can be: one line when no song has any
+  // for anyone, "any of the expected musicians" when a song has none for all
+  // of them, and the names only when just some are without.
+  const lacking = ({ finding }: (typeof findings)[number]) =>
+    !finding.inIndex || finding.everyone || (!finding.hasFiles && finding.missing.length > 0);
+  if (findings.length > 1 && findings.every(lacking)) {
+    signals.push({ kind: "no-sheet-music", anyFiles: findings.some(({ finding }) => finding.hasFiles) });
+  } else {
+    for (const { song, finding } of findings) {
+      if (!finding.inIndex) signals.push({ kind: "no-sheet-music-entry", title: song.title });
+      else if (finding.missing.length > 0) {
+        signals.push({ kind: "sheet-music-gap", title: song.title, people: finding.missing, everyone: finding.everyone });
+      }
+    }
+  }
+  for (const { song, finding } of findings) {
+    if (finding.capo.length > 0) signals.push({ kind: "capo-needed", title: song.title, people: finding.capo });
+    if (song.key && finding.key && normalizeKey(song.key) !== normalizeKey(finding.key)) {
+      signals.push({ kind: "key-differs", title: song.title, key: song.key, current: finding.key });
     }
   }
 

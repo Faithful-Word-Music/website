@@ -1,4 +1,4 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextMiddleware, type NextRequest } from "next/server";
 
 import { currentClerkConfig } from "@/lib/auth/clerk-env";
@@ -22,14 +22,17 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * the signed-in pages fail closed.
  */
 
-const isAccountRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/service-planner(.*)",
-  "/availability(.*)",
-  "/profile(.*)",
-  "/account(.*)",
-  "/admin(.*)",
-]);
+/**
+ * The signed-in sections. Matched here by their first path segment, only to
+ * decide who is sent to log in - never as the protection itself, which each
+ * page and action does for its own data (requireViewer, withPermission).
+ */
+const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/availability", "/profile", "/account", "/admin"];
+
+function isAccountRoute(request: NextRequest): boolean {
+  const { pathname } = request.nextUrl;
+  return ACCOUNT_SECTIONS.some((section) => pathname === section || pathname.startsWith(`${section}/`));
+}
 
 let clerk: NextMiddleware | null = null;
 

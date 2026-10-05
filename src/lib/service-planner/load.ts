@@ -4,7 +4,7 @@ import { siteConfig } from "@/config/site";
 import { servicePlannerContent } from "@/content/service-planner";
 import { listAccounts } from "@/lib/auth/clerk";
 import type { Viewer } from "@/lib/auth/session";
-import { sheetMusicTypesForUsers } from "@/lib/auth/store";
+import { capoRulesOrNone, sheetMusicTypesForUsers } from "@/lib/auth/store";
 import { loadRoster } from "@/lib/availability/load";
 import { addDays, churchDate, findOccurrence, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
@@ -128,11 +128,12 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
   const week = weeks[0] ?? null;
   const service = plannerService(occurrence, plan, week);
 
-  const [history, catalog, index, availability] = await Promise.all([
+  const [history, catalog, index, availability, capo] = await Promise.all([
     loadPast(),
     listCatalogSongs(viewer.env),
     getSheetMusicIndex(),
     loadServiceAvailability(viewer, occurrence),
+    capoRulesOrNone(viewer.env),
   ]);
   const past = history?.past ?? [];
   const planned = plans
@@ -146,6 +147,7 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
     catalog,
     index: index.ok ? index.index : null,
     hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
+    capo,
   });
 
   const events = plan ? await listPlanEvents(viewer.env, plan.id) : [];

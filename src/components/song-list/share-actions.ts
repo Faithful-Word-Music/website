@@ -72,9 +72,14 @@ export function canShareFiles(file: File): boolean {
   return canShareNatively() && typeof navigator.canShare === "function" && navigator.canShare({ files: [file] });
 }
 
-/** Share sheet with the picture, and the link beside it. True if it was shown (or dismissed). */
-export async function sharePicture(file: File, { title, url }: { title: string; url: string }) {
-  return shareNatively({ title, text: url, files: [file] });
+/**
+ * Share sheet with the picture, on its own. No link goes with it: a phone
+ * decides the order of what one share holds, and an iPhone puts the link
+ * ahead of the picture. The picture's footer carries the song list's address.
+ * True if it was shown (or dismissed).
+ */
+export async function sharePicture(file: File, { title }: { title: string }) {
+  return shareNatively({ title, files: [file] });
 }
 
 /** The browser can put an image on the clipboard (Chrome, Edge, Safari). */

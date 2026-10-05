@@ -6,8 +6,10 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { haptic } from "@/components/app/haptic";
 import { PdfViewer } from "@/components/app/PdfViewer";
 import { useInstalledAppOnTouch } from "@/components/app/standalone";
+import { SONG_PAGE_LINK_ATTRIBUTE } from "@/components/song-list/SongLink";
 import { cn } from "@/components/ui/cn";
 import { finishNavigationProgress, startNavigationProgress } from "@/components/ui/NavigationProgress";
+import { leaveBlocked } from "@/components/ui/page-link";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { appContent } from "@/content/app";
 import { isOpenInApp } from "@/lib/app-only";
@@ -22,8 +24,11 @@ import { isPdfPath, PULL_THRESHOLD, pullDistance } from "@/lib/installed-app";
 export function InstalledApp() {
   const active = useInstalledAppOnTouch();
   const [pdf, setPdf] = useState<string | null>(null);
+  const router = useRouter();
 
-  // Any link to one of the site's PDFs opens the viewer instead.
+  // Any link to one of the site's PDFs opens the viewer instead. A link to a
+  // song's page, which opens a new tab in a browser, opens in place: the app
+  // has no tabs to open it in.
   useEffect(() => {
     if (!active) return;
     function onClick(event: MouseEvent) {
@@ -33,18 +38,26 @@ export function InstalledApp() {
       const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
       if (!(link instanceof HTMLAnchorElement) || link.hasAttribute("download")) return;
       const url = new URL(link.href);
-      if (url.origin !== window.location.origin || !isPdfPath(url.pathname)) return;
-      event.preventDefault();
-      setPdf(url.pathname + url.search);
+      if (url.origin !== window.location.origin) return;
+      if (isPdfPath(url.pathname)) {
+        event.preventDefault();
+        setPdf(url.pathname + url.search);
+      } else if (link.hasAttribute(SONG_PAGE_LINK_ATTRIBUTE)) {
+        event.preventDefault();
+        const href = url.pathname + url.search + url.hash;
+        // A page with unsaved changes asks first, and goes itself if told to.
+        if (leaveBlocked(href)) return;
+        startNavigationProgress();
+        router.push(href);
+      }
     }
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [active]);
+  }, [active, router]);
 
   // A refresh fetches the page's data again in place, with the gold loading
   // bar across the top, rather than reloading the whole app: the page stays
   // where it is and there is no blank flash.
-  const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
   const refreshStarted = useRef(false);
   const refresh = useCallback(() => {

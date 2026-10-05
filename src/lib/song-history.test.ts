@@ -7,6 +7,7 @@ import {
   mergeServices,
   pastServices,
   songHint,
+  usageCount,
 } from "@/lib/song-history";
 import type { DatedService } from "@/types/song-list";
 
@@ -21,6 +22,29 @@ function service(date: string, slot: "AM" | "PM", titles: string[]): DatedServic
     songs: titles.map((title) => ({ number: null, title, key: "F" })),
   };
 }
+
+describe("usageCount", () => {
+  const week = [
+    { startsAt: "2026-10-04T10:30:00-07:00" }, // Sunday morning
+    { startsAt: "2026-10-04T18:00:00-07:00" }, // Sunday evening
+    { startsAt: "2026-10-07T19:00:00-07:00" }, // Wednesday
+  ];
+
+  it("counts an insert sung at all three services of a week as one use", () => {
+    expect(usageCount({ number: null }, week)).toBe(1);
+  });
+
+  it("counts a hymn every time it is sung", () => {
+    expect(usageCount({ number: "114" }, week)).toBe(3);
+  });
+
+  it("starts a new week on Sunday", () => {
+    const twoWeeks = [...week, { startsAt: "2026-10-10T10:30:00-07:00" }, { startsAt: "2026-10-11T10:30:00-07:00" }];
+    // Saturday the 10th still belongs to the week of the 4th; Sunday the 11th does not.
+    expect(usageCount({ number: null }, twoWeeks)).toBe(2);
+    expect(usageCount({ number: null }, [])).toBe(0);
+  });
+});
 
 describe("mergeServices", () => {
   const now = at("2026-09-24T12:00:00-07:00");

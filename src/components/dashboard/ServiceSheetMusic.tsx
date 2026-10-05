@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { Menu } from "@/components/ui/Menu";
 import { Modal } from "@/components/ui/Modal";
 import { dashboardContent } from "@/content/dashboard";
+import type { PacketTypeOption } from "@/lib/dashboard/coming-up";
 import { plural } from "@/lib/plural";
 
 const copy = dashboardContent.comingUp.packet;
@@ -16,18 +18,25 @@ type PacketSong = { number: string | null; title: string; label: string };
  * A service's sheet music as one PDF (see src/lib/service-sheet-pdf.ts), and
  * beside it an "i" that opens a dialog on printing it: all of it, only some
  * songs, or one song from its own page.
+ *
+ * The PDF is the person's own - their assigned types. Someone who looks after
+ * the sheet music and prints for others also gets `types`: three dots after
+ * the "i", opening every type the service can be printed in (SheetTypeMenu).
  */
 export function ServiceSheetMusic({
   href,
   songs,
   showLabels,
   label,
+  types,
 }: {
   href: string;
   songs: PacketSong[];
   /** Name each song's sheet music type in the list: only when they have more than one. */
   showLabels: boolean;
   label: string;
+  /** Every sheet music type the service can be printed in; only for manage_sheet_music. */
+  types?: PacketTypeOption[];
 }) {
   const [open, setOpen] = useState(false);
   const count = plural(copy.count, songs.length);
@@ -82,10 +91,75 @@ export function ServiceSheetMusic({
         >
           <InfoIcon />
         </button>
+
+        {types && types.length > 0 ? (
+          <>
+            <span aria-hidden="true" className="my-2.5 w-px shrink-0 bg-[color-mix(in_srgb,var(--color-gold)_30%,var(--color-line))]" />
+            <SheetTypeMenu
+              types={types}
+              className="w-12 hover:bg-[color-mix(in_srgb,var(--color-gold)_9%,transparent)]"
+            />
+          </>
+        ) : null}
       </div>
 
       {open ? (
         <PrintHelpDialog href={href} songs={songs} showLabels={showLabels} label={label} onClose={() => setOpen(false)} />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Three dots that open the sheet music types a service can be printed in,
+ * each its own PDF: "Capo (Chords) - 4 songs · PDF". For the people who look
+ * after the sheet music; the PDF route checks the permission itself.
+ */
+export function SheetTypeMenu({ types, className }: { types: PacketTypeOption[]; className?: string }) {
+  const menuId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  function close({ refocus = false } = {}) {
+    setOpen(false);
+    if (refocus) triggerRef.current?.focus();
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open ? true : undefined}
+        aria-controls={open ? menuId : undefined}
+        aria-label={copy.types.toggle}
+        title={copy.types.toggle}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          "grid shrink-0 place-items-center text-muted transition-colors hover:text-ink focus-visible:-outline-offset-2 aria-expanded:text-ink",
+          className,
+        )}
+      >
+        <MoreIcon />
+      </button>
+      {open ? (
+        <Menu
+          id={menuId}
+          menuRef={menuRef}
+          triggerRef={triggerRef}
+          placement="below"
+          items={types.map((type) => ({
+            key: String(type.typeId),
+            label: type.label,
+            hint: plural(copy.count, type.songs),
+            href: type.href,
+            newTab: true,
+          }))}
+          onSelect={() => close()}
+          onClose={close}
+        />
       ) : null}
     </>
   );
@@ -187,6 +261,17 @@ function SheetIcon() {
       />
       <path d="M9.9 12.9V8.4l2.1-.7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
       <ellipse cx="8.5" cy="13" rx="1.5" ry="1.1" transform="rotate(-20 8.5 13)" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Three dots, upright: more choices. */
+function MoreIcon() {
+  return (
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+      <circle cx="9" cy="4" r="1.35" />
+      <circle cx="9" cy="9" r="1.35" />
+      <circle cx="9" cy="14" r="1.35" />
     </svg>
   );
 }

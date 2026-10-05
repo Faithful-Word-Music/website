@@ -113,6 +113,14 @@ export function churchDay(instant: number): number {
   return Math.floor((instant + CHURCH_OFFSET_MS) / DAY_MS);
 }
 
+/**
+ * The church week an instant falls in, Sunday to Saturday: a whole number that
+ * is the same for every service of one week (the epoch was a Thursday).
+ */
+export function churchWeek(instant: number): number {
+  return Math.floor((churchDay(instant) + 4) / 7);
+}
+
 /** The church-calendar year of an instant. */
 export function churchYear(instant: number): number {
   return new Date(instant + CHURCH_OFFSET_MS).getUTCFullYear();

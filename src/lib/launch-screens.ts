@@ -32,6 +32,7 @@ export interface LaunchScreen {
 const IPHONES: Array<Omit<LaunchScreen, "orientation" | "theme">> = [
   { width: 440, height: 956, ratio: 3, statusBar: 62 }, // 16/17 Pro Max
   { width: 402, height: 874, ratio: 3, statusBar: 62 }, // 16/17 Pro
+  { width: 420, height: 912, ratio: 3, statusBar: 68 }, // Air
   { width: 430, height: 932, ratio: 3, statusBar: 59 }, // 14 Pro Max, 15 Plus/Pro Max, 16 Plus
   { width: 393, height: 852, ratio: 3, statusBar: 59 }, // 14 Pro, 15, 15 Pro, 16
   { width: 428, height: 926, ratio: 3, statusBar: 47 }, // 12/13 Pro Max, 14 Plus

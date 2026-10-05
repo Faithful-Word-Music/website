@@ -120,6 +120,9 @@ export const servicePlannerContent = {
     viewOnSongList: "View on the song list",
     export: "Export",
     leaveWarning: "You have unsaved changes to this service.",
+    leaveTitle: "Leave without saving?",
+    leaveStay: "Stay",
+    leaveConfirm: "Leave without saving",
   },
 
   picker: {
@@ -171,6 +174,15 @@ export const servicePlannerContent = {
     outOfSeason: "{title} is a Christmas song, and this is outside the Christmas season.",
     noSheetEntry: "{title} is not in the Sheet Music Index.",
     sheetGap: "{title}: no sheet music for {people}.",
+    /** When that is every expected musician: said once, without the names. */
+    sheetGapEveryone: "{title}: no sheet music for any of the expected musicians.",
+    /** When that is every song in the service: one line instead of one per song. */
+    noSheetMusic: "None of these songs has sheet music yet.",
+    noSheetMusicForAnyone: "None of these songs has sheet music for the expected musicians.",
+    /** Its key calls for capo sheet music (Admin, Configuration), which it does not have. */
+    capoNeeded: "{title}: no capo sheet music for {people}.",
+    /** Planned in a key other than the song's own. */
+    keyDiffers: "{title} is planned in {key}; its current key is {current}.",
     emptyPlaces: "{count} places still empty.",
     emptyPlace: "1 place still empty.",
     unavailableIndex: "The Sheet Music Index could not be read, so sheet music is not checked.",
@@ -218,6 +230,9 @@ export const servicePlannerContent = {
     change: "Change",
     clear: "Clear",
     key: "Key",
+    /** Beside an insert saved in a key other than the song's own. {key} is the song's current key. */
+    currentKey: "Current key: {key}",
+    useCurrentKey: "Use it",
     services: "{count} services follow this week",
     custom: ["{count} changed it themselves", "{count} changed it themselves"],
     outdated: ["{count} published service still shows an older insert.", "{count} published still show an older insert."],

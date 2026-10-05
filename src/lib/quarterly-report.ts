@@ -1,7 +1,7 @@
 import { siteConfig } from "@/config/site";
 import { christmasSeason, christmasSongs, inChristmasSeason, thanksgiving } from "@/lib/church-calendar";
 import { churchDay, churchMonth, churchYear } from "@/lib/service-time";
-import { buildSongRecords } from "@/lib/song-history";
+import { buildSongRecords, usageCount } from "@/lib/song-history";
 import { normalizeKey, songKey } from "@/lib/song-list";
 import { buildSongStats, VISIT_DAYS, weeklyService } from "@/lib/song-stats";
 import type { DatedService, SongRecord } from "@/types/song-list";
@@ -115,7 +115,11 @@ export interface QuarterTotals {
   differentSongs: number;
   /** Share of the songs sung that came from the hymnal (had a number), 0-1. */
   hymnShare: number;
-  /** Share of the songs sung taken up by the ten most sung, 0-1. Lower is more varied. */
+  /**
+   * Share of the singing taken up by the ten most sung, 0-1. Lower is more
+   * varied. Measured in uses (usageCount), so the week's insert - sung at all
+   * three services on purpose - weighs as one.
+   */
   topTenShare: number;
 }
 
@@ -140,6 +144,7 @@ export interface QuarterlyReport {
   /** Different songs sung in the twelve months up to the end of the quarter. */
   activeRepertoire: number;
 
+  /** Most used first; `count` is uses (an insert's weeks), `allTime` every time it was ever sung. */
   topSongs: Array<ReportSong & { count: number; allTime: number }>;
   /**
    * Came round OVERUSED_VISITS times or more this quarter. `usual` is its
@@ -217,18 +222,16 @@ function totalsFor(services: DatedService[]): QuarterTotals {
       if (song.number) hymns += 1;
     }
   }
-  const topTen = records
-    .map((record) => record.plays.length)
-    .sort((a, b) => b - a)
-    .slice(0, 10)
-    .reduce((sum, count) => sum + count, 0);
+  const uses = records.map((record) => usageCount(record, record.plays)).sort((a, b) => b - a);
+  const allUses = uses.reduce((sum, count) => sum + count, 0);
+  const topTen = uses.slice(0, 10).reduce((sum, count) => sum + count, 0);
 
   return {
     services: services.length,
     songsSung,
     differentSongs: records.length,
     hymnShare: songsSung ? hymns / songsSung : 0,
-    topTenShare: songsSung ? topTen / songsSung : 0,
+    topTenShare: allUses ? topTen / allUses : 0,
   };
 }
 
@@ -270,6 +273,12 @@ export function buildQuarterlyReport(
     return { id, title: record?.title ?? id, number: record?.number ?? null };
   };
   const lastOf = (record: SongRecord) => Date.parse(record.plays[record.plays.length - 1].startsAt);
+  /**
+   * How often a song was used in `record`'s plays, for every figure here that
+   * ranks or judges frequency: an insert counts once for each week it was
+   * sung in (usageCount in src/lib/song-history.ts).
+   */
+  const uses = (record: SongRecord) => usageCount(song(record.id), record.plays);
 
   const scheduled = new Map<string, string[]>();
   for (const service of ahead) {
@@ -293,7 +302,7 @@ export function buildQuarterlyReport(
   // --- This quarter's songs -------------------------------------------------
   const quarterRecords = buildSongRecords(services);
   const topSongs = quarterRecords
-    .map((record) => ({ ...song(record.id), count: record.plays.length, last: lastOf(record) }))
+    .map((record) => ({ ...song(record.id), count: uses(record), last: lastOf(record) }))
     .sort(byCount)
     .slice(0, TOP_SONGS)
     .map((entry) => ({ ...entry, allTime: records.get(entry.id)?.plays.length ?? 0 }));
@@ -338,13 +347,13 @@ export function buildQuarterlyReport(
   const forgotten = everything
     .filter(
       (record) =>
-        record.plays.length >= FAVOURITE_MIN &&
+        uses(record) >= FAVOURITE_MIN &&
         churchDay(now) - churchDay(lastOf(record)) >= FORGOTTEN_DAYS &&
         !scheduled.has(record.id) &&
         !dueIds.has(record.id) &&
         !christmas.has(record.id),
     )
-    .map((record) => ({ ...song(record.id), count: record.plays.length, last: lastOf(record) }))
+    .map((record) => ({ ...song(record.id), count: uses(record), last: lastOf(record) }))
     .sort(byCount)
     .slice(0, LIST_LIMIT)
     .map(({ last, ...entry }) => ({ ...entry, last: new Date(last).toISOString() }));
@@ -445,7 +454,7 @@ export function buildQuarterlyReport(
     const thenRecords = buildSongRecords(then);
     lookaheadLastYear = {
       topSongs: thenRecords
-        .map((record) => ({ ...song(record.id), count: record.plays.length, last: lastOf(record) }))
+        .map((record) => ({ ...song(record.id), count: uses(record), last: lastOf(record) }))
         .sort(byCount)
         .slice(0, TOP_SONGS),
       // Christmas songs have their own list (lookahead.christmas).
@@ -454,7 +463,7 @@ export function buildQuarterlyReport(
           const lastEver = lastOf(records.get(record.id)!);
           return churchDay(lastEver) <= thenEnd && !scheduled.has(record.id) && !christmas.has(record.id);
         })
-        .map((record) => ({ ...song(record.id), count: record.plays.length, last: record.plays[record.plays.length - 1].startsAt }))
+        .map((record) => ({ ...song(record.id), count: uses(record), last: record.plays[record.plays.length - 1].startsAt }))
         // The most sung then, listed in the order they were sung.
         .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
         .slice(0, LIST_LIMIT * 2)
@@ -509,7 +518,7 @@ export function buildQuarterlyReport(
       thanksgiving: thanksgiving(next.year),
       songs: buildSongRecords(sungThen)
         .filter((record) => christmas.has(record.id))
-        .map((record) => ({ ...song(record.id), count: record.plays.length, last: lastOf(record) }))
+        .map((record) => ({ ...song(record.id), count: uses(record), last: lastOf(record) }))
         .sort(byCount),
     };
   }

@@ -1,11 +1,12 @@
 import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { OptionListEditor } from "@/components/admin/OptionListEditor";
+import { CapoPolicyForm } from "@/components/admin/CapoPolicyForm";
 import { SheetMusicTypeListEditor } from "@/components/admin/SheetMusicTypeListEditor";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { requireAnyPermission } from "@/lib/auth/session";
-import { expandSheetMusicSources, listOptions, listSheetMusicTypes } from "@/lib/auth/store";
+import { expandSheetMusicSources, getCapoPolicy, listOptions, listSheetMusicTypes } from "@/lib/auth/store";
 import { classify, FORMAT_FOLDERS, foldersOwned, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
 import { describeSource, songCount } from "@/lib/sheet-music-type";
@@ -14,9 +15,9 @@ export const metadata = { title: "Configuration" };
 
 /**
  * /admin/configuration - the lists that shape the site. Each section shows
- * only for its own permission: the sheet music types offered
- * (manage_sheet_music), and the titles and instruments behind profiles
- * (manage_profiles).
+ * only for its own permission: the sheet music types offered and when a song
+ * needs capo sheet music (manage_sheet_music), and the titles and instruments
+ * behind profiles (manage_profiles).
  */
 export default async function ConfigurationPage() {
   const viewer = await requireAnyPermission("/admin/configuration", ["manage_profiles", "manage_sheet_music"]);
@@ -25,8 +26,9 @@ export default async function ConfigurationPage() {
   const managesSheetMusic = viewer.can("manage_sheet_music");
   const managesProfiles = viewer.can("manage_profiles");
   // eslint-disable-next-line prefer-const -- reassigned once the sources are expanded
-  let [sheetTypes, sheetDrive, titles, instruments] = await Promise.all([
+  let [sheetTypes, capoPolicy, sheetDrive, titles, instruments] = await Promise.all([
     managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
+    managesSheetMusic ? getCapoPolicy(viewer.env) : null,
     managesSheetMusic ? getSheetMusicSources() : null,
     managesProfiles ? listOptions(viewer.env, "titles") : null,
     managesProfiles ? listOptions(viewer.env, "instruments") : null,
@@ -74,6 +76,25 @@ export default async function ConfigurationPage() {
                   drive?.folders.filter((folder) => !folder.path.some((name) => FORMAT_FOLDERS.has(name.toLowerCase()))) ??
                   null
                 }
+              />
+            </Card>
+          </section>
+        ) : null}
+        {sheetTypes && capoPolicy ? (
+          <section id="capo" className="min-w-0 scroll-mt-24 lg:col-span-2">
+            <Card className="h-full p-4 sm:p-6">
+              <SectionLabel>Capo sheet music</SectionLabel>
+              <p className="mt-1 mb-5 text-sm text-muted">
+                A song needs capo sheet music when its key has this many flats or sharps. The Service Planner&apos;s
+                checks and the Dashboard&apos;s &ldquo;Sheet music to finish&rdquo; then ask for it; a song in any other
+                key is never held to it. The key is the song&apos;s own - the first on its row of the Sheet Music
+                Index - and one song can be set to always or never need it on its page in the Library.
+              </p>
+              <CapoPolicyForm
+                // A fresh form once the saved policy changes, so "changed" is measured from it.
+                key={JSON.stringify(capoPolicy)}
+                policy={capoPolicy}
+                types={sheetTypes.map(({ id, label }) => ({ id, label }))}
               />
             </Card>
           </section>

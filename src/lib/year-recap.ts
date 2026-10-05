@@ -1,6 +1,6 @@
 import { SORT_PRESETS, sortSummaries, summarize } from "@/lib/archive-view";
 import { churchMonth, churchYear } from "@/lib/service-time";
-import { buildSongRecords } from "@/lib/song-history";
+import { buildSongRecords, countsByWeek, usageCount } from "@/lib/song-history";
 import { normalizeKey, songKey } from "@/lib/song-list";
 import type { DatedService, ServiceSlot } from "@/types/song-list";
 
@@ -42,17 +42,23 @@ export interface YearRecap {
   differentSongs: number;
   /** Different hymnal numbers sung. */
   differentHymns: number;
-  /** Most sung first; ties go to the more recently sung. */
-  topSongs: Array<RecapSong & { count: number; key: string | null }>;
+  /**
+   * Most sung first; ties go to the more recently sung. An insert is counted
+   * by the week (usageCount), and `weekly` says so.
+   */
+  topSongs: Array<RecapSong & { count: number; weekly: boolean; key: string | null }>;
   /** Most used first. The last entry may be "other" keys counted together. */
   keys: Array<{ key: string; count: number; other?: true }>;
   /** Songs sung in each month, January first. null before records began or after today. */
   months: Array<number | null>;
   /** The month or months (0-11, tied) with the most songs sung; empty for an empty year. */
   busiestMonths: number[];
-  /** The song sung most in each kind of service. */
-  favourites: Record<ServiceSlot, (RecapSong & { count: number }) | null>;
-  /** Every song sung exactly once, most recent first, with when it was sung. */
+  /** The song sung most in each kind of service, counted as topSongs is. */
+  favourites: Record<ServiceSlot, (RecapSong & { count: number; weekly: boolean }) | null>;
+  /**
+   * Every song used exactly once (an insert sung through one week counts),
+   * oldest first, with when it was last sung.
+   */
   once: Array<RecapSong & { startsAt: string }>;
   /**
    * The song whose return this year followed the longest gap - measured
@@ -72,9 +78,11 @@ export function availableYears(services: DatedService[]): number[] {
 }
 
 /** The most sung song in these services; ties go to the latest sung. */
-function favourite(services: DatedService[]): (RecapSong & { count: number }) | null {
-  const [top] = sortSummaries(summarize(buildSongRecords(services), "all", 0), SORT_PRESETS.mostSung);
-  return top ? { id: top.id, title: top.title, number: top.number, count: top.count } : null;
+function favourite(services: DatedService[]): (RecapSong & { count: number; weekly: boolean }) | null {
+  const [top] = sortSummaries(summarize(buildSongRecords(services), "all", 0, usageCount), SORT_PRESETS.mostSung);
+  return top
+    ? { id: top.id, title: top.title, number: top.number, count: top.count, weekly: countsByWeek(top) }
+    : null;
 }
 
 /**
@@ -87,7 +95,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
   if (services.length === 0) return null;
 
   const records = buildSongRecords(services);
-  const summaries = sortSummaries(summarize(records, "all", now), SORT_PRESETS.mostSung);
+  const summaries = sortSummaries(summarize(records, "all", now, usageCount), SORT_PRESETS.mostSung);
 
   // Songs per month. Months before the records began, or not yet reached, have no figure.
   const firstEver = all[0];
@@ -170,6 +178,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
       title: summary.title,
       number: summary.number,
       count: summary.count,
+      weekly: countsByWeek(summary),
       key: summary.keys[0]?.key ?? null,
     })),
     keys,
@@ -180,7 +189,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
       PM: favourite(services.filter((service) => service.slot === "PM")),
     },
     once: [...once]
-      .sort((a, b) => Date.parse(b.last) - Date.parse(a.last))
+      .sort((a, b) => Date.parse(a.last) - Date.parse(b.last))
       .map(({ id, title, number, last }) => ({ id, title, number, startsAt: last })),
     longestWait,
     firstSong:

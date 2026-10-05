@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { songLinkGroupClasses } from "@/components/song-list/SongLink";
+import { NewTabNote, songLinkGroupClasses, songLinkProps } from "@/components/song-list/SongLink";
 import { Modal } from "@/components/ui/Modal";
 import { songListContent } from "@/content/song-list";
 import { formatLongDate } from "@/lib/service-time";
@@ -16,7 +16,8 @@ const count = (template: string, value: number) => template.replace("{count}", v
 
 /**
  * "and 110 more": opens the songs sung once that the year page does not
- * name, in a scrolling list, in the site's dialog (Modal).
+ * name, in a scrolling list, in the site's dialog (Modal) - oldest first, the
+ * order the page's own few are in.
  */
 export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: string }> }) {
   const [open, setOpen] = useState(false);
@@ -41,10 +42,11 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
           bare
         >
           <ol className="px-5 py-2">
-            {[...songs].reverse().map((song) => (
+            {songs.map((song) => (
               <li key={song.id} className="border-b border-line last:border-b-0">
                 <Link
                   href={songPath(songSlug(song.title))}
+                  {...songLinkProps}
                   className="group grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-3 py-2.5"
                 >
                   <span className="tnum text-sm font-medium text-muted">
@@ -52,6 +54,7 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
                   </span>
                   <span className={`min-w-0 text-[0.95rem] leading-snug text-ink ${songLinkGroupClasses}`}>
                     {song.title}
+                    <NewTabNote />
                   </span>
                   <span className="tnum whitespace-nowrap text-right text-xs text-muted">
                     {formatLongDate(song.startsAt)}

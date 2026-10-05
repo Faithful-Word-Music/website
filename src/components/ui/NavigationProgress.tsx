@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { pageLinkOf } from "@/components/ui/page-link";
 import { usePagePath } from "@/components/ui/use-page-path";
 
 /**
@@ -120,23 +121,14 @@ export function NavigationProgress() {
       );
     }
 
-    /** A plain left-click on a link to a different page of this site. */
+    /**
+     * A plain left-click on a link to a different page of this site
+     * (pageLinkOf). Same page - a #section, or just a ?query - is not a page
+     * load: the bar finishes when the path changes, so it only starts when it
+     * will. Nor is a click something else has already stopped.
+     */
     function onClick(event: MouseEvent) {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-        return;
-      }
-      const link = (event.target as Element | null)?.closest?.("a[href]");
-      if (!(link instanceof HTMLAnchorElement)) return;
-      if (link.target && link.target !== "_self") return;
-      if (link.hasAttribute("download")) return;
-
-      const url = new URL(link.href, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      // Same page - a #section, or just a ?query - is not a page load. The
-      // bar finishes when the path changes, so it only starts when it will.
-      if (url.pathname === window.location.pathname) return;
-
-      start();
+      if (!event.defaultPrevented && pageLinkOf(event)) start();
     }
 
     /** Back/Forward: only when it lands on another page, not a #section. */

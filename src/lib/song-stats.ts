@@ -1,5 +1,5 @@
 import { churchDay, churchMonth, churchYear, dayOfWeek } from "@/lib/service-time";
-import { buildSongRecords } from "@/lib/song-history";
+import { buildSongRecords, usageCount } from "@/lib/song-history";
 import { normalizeKey, songKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
@@ -52,8 +52,11 @@ export interface SongStats {
   first: string | null;
   last: string | null;
   /**
-   * Where it stands among every song by times sung: 1 + the songs sung more.
-   * null for a song sung fewer than twice, where a rank means nothing.
+   * Where it stands among every song by how often it is used: 1 + the songs
+   * used more. Uses, not performances (usageCount in song-history.ts): the
+   * week's insert, sung at all three services, counts once for the week, or
+   * every insert would outrank the hymns. null for a song used fewer than
+   * twice, where a rank means nothing.
    */
   rank: { position: number; of: number; joint: boolean } | null;
   /**
@@ -147,12 +150,17 @@ export function buildSongStats(
 
   let rank: SongStats["rank"] = null;
   if (count >= 2) {
-    const counts = buildSongRecords(ordered).map((record) => record.plays.length);
-    rank = {
-      position: 1 + counts.filter((other) => other > count).length,
-      of: counts.length,
-      joint: counts.filter((other) => other === count).length > 1,
-    };
+    const records = buildSongRecords(ordered);
+    const own = records.find((record) => record.id === id);
+    const uses = own ? usageCount(own, own.plays) : 0;
+    if (uses >= 2) {
+      const counts = records.map((record) => usageCount(record, record.plays));
+      rank = {
+        position: 1 + counts.filter((other) => other > uses).length,
+        of: counts.length,
+        joint: counts.filter((other) => other === uses).length > 1,
+      };
+    }
   }
 
   // The gaps are between DAYS sung, so a morning and evening on one Sunday is not a gap of zero.

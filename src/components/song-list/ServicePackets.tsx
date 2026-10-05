@@ -3,10 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
-import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
+import { ServiceSheetMusic, SheetTypeMenu } from "@/components/dashboard/ServiceSheetMusic";
 import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
-import type { ServicePacket } from "@/lib/dashboard/coming-up";
+import type { PacketTypeOption, ServicePacket } from "@/lib/dashboard/coming-up";
 import { PACKETS_ATTRIBUTE, PACKETS_STORAGE_KEY } from "@/lib/service-packets";
 
 /**
@@ -24,9 +24,18 @@ import { PACKETS_ATTRIBUTE, PACKETS_STORAGE_KEY } from "@/lib/service-packets";
  *
  * Visitors, and people with no sheet music types assigned, see nothing here;
  * for everyone else a service with none of their sheet music says so, quietly.
+ *
+ * Someone who looks after the sheet music (manage_sheet_music) also gets
+ * `types`: every type each service can be printed in, offered from three dots
+ * beside the button - or on their own, when they have no types themselves.
  */
 
-export type Packets = { assigned: false } | { assigned: true; packets: Record<string, ServicePacket | null> };
+/** Every sheet music type each service can be printed in, by service id. */
+type PacketTypes = Record<string, PacketTypeOption[]>;
+
+export type Packets =
+  | { assigned: false; types?: PacketTypes }
+  | { assigned: true; packets: Record<string, ServicePacket | null>; types?: PacketTypes };
 type Stored = { userId: string; packets: Packets };
 
 const CHANGED = "fwm:service-packets-changed";
@@ -73,11 +82,12 @@ function subscribe(onChange: () => void) {
 }
 
 function parse(data: unknown): Packets | null {
-  const value = data as { assigned?: unknown; packets?: unknown } | null;
+  const value = data as { assigned?: unknown; packets?: unknown; types?: unknown } | null;
   if (!value) return null;
-  if (value.assigned === false) return { assigned: false };
+  const types = value.types && typeof value.types === "object" ? { types: value.types as PacketTypes } : {};
+  if (value.assigned === false) return { assigned: false, ...types };
   if (value.packets && typeof value.packets === "object") {
-    return { assigned: true, packets: value.packets as Record<string, ServicePacket | null> };
+    return { assigned: true, packets: value.packets as Record<string, ServicePacket | null>, ...types };
   }
   return null;
 }
@@ -153,25 +163,48 @@ export function ServicePacketSlot({
       </div>
     );
   }
-  if (!packets.assigned || !(serviceId in packets.packets)) return null;
+  const types = packets.types?.[serviceId] ?? [];
+  if (!packets.assigned) {
+    // No types of their own, but they print for others: the types alone.
+    return types.length > 0 ? (
+      <div className={cn("mt-auto pt-5", className)}>
+        <NoServiceSheetMusic types={types} own={false} />
+      </div>
+    ) : null;
+  }
+  if (!(serviceId in packets.packets)) return null;
   const packet = packets.packets[serviceId];
 
   return (
     <div className={cn("mt-auto pt-5", className)}>
       {packet ? (
-        <ServiceSheetMusic href={packet.href} songs={packet.songs} showLabels={packet.showLabels} label={label} />
+        <ServiceSheetMusic href={packet.href} songs={packet.songs} showLabels={packet.showLabels} label={label} types={types} />
       ) : (
-        <NoServiceSheetMusic />
+        <NoServiceSheetMusic types={types} />
       )}
     </div>
   );
 }
 
-/** In place of the button, when none of the service's songs has the person's sheet music. */
-export function NoServiceSheetMusic() {
+/**
+ * In place of the button, when none of the service's songs has the person's
+ * sheet music - with the three dots still there for someone who prints for
+ * others (`types`). `own={false}`: they have no types of their own at all, so
+ * it names what the dots offer instead of saying theirs is missing.
+ */
+export function NoServiceSheetMusic({ types = [], own = true }: { types?: PacketTypeOption[]; own?: boolean }) {
+  const copy = dashboardContent.comingUp.packet;
   return (
-    <p className="flex min-h-14 items-center justify-center rounded-xl border border-dashed border-line px-4 text-center text-sm text-muted">
-      {dashboardContent.comingUp.packet.none}
-    </p>
+    <div className="flex min-h-14 items-stretch overflow-hidden rounded-xl border border-dashed border-line">
+      <p className="flex min-w-0 flex-1 items-center justify-center px-4 text-center text-sm text-muted">
+        {own ? copy.none : copy.types.only}
+      </p>
+      {types.length > 0 ? (
+        <>
+          <span aria-hidden="true" className="my-2.5 w-px shrink-0 bg-line" />
+          <SheetTypeMenu types={types} className="w-12 hover:bg-paper" />
+        </>
+      ) : null}
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { ListCard, ListRow } from "@/components/dashboard/DashboardSection";
-import { songLinkClasses } from "@/components/song-list/SongLink";
+import { NewTabNote, songLinkClasses, songLinkProps } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
@@ -18,8 +18,9 @@ function SongTitle({ title, number, slug }: { title: string; number?: string | n
   return (
     <span className="text-[0.95rem] text-ink">
       {number ? <span className="tnum mr-2 font-display text-gold-dark">{number}</span> : null}
-      <Link href={songPath(slug)} className={songLinkClasses}>
+      <Link href={songPath(slug)} {...songLinkProps} className={songLinkClasses}>
         {title}
+        <NewTabNote />
       </Link>
     </span>
   );
@@ -69,6 +70,8 @@ function gapLabel(gap: SheetGap): string {
       return gaps.noFiles;
     case "no-main-type":
       return gaps.noMainType.replace("{type}", gap.type);
+    case "no-capo":
+      return gaps.noCapo.replace("{type}", gap.type);
     case "missing-pdf":
       return gaps.missingPdf.replace("{types}", gap.types.join(", "));
     case "rights":
@@ -135,8 +138,9 @@ export function QuarterGlance({ glance, className }: { glance: Glance; className
         {glance.mostSung ? (
           <p className="mt-0.5 text-sm text-muted">
             {quarter.mostSung.split("{title}")[0]}
-            <Link href={songPath(glance.mostSung.slug)} className={cn(songLinkClasses, "text-ink")}>
+            <Link href={songPath(glance.mostSung.slug)} {...songLinkProps} className={cn(songLinkClasses, "text-ink")}>
               {glance.mostSung.title}
+              <NewTabNote />
             </Link>
             {quarter.mostSung.split("{title}")[1].replace("{count}", String(glance.mostSung.count))}
           </p>

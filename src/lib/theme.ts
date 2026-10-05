@@ -9,6 +9,21 @@
 
 export type Theme = "light" | "dark";
 
+/** The page's paper colour in each theme - --color-paper in globals.css. */
+export const PAPER_LIGHT = "#faf9f6";
+export const PAPER_DARK = "#141412";
+
+/**
+ * The page's background, inline in <head> (see layout.tsx) so it is there
+ * before the stylesheet has loaded. Until something paints, a browser shows
+ * the bare canvas - and the installed app on an iPhone showed it, light,
+ * between its dark launch picture and the dark loading screen. With this (and
+ * the color-scheme meta beside it) the canvas is the theme's paper from the
+ * first frame. Written with :where(), so it has no weight of its own and
+ * globals.css takes over the moment it arrives.
+ */
+export const canvasStyle = `:where(html){background:${PAPER_LIGHT}}@media (prefers-color-scheme:dark){:where(html:not([data-theme="light"])){background:${PAPER_DARK}}}:where(html[data-theme="dark"]){background:${PAPER_DARK}}`;
+
 /** The localStorage key holding the visitor's explicit choice. */
 export const THEME_STORAGE_KEY = "theme";
 
