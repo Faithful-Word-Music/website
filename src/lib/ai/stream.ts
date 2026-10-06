@@ -7,6 +7,11 @@
  *            words ("Checking the song history…"). Never a tool's name, its
  *            input or what it returned.
  *   text     the next piece of the answer
+ *   data     something the feature itself tells its page beside the answer: a
+ *            name the feature chose and a value only it understands (Conductor
+ *            sends which saved conversation an answer belongs to, and a card
+ *            for something it proposes). The feature checks the value itself;
+ *            still never a tool's name, input or result.
  *   done     the answer is complete
  *   error    it failed: a code (src/lib/ai/errors.ts) and wording safe to show
  *
@@ -16,6 +21,7 @@
 export type AiStreamEvent =
   | { type: "status"; key: string }
   | { type: "text"; delta: string }
+  | { type: "data"; name: string; value: unknown }
   | { type: "done" }
   | { type: "error"; code: string; message: string };
 
@@ -43,6 +49,8 @@ export function parseStreamLine(line: string): AiStreamEvent | null {
       return typeof event.key === "string" ? { type: "status", key: event.key } : null;
     case "text":
       return typeof event.delta === "string" ? { type: "text", delta: event.delta } : null;
+    case "data":
+      return typeof event.name === "string" ? { type: "data", name: event.name, value: event.value ?? null } : null;
     case "done":
       return { type: "done" };
     case "error":

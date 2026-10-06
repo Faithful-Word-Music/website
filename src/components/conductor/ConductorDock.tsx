@@ -15,7 +15,8 @@ import {
 
 import { useAccount } from "@/components/account/AccountContext";
 import { ConductorChat } from "@/components/conductor/ConductorChat";
-import { ConductorMark, NewChatIcon } from "@/components/conductor/ConductorMark";
+import { ConductorHistory } from "@/components/conductor/ConductorHistory";
+import { ConductorMark, HistoryIcon, NewChatIcon } from "@/components/conductor/ConductorMark";
 import { useConductor } from "@/components/conductor/conductor-store";
 import { cn } from "@/components/ui/cn";
 import { modalDialogFocusClasses, modalDialogProps, useModalDialog } from "@/components/ui/use-modal-dialog";
@@ -127,32 +128,61 @@ function storeWidth(width: number | null) {
 const iconButton =
   "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors not-disabled:hover:bg-paper not-disabled:hover:text-ink disabled:opacity-40";
 
-function PanelHeader({ headingId, onClose }: { headingId: string; onClose: () => void }) {
+/** Which of its two faces the panel is showing: the conversation, or the list of saved ones. */
+type PanelView = "chat" | "history";
+
+function PanelHeader({
+  headingId,
+  view,
+  onView,
+  onClose,
+}: {
+  headingId: string;
+  view: PanelView;
+  onView: (view: PanelView) => void;
+  onClose: () => void;
+}) {
   const { userId } = useAccount();
   const { session, reset } = useConductor(userId);
+  const listing = view === "history";
 
   return (
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-line py-2 pl-4 pr-2">
+    // A container, so the header fits itself to the panel's own width (it is dragged), not the window's.
+    <header className="@container flex shrink-0 items-center justify-between gap-2 border-b border-line py-2 pl-4 pr-2">
       <h2 id={headingId} className="flex min-w-0 items-center gap-2.5 font-display text-xl text-ink">
         <ConductorMark className="shrink-0 text-gold" />
-        <span className="truncate">{copy.name}</span>
+        <span className="truncate">{listing ? copy.history.heading : copy.name}</span>
       </h2>
       <div className="flex shrink-0 items-center">
         <Link
           href="/conductor"
           aria-label={copy.actions.openFull}
           title={copy.actions.openFull}
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm text-muted transition-colors hover:bg-paper hover:text-ink"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted transition-colors hover:bg-paper hover:text-ink"
         >
-          {copy.actions.openFullShort}
+          {/* Its words only where the panel has room for them beside the other controls. */}
+          <span className="hidden @[26rem]:inline">{copy.actions.openFullShort}</span>
           <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none">
             <path d="M6 3h7v7M13 3L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </Link>
         <button
           type="button"
-          onClick={reset}
-          disabled={session.messages.length === 0}
+          onClick={() => onView(listing ? "chat" : "history")}
+          aria-pressed={listing}
+          aria-label={listing ? copy.history.back : copy.history.open}
+          title={listing ? copy.history.back : copy.history.open}
+          className={cn(iconButton, listing && "bg-paper text-ink")}
+        >
+          <HistoryIcon />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            reset();
+            onView("chat");
+          }}
+          disabled={!listing && session.messages.length === 0 && !session.loading}
           aria-label={copy.actions.newConversation}
           title={copy.actions.newConversation}
           className={iconButton}
@@ -189,6 +219,7 @@ function Drawer({ onClosed }: { onClosed: () => void }) {
   const viewport = useViewportWidth();
   const [preferred, setPreferred] = useState<number | null>(() => readStoredWidth());
   const [dragging, setDragging] = useState(false);
+  const [view, setView] = useState<PanelView>("chat");
   const frame = useRef(0);
   const live = useRef(0);
   const headingId = useId();
@@ -311,8 +342,8 @@ function Drawer({ onClosed }: { onClosed: () => void }) {
         />
       </div>
 
-      <PanelHeader headingId={headingId} onClose={onClose} />
-      <ConductorChat variant="panel" autoFocus />
+      <PanelHeader headingId={headingId} view={view} onView={setView} onClose={onClose} />
+      {view === "history" ? <ConductorHistory onDone={() => setView("chat")} className="flex-1" /> : <ConductorChat variant="panel" autoFocus />}
     </aside>
   );
 }
@@ -342,6 +373,7 @@ function Sheet({ onClosed }: { onClosed: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const pull = useRef<{ startY: number; dy: number } | null>(null);
+  const [view, setView] = useState<PanelView>("chat");
   const headingId = useId();
   useModalDialog(dialogRef);
 
@@ -447,9 +479,9 @@ function Sheet({ onClosed }: { onClosed: () => void }) {
           <div className="flex justify-center pb-1.5 pt-3">
             <span aria-hidden="true" className="h-1 w-10 rounded-full bg-staff" />
           </div>
-          <PanelHeader headingId={headingId} onClose={onClose} />
+          <PanelHeader headingId={headingId} view={view} onView={setView} onClose={onClose} />
         </div>
-        <ConductorChat variant="panel" />
+        {view === "history" ? <ConductorHistory onDone={() => setView("chat")} className="flex-1" /> : <ConductorChat variant="panel" />}
       </div>
     </dialog>
   );

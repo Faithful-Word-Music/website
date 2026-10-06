@@ -72,8 +72,9 @@ export const config = {
     "/dashboard/:path*",
     "/service-planner/:path*",
     "/conductor/:path*",
-    // Conductor's questions: answered only for a signed-in person holding use_ai.
-    "/api/conductor",
+    // Conductor's questions, its saved conversations and the cards it shows: only for a signed-in
+    // person holding use_ai, and each conversation only for its owner.
+    "/api/conductor/:path*",
     // Generate with AI: only for a signed-in person holding manage_service_plans and use_ai.
     "/api/service-planner/:path*",
     "/availability/:path*",

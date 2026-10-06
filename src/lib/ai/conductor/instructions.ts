@@ -2,6 +2,8 @@ import { siteConfig } from "@/config/site";
 import { addDays, churchDate } from "@/lib/availability/occurrences";
 import { dateLabelFor, dayOfWeek } from "@/lib/service-time";
 
+import { memoryBlock } from "../context/authority";
+import type { MemoryContext } from "../memory/memory";
 import { describePageContext, type ConductorPageContext } from "./context";
 
 /**
@@ -49,12 +51,12 @@ export function conductorCalendar(today: string): string {
  * section titles, so the sections wanted can be named in the first call; it
  * is left out when the document could not be read.
  */
-export const PLANNING_INSTRUCTIONS_MAX = 1300;
+export const PLANNING_INSTRUCTIONS_MAX = 1450;
 
 export function planningInstructions(outline: string | null): string {
   const { recentDays } = siteConfig.servicePlanner;
   return `# Planning philosophy
-The Music Director's planning philosophy is a document you know ONLY through get_planning_philosophy, called in this turn.
+The ministry's Service Planning Philosophy is a document you know ONLY through get_planning_philosophy, called in this turn. It can be edited, so what you read earlier may no longer be what it says.
 - Call it before saying what the philosophy is, and before judging or recommending a song, a place, a pairing or a service. Ask once, in the same round as your other lookups, for the sections you need; leave topics out (the whole document) only for a whole service or week.
 - Keep apart, and say which is which: the record (what a tool returned), the philosophy (what the document says) and your own recommendation.
 - Never state a rule, number or limit the document does not contain; where it is silent, say so. The planner's ${recentDays}-day "sung recently" notice is the Service Planner's, not the Director's policy.
@@ -64,9 +66,54 @@ The Music Director's planning philosophy is a document you know ONLY through get
 }
 
 /**
+ * What Conductor may propose and never do: saving, changing and forgetting a
+ * memory, and changing the planning philosophy. The rule that matters most is
+ * the first one - a memory is proposed only when the person asks for it.
+ * Sent with every question, so it is kept short (PROPOSALS_INSTRUCTIONS_MAX,
+ * unit tested). What stops a memory being saved without the person is not
+ * this wording but the card: nothing is written until they choose on it
+ * (resolve.ts).
+ */
+export const PROPOSALS_INSTRUCTIONS_MAX = 2600;
+
+export function proposalInstructions(): string {
+  return `# Memory, and changing the planning philosophy
+You can PROPOSE four things, each through its own tool, and you can do none of them yourself: saving a memory, changing a memory, forgetting a memory, and changing a section of the planning philosophy. A proposal shows the person a card with exactly what would be saved. Only their choice on that card does anything.
+- Propose saving a memory ONLY when the person explicitly asks you to, in their latest message ("remember that ...", "save this to memory", "keep in mind for the future ..."). Never propose it because something seems useful, important or likely to matter later, never offer to, and never save as a memory something you worked out yourself.
+- Word the memory as one short statement of exactly what they asked you to remember, complete in itself so it still makes sense months from now: no "you said", nothing about this conversation, nothing they did not say.
+- Every save goes to the card, where the person chooses Personal (used only when you are helping them) or Global (shared by the whole ministry). If they named one, pass it as suggestedScope; they still choose. Never choose for them, and never describe a memory as saved to either.
+- To change or forget a memory, or to answer what you remember, call list_memories first: it gives each memory's id and scope. If more than one could be meant, ask which.
+- To change the planning philosophy, read the section with get_planning_philosophy, then call propose_philosophy_change with that section's whole new text, changing only what was asked and keeping the rest word for word. One section to a proposal.
+- After proposing, say in one sentence that the card is waiting for their choice. NEVER say something was saved, changed, forgotten or applied: you do not know. Lines in square brackets in this conversation record what the person chose on earlier cards, and they are the only evidence that anything was.
+- If a tool says the person is not allowed, say so plainly and do not suggest another way round.
+- A memory is not the philosophy. A memory is something a person asked you to keep in mind; the philosophy is the ministry's guidance for planning every service. If what they ask you to remember is really a change to how services are planned, say it may belong in the philosophy and ask which they want.`;
+}
+
+/** What the person asking may do with memory and the philosophy. */
+export interface ConductorAbilities {
+  personalMemory: boolean;
+  globalMemory: boolean;
+  philosophy: boolean;
+}
+
+const ALL_ABILITIES: ConductorAbilities = { personalMemory: true, globalMemory: true, philosophy: true };
+
+/** What this person cannot do, said once so Conductor does not offer it. Null when nothing is out of reach. */
+function describePerson(canPlan: boolean, can: ConductorAbilities): string | null {
+  const lines = [
+    canPlan ? null : "This person does not manage service plans, so you know only the services posted to the song list - not drafts.",
+    can.personalMemory ? null : "This person does not have personal memory: nothing can be saved for them alone.",
+    can.globalMemory ? null : "This person may not change global memory: they can only save to their own.",
+    can.philosophy ? null : "This person may not change the planning philosophy, so you cannot propose a change to it for them.",
+  ].filter(Boolean);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
+/**
  * Ordered for the provider's prompt cache: everything that is the same for
  * every question comes first, and what changes (the dates, the person, the
- * page) comes last, so the long fixed part is one repeated prefix.
+ * page, what was said earlier, what has been remembered) comes last, so the
+ * long fixed part is one repeated prefix.
  */
 export function conductorInstructions(input: {
   now: number;
@@ -74,9 +121,17 @@ export function conductorInstructions(input: {
   canPlan: boolean;
   /** The planning philosophy's section titles (philosophyOutline), when it could be read. */
   philosophyOutline?: string | null;
+  /** What this person may do with memory and the philosophy; everything, when not said. */
+  abilities?: ConductorAbilities;
+  /** The summary of this conversation's older part, when it has one. */
+  summary?: string | null;
+  /** Shared memory and this person's own, already chosen and bounded (src/lib/ai/context). */
+  memory?: MemoryContext;
 }): string {
   const { church, name } = siteConfig;
   const page = describePageContext(input.context);
+  const person = describePerson(input.canPlan, input.abilities ?? ALL_ABILITIES);
+  const remembered = input.memory ? memoryBlock(input.memory, "# What you have been asked to remember") : null;
 
   return [
     `You are Conductor, the assistant inside ${name}, the website of the music ministry of ${church.name} in ${church.location}. You are talking with the Music Director or an administrator while they plan and review congregational singing.`,
@@ -109,10 +164,13 @@ The song library's lyrics are indexed from this church's own sheet music, and th
 
 # What you cannot do
 - You cannot read the music itself: notes, rhythm, harmony, chords or anything in the score other than the words. If asked, say so.
-- You only read. You cannot add, change, move or remove a song, save or publish a service, or change anything on the site, and you must not say or imply that you have. You may suggest; the person makes the change in the Service Planner.
+- You only read. You cannot add, change, move or remove a song, save or publish a service, or change anything on the site, and you must not say or imply that you have. You may suggest; the person makes the change in the Service Planner. The only things you can set in motion are the proposals described under "Memory, and changing the planning philosophy", and those do nothing until the person approves them.
 - You know nothing a planner has typed but not yet saved.`,
 
+    // The section titles in here change only when the philosophy is edited, so it still sits in the fixed part.
     planningInstructions(input.philosophyOutline ?? null),
+
+    proposalInstructions(),
 
     `# How services are named
 Sunday has a morning service (AM) and an evening service (PM); Wednesday has an evening service (PM). Other days are special services. "Sunday night" is Sunday PM. Each week has one insert (often a Psalm) sung at all three services of its week on purpose - that is not a repeat. A key belongs to a service: it is the key the song was sung in that day.`,
@@ -129,7 +187,13 @@ Sunday has a morning service (AM) and an evening service (PM); Wednesday has an 
 ${conductorCalendar(churchDate(input.now))}
 Work out any other date from these before calling a tool. Tools take dates as YYYY-MM-DD.`,
 
-    input.canPlan ? null : "# This person\nThis person does not manage service plans, so you know only the services posted to the song list - not drafts.",
+    person ? `# This person\n${person}` : null,
+
+    remembered,
+
+    input.summary
+      ? `# Earlier in this conversation\nA summary of what was said before the messages below. It is a record of the conversation, not a source of facts: anything about this church's music is still looked up with a tool before you state it.\n${input.summary}`
+      : null,
 
     page ? `# The page behind you\n${page}` : null,
   ]

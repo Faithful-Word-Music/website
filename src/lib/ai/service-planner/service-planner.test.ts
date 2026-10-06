@@ -12,7 +12,9 @@ import type { DatedService } from "@/types/song-list";
 import { buildBrief, buildShortlist, describeCandidate, NO_LIBRARY, SHORTLIST, type LibraryFindings, type PlanContext } from "./brief";
 import { linkLibrary } from "./library";
 import { isAiLocked, lockedPlaces, locksAfterGeneration, openPlaces, toggleAiLock } from "./locks";
-import { PLAN_LIMITS, planWithAi, type PlanDeps, type PlanViewer } from "./plan";
+import { CONTEXT_SOURCES } from "../context/authority";
+import { NO_MEMORY, type MemoryContext } from "../memory/memory";
+import { PLAN_LIMITS, planWithAi, type PlanDeps, type PlanStandingContext, type PlanViewer } from "./plan";
 import { generatePrompt, generateSchema, plannerInstructions, replacePrompt, withCorrections } from "./prompt";
 import { planAiMessage, planAiRequestSchema, planAiStatus, type PlanAiRequest } from "./protocol";
 import { christmasEligible, serviceSeason } from "./season";
@@ -636,11 +638,17 @@ describe("holding the answer to the rules", () => {
 
 type Answer = unknown | { fails: AiErrorCode };
 
-function harness(answers: Answer[], options: { context?: PlanContext | null; library?: LibraryFindings; philosophy?: string | null; recent?: number; loadThrows?: boolean } = {}) {
+function harness(
+  answers: Answer[],
+  options: { context?: PlanContext | null; library?: LibraryFindings; philosophy?: string | null; memory?: MemoryContext; recent?: number; loadThrows?: boolean } = {},
+) {
   const seen = { asked: [] as Array<{ prompt: string; instructions: string }>, loads: 0, requests: 0, failed: [] as AiErrorCode[] };
   const deps: PlanDeps<PlanViewer> = {
     hymnal: HYMNAL,
-    philosophy: async () => (options.philosophy === undefined ? "## Purpose\n\nSing out." : options.philosophy),
+    context: async () => ({
+      philosophy: options.philosophy === undefined ? "## Purpose\n\nSing out." : options.philosophy,
+      memory: options.memory ?? NO_MEMORY,
+    }),
     load: async () => {
       seen.loads += 1;
       if (options.loadThrows) throw new Error("database down");
@@ -734,6 +742,53 @@ describe("a request to plan with AI", () => {
     expect(seen.asked[0].prompt).toContain("Lean toward salvation.");
     expect(seen.asked[0].prompt).toContain("Wednesday evening");
     expect(seen.asked[0].prompt).toContain('"inThisWeek":["Wednesday evening"]');
+  });
+
+  it("gives the model the memories that apply, each under its own scope, below the philosophy", async () => {
+    const remembered = (id: number, scope: "personal" | "global", text: string) => ({
+      id,
+      scope,
+      ownerUserId: scope === "personal" ? "user_1" : null,
+      text,
+      category: null,
+      createdBy: "user_1",
+      updatedBy: "user_1",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const memory: MemoryContext = {
+      global: [remembered(1, "global", "The congregation knows hymn 95 extremely well.")],
+      personal: [remembered(2, "personal", "I like hymn 95 as an opening hymn.")],
+    };
+    const cases: Array<[PlanAiRequest, Answer]> = [
+      [request(usual()), good()],
+      [request(usual(), { mode: "replace", target: 0 }), { suggestions: [{ songId: id("Amazing Grace"), reason: "Familiar." }] }],
+    ];
+    for (const [sent, answer] of cases) {
+      const { deps, seen } = harness([answer], { memory });
+      await planWithAi(director, sent, deps);
+      const { prompt, instructions } = seen.asked[0];
+      expect(prompt).toContain("MEMORY");
+      expect(prompt).toContain("Global memory (shared by the whole ministry):\n- The congregation knows hymn 95 extremely well.");
+      expect(prompt).toContain("Personal memory (saved by the person you are helping, for themselves only):\n- I like hymn 95 as an opening hymn.");
+      // How to weigh it travels with it: never above a lock, a hard rule or the philosophy.
+      expect(prompt).toContain("They never outrank the limits of the request, a lock, a hard rule or the planning philosophy.");
+      const at = (text: string) => instructions.indexOf(text);
+      expect(at("planning philosophy, given below")).toBeLessThan(at("MEMORY, when there is any"));
+      expect(at("MEMORY, when there is any")).toBeLessThan(at("Your own judgement"));
+    }
+  });
+
+  it("says nothing about memory when there is none, and can never be handed a conversation", async () => {
+    const { deps, seen } = harness([good()]);
+    await planWithAi(director, request(usual()), deps);
+    expect(seen.asked[0].prompt).not.toContain("MEMORY");
+    // What a planning request plans from: the philosophy and memory. Nothing said to Conductor has a place in it.
+    const standing: PlanStandingContext = { philosophy: "## Purpose\n\nSing out.", memory: NO_MEMORY };
+    expect(Object.keys(standing).sort()).toEqual(["memory", "philosophy"]);
+    for (const feature of ["generate_service_plan", "replace_song"] as const) {
+      expect(CONTEXT_SOURCES[feature]).toEqual({ philosophy: "whole", globalMemory: true, personalMemory: true, conversation: false });
+    }
   });
 
   it("asks once more, saying what was wrong, when the answer breaks a rule", async () => {

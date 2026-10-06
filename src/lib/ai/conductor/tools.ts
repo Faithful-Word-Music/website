@@ -1,6 +1,6 @@
 import "server-only";
 
-import { tool } from "ai";
+import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 
 import type { ConductorStatusKey } from "@/content/conductor";
@@ -12,8 +12,15 @@ import { getSongSections, listLibrarySongs, type LibrarySong } from "@/lib/libra
 import { loadWorkspace } from "@/lib/service-planner/load";
 import { serviceAnchor } from "@/lib/site-search";
 
+import { insertAction } from "../conversations/store";
+import { MEMORY_LIMITS, normalizeMemoryText, searchMemories, type Memory } from "../memory/memory";
+import { canUsePersonalMemory, canWriteMemory, listMemories, writableScopes } from "../memory/service";
+import { memoryDeps } from "../memory/store";
 import { loadPlanningPhilosophy } from "../planning/load";
-import { PHILOSOPHY_TOPICS_MAX, planningGuidance } from "../planning/philosophy";
+import { PHILOSOPHY_MAX_CHARS, PHILOSOPHY_TOPICS_MAX, planningGuidance, selectSections } from "../planning/philosophy";
+import { checkPhilosophy, replaceSection } from "../planning/revisions";
+import { emitAiStreamData } from "../service";
+import { ACTION_EVENT, ACTIONS_PER_ANSWER, type ConductorAction, type ConductorActionKind, type ConductorActionPayloads } from "./actions";
 import { loadConductorData } from "./data";
 import {
   checkSongForService,
@@ -39,8 +46,11 @@ import { findLibrarySong, lyricMatches, NOT_INDEXED, similarMatches, songLyrics,
  * Music. Each is one question the site can already answer - a thin, typed
  * door onto facts.ts, which uses the same functions the pages do.
  *
- *   - Read-only. Nothing here can create, change, publish or delete; there
- *     is no query tool, only these questions.
+ *   - Nothing here can create, change, publish or delete. Almost all of them
+ *     only read; there is no query tool, only these questions. The few that
+ *     PROPOSE (a memory, a change to the philosophy) write one thing: a
+ *     proposal waiting for the person, which does nothing until they approve
+ *     it on its card (proposingTools, below; resolve.ts).
  *   - Inputs are checked (zod) before a tool runs; a bad one is refused and
  *     the model is told, never guessed around.
  *   - Results are small and capped (clampToolResult), so a question cannot
@@ -48,7 +58,11 @@ import { findLibrarySong, lyricMatches, NOT_INDEXED, similarMatches, songLyrics,
  *   - Permissions are the person's own: drafts and planner checks need
  *     manage_service_plans as well as use_ai (data.ts, check_service_plan).
  *
- * Three families so far:
+ * Four families (and the proposals):
+ *
+ *   memory        what people have explicitly asked to be remembered, shared
+ *                 and personal (src/lib/ai/memory), each with its scope
+ *
  *
  *   the records   what was sung, what is planned, statistics, planner checks
  *                 (facts.ts, over the site's own read layer)
@@ -101,6 +115,11 @@ const TOOL_STATUS = {
   search_songs_by_theme: "themes",
   find_similar_songs: "themes",
   get_planning_philosophy: "philosophy",
+  list_memories: "memory",
+  propose_memory_save: "proposal",
+  propose_memory_update: "proposal",
+  propose_memory_delete: "proposal",
+  propose_philosophy_change: "proposal",
 } as const satisfies Record<string, ConductorStatusKey>;
 
 export type ConductorToolName = keyof typeof TOOL_STATUS;
@@ -112,7 +131,180 @@ export function conductorToolStatus(toolName: string): ConductorStatusKey | null
 /** What a tool says when the site's own data could not be read: the model then says so rather than guessing. */
 const UNAVAILABLE = { unavailable: true, note: "This could not be read from the site just now. Say so; do not guess." };
 
-export function conductorTools(viewer: Viewer) {
+/**
+ * The saved conversation an answer belongs to, for the tools that propose
+ * something: where a proposal is recorded, and the proposals made so far in
+ * this answer (conductor.ts ties them to the answer once it is stored).
+ */
+export interface ConductorTurnState {
+  conversationId: string;
+  proposed: ConductorAction[];
+}
+
+/** What a propose tool answers once its card is up. The model is told, in so many words, that nothing has happened. */
+const AWAITING = {
+  awaitingThePerson: true,
+  note: "A card now shows the person exactly this, and NOTHING has been saved or changed. Only their choice on the card does that. Tell them in one sentence that the card is waiting for their choice. Do not say or imply that it was saved, changed, forgotten or applied.",
+};
+
+const NOT_ALLOWED = (what: string) => ({ notAllowed: true, note: `This person is not allowed to ${what}. Tell them so plainly; nothing was proposed.` });
+
+export function conductorTools(viewer: Viewer, turn?: ConductorTurnState): ToolSet {
+  return { ...readingTools(viewer), ...(turn ? proposingTools(viewer, turn) : {}) };
+}
+
+/**
+ * The tools that propose - and write nothing but the proposal. Each records a
+ * waiting row of conductor_actions and sends its card to the page; what the
+ * card proposes is carried out only by resolveAction(), on the person's own
+ * choice and with their permissions checked again.
+ *
+ * A tool the person could never use is not offered at all: with no memory
+ * permission there are no memory proposals, and without
+ * manage_planning_philosophy there is no philosophy proposal.
+ */
+function proposingTools(viewer: Viewer, turn: ConductorTurnState): ToolSet {
+  const memory = memoryDeps(viewer.env);
+  const scopes = writableScopes(viewer);
+
+  /** Records a proposal and shows its card; false when it could not be recorded. */
+  const propose = async <K extends ConductorActionKind>(kind: K, payload: ConductorActionPayloads[K]) => {
+    if (turn.proposed.length >= ACTIONS_PER_ANSWER) {
+      return { tooMany: true, note: `Only ${ACTIONS_PER_ANSWER} cards can be shown in one answer. Ask the person to settle these first.` };
+    }
+    try {
+      const action = await insertAction(viewer.env, viewer.userId, turn.conversationId, kind, payload);
+      if (!action) return UNAVAILABLE;
+      turn.proposed.push(action);
+      emitAiStreamData(ACTION_EVENT, action);
+      return AWAITING;
+    } catch (error) {
+      console.error(`[conductor] Could not record a ${kind} proposal:`, error instanceof Error ? error.message : "unknown error");
+      return UNAVAILABLE;
+    }
+  };
+
+  /** A memory this person may change, or what to tell the model instead. */
+  const changeable = async (memoryId: number) => {
+    try {
+      const found = await memory.get(viewer.userId, memoryId);
+      // Someone else's personal memory is never found; without personal memory, neither is one's own.
+      if (!found || (found.scope === "personal" && !canUsePersonalMemory(viewer))) {
+        return { ok: false as const, answer: { found: false, note: "There is no such memory. Call list_memories for the ids." } };
+      }
+      if (!canWriteMemory(viewer, found.scope)) {
+        return { ok: false as const, answer: NOT_ALLOWED(found.scope === "global" ? "change global memory" : "change personal memory") };
+      }
+      return { ok: true as const, memory: found };
+    } catch (error) {
+      console.error("[conductor] Could not read a memory:", error instanceof Error ? error.message : "unknown error");
+      return { ok: false as const, answer: UNAVAILABLE };
+    }
+  };
+
+  const memoryId = z.number().int().positive().describe("The memory's id, from list_memories.");
+  const memoryText = z
+    .string()
+    .trim()
+    .min(3)
+    .max(MEMORY_LIMITS.textChars)
+    .describe("The memory as one short statement, complete in itself, saying only what the person asked to be remembered.");
+
+  const memoryTools: ToolSet =
+    scopes.length === 0
+      ? {}
+      : {
+          propose_memory_save: tool({
+            description:
+              'Show the person a card proposing to SAVE a memory. Use it ONLY when their latest message explicitly asks you to remember something ("remember that ...", "save this to memory"). It saves nothing: the person chooses Personal, Shared or Cancel on the card. Never use it because something merely seems worth keeping.',
+            inputSchema: z.object({
+              text: memoryText,
+              suggestedScope: z
+                .enum(["personal", "global"])
+                .optional()
+                .describe('Only if the person said which: "personal" (for them alone) or "global" (shared by the ministry). It is preselected on the card; they still choose.'),
+            }),
+            execute: async (input) => {
+              const text = normalizeMemoryText(input.text);
+              if (text === null) return { invalid: true, note: `A memory is one short statement, ${MEMORY_LIMITS.textChars} characters at most.` };
+              return propose("memory_save", { text, suggestedScope: input.suggestedScope ?? null });
+            },
+          }),
+
+          propose_memory_update: tool({
+            description:
+              "Show the person a card proposing to CHANGE the text of a saved memory, when they explicitly ask for it to be changed. It changes nothing until they approve it on the card. Call list_memories first for the id.",
+            inputSchema: z.object({ memoryId, text: memoryText }),
+            execute: async (input) => {
+              const text = normalizeMemoryText(input.text);
+              if (text === null) return { invalid: true, note: `A memory is one short statement, ${MEMORY_LIMITS.textChars} characters at most.` };
+              const found = await changeable(input.memoryId);
+              if (!found.ok) return found.answer;
+              if (found.memory.text === text) return { unchanged: true, note: "The memory already says exactly that." };
+              return propose("memory_update", { memoryId: found.memory.id, scope: found.memory.scope, before: found.memory.text, after: text });
+            },
+          }),
+
+          propose_memory_delete: tool({
+            description:
+              "Show the person a card proposing to FORGET (delete) a saved memory, when they explicitly ask for it to be forgotten. It deletes nothing until they approve it on the card. Call list_memories first for the id.",
+            inputSchema: z.object({ memoryId }),
+            execute: async (input) => {
+              const found = await changeable(input.memoryId);
+              if (!found.ok) return found.answer;
+              return propose("memory_delete", { memoryId: found.memory.id, scope: found.memory.scope, text: found.memory.text });
+            },
+          }),
+        };
+
+  const philosophyTools: ToolSet = !viewer.can("manage_planning_philosophy")
+    ? {}
+    : {
+        propose_philosophy_change: tool({
+          description:
+            "Show the person a card proposing a change to ONE section of the Service Planning Philosophy, when they ask for the philosophy to be changed. Give the section's whole new text: change only what was asked and keep the rest word for word. It changes nothing: the card shows the current text beside the proposed text, and only Apply on the card updates the philosophy. Read the section with get_planning_philosophy first.",
+          inputSchema: z.object({
+            section: z.string().trim().min(2).max(80).describe("The section to change, by its title."),
+            newText: z.string().trim().min(1).max(PHILOSOPHY_MAX_CHARS).describe("The section's whole text as it would read after the change, in Markdown, without its heading."),
+            explanation: z.string().trim().max(400).optional().describe("One or two sentences on what changes and why, for the card."),
+          }),
+          execute: async (input) => {
+            const loaded = await loadPlanningPhilosophy(viewer.env);
+            if (!loaded.ok || loaded.revisionId === null) return UNAVAILABLE;
+            const { sections } = selectSections(loaded.philosophy, [input.section]);
+            if (sections.length !== 1) {
+              return {
+                found: false,
+                note: sections.length === 0 ? "No section has that title." : "More than one section fits that. Name one exactly.",
+                sections: loaded.philosophy.sections.map((section) => section.title),
+              };
+            }
+            const [section] = sections;
+            const markdown = replaceSection(loaded.philosophy, section.id, input.newText);
+            const checked = markdown === null ? null : checkPhilosophy(markdown);
+            if (!checked?.ok) {
+              return { invalid: true, note: "With that text the philosophy could not be used (it would be too long, empty, or have two sections with one heading). Propose something shorter." };
+            }
+            const after = checked.philosophy.sections.find((item) => item.id === section.id)?.text ?? "";
+            if (after.replace(/\s+/g, " ") === section.text.replace(/\s+/g, " ")) {
+              return { unchanged: true, note: "That is what the section already says." };
+            }
+            return propose("philosophy_edit", {
+              sectionId: section.id,
+              sectionTitle: section.title,
+              before: section.text,
+              after,
+              explanation: input.explanation ?? "",
+              baseRevisionId: loaded.revisionId,
+            });
+          },
+        }),
+      };
+
+  return { ...memoryTools, ...philosophyTools };
+}
+
+function readingTools(viewer: Viewer) {
   // One read of the site's data for the whole question, however many tools it takes.
   let loading: Promise<ConductorData> | null = null;
   const data = () => (loading ??= loadConductorData(viewer));
@@ -166,6 +358,39 @@ export function conductorTools(viewer: Viewer) {
   const philosophyGiven = new Set<string>();
 
   return {
+    list_memories: tool({
+      description:
+        "What has been saved to memory: the ministry's global memories and this person's own, each with its id and scope. Use it to answer what you remember (about a subject, about them, about the musicians ...), and before proposing to change or forget a memory. Reading only.",
+      inputSchema: z.object({
+        scope: z.enum(["personal", "global"]).optional().describe('Only "personal" (this person\'s own) or only "global" (shared). Both when left out.'),
+        about: z.string().trim().max(120).optional().describe("Only memories mentioning these words."),
+      }),
+      execute: async (input) => {
+        try {
+          const all = await listMemories(viewer, memoryDeps(viewer.env));
+          const listed = (memories: Memory[]) => {
+            const found = searchMemories(memories, input.about ?? "");
+            return {
+              memories: found.slice(0, MEMORY_LIMITS.listed).map((memory) => ({ id: memory.id, text: memory.text, ...(memory.category ? { category: memory.category } : {}) })),
+              ...(found.length > MEMORY_LIMITS.listed ? { truncated: true } : {}),
+            };
+          };
+          return {
+            source: "Things people explicitly asked to be remembered. They are what a person said, not the church's records.",
+            ...(input.scope === "personal" ? {} : { global: listed(all.global) }),
+            ...(input.scope === "global"
+              ? {}
+              : canUsePersonalMemory(viewer)
+                ? { personal: listed(all.personal) }
+                : { personal: { unavailable: true, note: "This person does not have personal memory." } }),
+          };
+        } catch (error) {
+          console.error("[conductor] list_memories failed:", error instanceof Error ? error.message : "unknown error");
+          return UNAVAILABLE;
+        }
+      },
+    }),
+
     get_planning_philosophy: tool({
       description:
         "The Music Director's own planning philosophy for song services, word for word from the site's document: familiar and new songs, the opener, the middle, the closer, service flow, songs that should not sit together, the week's insert, variety across the week, Thanksgiving, Christmas and Easter. Use it before saying what the philosophy is, and before judging or recommending a song, a place, a pairing or a service. Name the sections wanted; leave topics out only when the whole document is needed. Also gives the dates of Thanksgiving, the Christmas season and Easter.",
@@ -178,8 +403,8 @@ export function conductorTools(viewer: Viewer) {
         date: date.optional().describe('A date the question is about, "YYYY-MM-DD": the seasons are dated for its year.'),
       }),
       execute: async (input) => {
-        // Read from the repository, not from the records: it answers whether or not the history can be read.
-        const loaded = await loadPlanningPhilosophy();
+        // Its own read, not the records': it answers whether or not the history can be read.
+        const loaded = await loadPlanningPhilosophy(viewer.env);
         if (!loaded.ok) return UNAVAILABLE;
         const guidance = planningGuidance(loaded.philosophy, { ...input, today: churchDate(Date.now()), given: philosophyGiven });
         for (const section of loaded.philosophy.sections) {

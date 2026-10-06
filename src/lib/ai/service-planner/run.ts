@@ -8,7 +8,7 @@ import { loadServiceContext } from "@/lib/service-planner/load";
 import { isInsert, slotSongs, weekStartOf } from "@/lib/service-planner/model";
 import { songKey } from "@/lib/song-list";
 
-import { loadPlanningPhilosophy } from "../planning/load";
+import { assembleAiContext } from "../context/assemble";
 import { failAiOperation, generateAiObject, withAiOperation } from "../service";
 import { countRecentAiUsage } from "../store";
 import { NO_LIBRARY, OPENING_CHARS, serviceWords, type LibraryFindings, type PlanContext, type WeekService } from "./brief";
@@ -150,9 +150,10 @@ async function library(viewer: Viewer, request: PlanAiRequest, context: PlanCont
 
 const deps: PlanDeps<Viewer> = {
   hymnal,
-  philosophy: async () => {
-    const loaded = await loadPlanningPhilosophy();
-    return loaded.ok ? loaded.philosophy.markdown : null;
+  // The shared context layer decides what a planning request is given: the philosophy and memory, never a conversation.
+  context: async (viewer, feature, request) => {
+    const { philosophy, memory } = await assembleAiContext(viewer, feature.feature, { query: request.instruction });
+    return { philosophy: philosophy.ok ? philosophy.philosophy.markdown : null, memory };
   },
   load,
   library,

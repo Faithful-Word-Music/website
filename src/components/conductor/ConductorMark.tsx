@@ -15,6 +15,17 @@ export function ConductorMark({ size = 18, className }: { size?: number; classNa
   );
 }
 
+/** A clock run back: the saved conversations, wherever the list of them can be opened. */
+export function HistoryIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M2.6 8a5.4 5.4 0 1 0 1.7-3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M2.4 2.6v2.6H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 5.2V8l1.9 1.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** A pencil over a fresh page: "New chat", wherever a conversation can be started over. */
 export function NewChatIcon({ size = 16 }: { size?: number }) {
   return (

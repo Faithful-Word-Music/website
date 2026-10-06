@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
+import { ConductorActionCard } from "@/components/conductor/ConductorActionCard";
 import { ConductorMark } from "@/components/conductor/ConductorMark";
 import { ConductorMarkdown } from "@/components/conductor/ConductorMarkdown";
 import { useConductor } from "@/components/conductor/conductor-store";
@@ -236,6 +237,8 @@ function Answer({
         </p>
       ) : null}
       {message.stopped ? <p className={cn("text-sm text-muted", message.text && "mt-2")}>{copy.stopped}</p> : null}
+      {/* What the answer proposed: each a card that does nothing until the person chooses on it. */}
+      {message.actions?.map((action) => <ConductorActionCard key={action.id} action={action} />)}
       {message.error ? (
         <div role="alert" className={cn("rounded-lg border border-line bg-paper px-3.5 py-3", message.text && "mt-3")}>
           <p className="text-sm text-gold-dark">{message.error}</p>
@@ -302,10 +305,10 @@ export function ConductorChat({ variant, autoFocus = false }: { variant: "page" 
   const fieldId = useId();
   const hintId = useId();
 
-  const { messages, pending, status } = session;
+  const { messages, pending, status, loading, loadError } = session;
   const last = messages.at(-1);
   const tooLong = draft.trim().length > CONDUCTOR_LIMITS.questionChars;
-  const canSend = !pending && draft.trim() !== "" && !tooLong;
+  const canSend = !pending && !loading && draft.trim() !== "" && !tooLong;
 
   // Stay with the answer as it is written - unless the person has scrolled up
   // to read. Followed by the conversation's height, not by each event: the
@@ -376,7 +379,7 @@ export function ConductorChat({ variant, autoFocus = false }: { variant: "page" 
   }, [autoFocus]);
 
   function send(text: string) {
-    if (pending || text.trim() === "") return;
+    if (pending || loading || text.trim() === "") return;
     following.current = true;
     ask(text, pathname);
     setDraft("");
@@ -422,8 +425,21 @@ export function ConductorChat({ variant, autoFocus = false }: { variant: "page" 
           gutter,
         )}
       >
-        {messages.length === 0 ? (
-          <EmptyState page={page} examples={examples} onAsk={send} />
+        {loading ? (
+          // A saved conversation on its way from the server.
+          <p role="status" className={cn("mx-auto flex w-full items-center gap-2.5 py-6 text-sm text-muted", page && "max-w-3xl")}>
+            <Working />
+            {copy.history.opening}
+          </p>
+        ) : messages.length === 0 ? (
+          <>
+            {loadError ? (
+              <p role="alert" className={cn("mx-auto mb-4 w-full rounded-lg border border-line bg-paper px-3.5 py-3 text-sm text-gold-dark", page && "max-w-2xl")}>
+                {loadError}
+              </p>
+            ) : null}
+            <EmptyState page={page} examples={examples} onAsk={send} />
+          </>
         ) : (
           // Announced as it settles, not word by word: aria-busy holds it back while an answer is being written.
           <ol ref={listRef} aria-live="polite" aria-busy={pending} className={cn("mx-auto w-full space-y-6", page && "max-w-3xl")}>

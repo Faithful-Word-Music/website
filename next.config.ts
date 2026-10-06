@@ -10,11 +10,13 @@ const nextConfig: NextConfig = {
     "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
     // The Service Planner's PDF export draws the same song list.
     "/service-planner/export": ["./assets/fonts/*.ttf"],
-    // Conductor reads the Music Director's planning philosophy from disk
-    // (src/lib/ai/planning/load.ts). Any other route that reads it is listed here too.
+    // The planning philosophy lives in the database, but an environment's FIRST version is copied
+    // from this document (src/lib/ai/planning/load.ts), by whichever route asks for the philosophy
+    // first - so every route that can ask ships with it. A new one is listed here too.
     "/api/conductor": ["./src/content/music-planning-philosophy.md"],
-    // Generate with AI puts the whole of it in its prompt (src/lib/ai/service-planner).
+    "/api/conductor/actions/[id]": ["./src/content/music-planning-philosophy.md"],
     "/api/service-planner/ai": ["./src/content/music-planning-philosophy.md"],
+    "/admin/ai/philosophy": ["./src/content/music-planning-philosophy.md"],
   },
 
   /**

@@ -11,11 +11,13 @@ The internal AI system of the Faithful Word Music website: where it stands, how 
 | **3** | **Library Intelligence:** the songs' lyrics read from the MuseScore files, a persistent index in Neon, embeddings, exact and by-theme search, the lyric tools; usage counted per Gateway call | **Complete** (2026-10-05) |
 | **4** | **Planning Intelligence:** the Music Director's planning philosophy as one document in the repository, a shared loader for every AI feature, and Conductor's tool for reading it | **Complete** (2026-10-05) |
 | **5** | **AI-assisted planning:** **Generate with AI** and **Suggest with AI** in the Service Planner, per-song AI locks, structured output in the shared layer | **Complete** (2026-10-05) |
-| 6 | Conductor's chat history kept, memory the person controls, an editable planning philosophy | Not started; to be designed |
+| **6** | **Persistence, memory and a configurable philosophy:** Conductor's conversations saved, Personal and Global memory saved only on a person's say-so, the planning philosophy edited on the site with a history, one shared context layer | **Complete** (2026-10-05) |
 
-Where the later phases are headed: Phase 6, above. The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
+**Phase 6 completes the initial Faithful Word Music AI project.** Nothing further is planned as part of it; anything more is a new phase, added on purpose. The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
 
-**Not built yet, on purpose:** anything about the music itself (notes, rhythm, harmony, chords, transposition, reading a PDF), anything that lets AI **save or publish** a service plan (it proposes songs to the editor and nothing more), an Admin editor for the philosophy, conversation history kept on the server, AI memory, notifications, model routing, scheduled indexing jobs.
+**Not built, on purpose:** anything about the music itself (notes, rhythm, harmony, chords, transposition, reading a PDF), anything that lets AI **save or publish** a service plan (it proposes songs to the editor and nothing more), anything that lets AI save a memory or change the philosophy **by itself** (it proposes; a person approves), notifications, model routing, scheduled indexing jobs.
+
+**Phase 6 in one page** is the section [Persistence, memory and configuration](#persistence-memory-and-configuration-phase-6) below. Where an earlier section says something Phase 6 changed, it has been corrected in place.
 
 ## Conductor
 
@@ -25,7 +27,7 @@ Where the later phases are headed: Phase 6, above. The songs' **chords** (in the
 - **About how to plan** (what the planning philosophy says, whether a song suits a place, whether two songs sit well together, why a service may feel repetitive): from the **Music Director's planning philosophy**, read through a tool, together with the records and lyrics above. It says which part is the record, which is the philosophy and which is its own recommendation.
 - **About music in general** (theory, arranging, instruments, audio, equipment): from the model's own knowledge.
 
-It only reads. Nothing a person asks can create, change, publish or delete anything.
+It only reads, with one exception that is not its own doing: it can **propose** saving, changing or forgetting a memory, or changing a section of the planning philosophy. A proposal is a card; only the person's choice on the card writes anything.
 
 ## Architecture
 
@@ -107,13 +109,15 @@ texts with no vector from the current model → embedAiValues() → library_embe
 2. **Check `use_ai` where the request arrives**, and let the service check again.
 3. **Name the feature** in `AI_FEATURES` before its first request. Conductor is `assistant`.
 4. **Facts come from the site's data, through tools.** A new kind of fact is a new tool over an existing read function, never a prompt that asks the model to remember.
-5. **Tools read. They never write.** And nothing AI does writes: Generate with AI returns songs to the editor, where they are unsaved changes like any other. A feature that saves or publishes on AI's word would need its own design (approval, audit).
-6. **Never store prompts, answers or tool results** in `ai_usage`, or anywhere else on the server.
+5. **Tools read, or propose. They never write what they propose.** A propose tool records one waiting row of `conductor_actions` and shows a card; the write happens in `resolveAction()` on the person's choice, with their permissions checked then, through the same function the manual page uses. Generate with AI still only returns songs to the editor.
+6. **Never store prompts, answers or tool results in `ai_usage`.** Conversations have their own tables, private to one person (questions and answers as text; never a tool's input or result).
 7. **Words go in `src/content/`**, and a provider's own error text never reaches the browser.
 8. **One request, however many calls.** Anything that calls the Gateway more than once does it inside one logged request: a tool's embedding joins the answer's row by itself, and work that is only its calls is wrapped in `withAiOperation()`.
 9. **Exact words are matched as text; meaning is matched by embeddings.** Neither stands in for the other.
-10. **The planning philosophy has one source.** Every feature reads `src/content/music-planning-philosophy.md` through `loadPlanningPhilosophy()`. No prompt, tool description or constant restates what it says, and no code turns one of its preferences into a number. The one thing code does enforce is what the document itself calls a hard rule (Christmas songs only in the Christmas season, for what AI puts into a plan).
-11. **The model chooses by id; the site writes the plan.** A structured answer names songs by the ids it was offered. Titles, numbers, keys and the insert mark come from the site's own records, and an answer is checked in code before any of it reaches the browser.
+10. **The planning philosophy has one source.** Every feature reads the version in force (the latest row of `planning_philosophy_revisions`) through `loadPlanningPhilosophy(env)`, or through `assembleAiContext()` which calls it. No prompt, tool description or constant restates what it says, and no code turns one of its preferences into a number. The one thing code does enforce is what the document itself calls a hard rule (Christmas songs only in the Christmas season, for what AI puts into a plan).
+11. **Standing context comes from `src/lib/ai/context/`.** A feature says what it may be given in `CONTEXT_SOURCES` and asks `assembleAiContext()`; it does not load memory or the philosophy its own way. Only Conductor is ever given a conversation.
+12. **Private rows are reached as a person.** Every conversation, message, proposal and personal-memory query takes the user ID and matches it in SQL. Never add a "by id" read without the owner.
+13. **The model chooses by id; the site writes the plan.** A structured answer names songs by the ids it was offered. Titles, numbers, keys and the insert mark come from the site's own records, and an answer is checked in code before any of it reaches the browser.
 
 ## Tools
 
@@ -219,7 +223,7 @@ How the Music Director plans a song service, made available to the AI: the aim o
 
 ### One document
 
-`src/content/music-planning-philosophy.md` is the philosophy. It is plain Markdown, edited by hand and committed like any other wording. It is not in the database and has no editor on the site.
+**Since Phase 6 the philosophy lives in the database** and is edited under Admin → AI → Planning philosophy (see Phase 6 below). `src/content/music-planning-philosophy.md` is only the seed: the first version an environment gets, and the fallback for a deployment with no database. Editing the file changes nothing at runtime once an environment has been seeded. The parsing rules below are unchanged.
 
 ```
 src/content/music-planning-philosophy.md
@@ -272,7 +276,7 @@ Measured on 2026-10-05: a direct question about one section, about 8,700 tokens 
 
 ### Editing the philosophy
 
-- Edit `src/content/music-planning-philosophy.md`, commit, deploy. Nothing else.
+- Edit it under **Admin → AI → Planning philosophy** (needs `manage_planning_philosophy`), or ask Conductor to propose a change and press Apply. No deploy. The editor refuses a document the AI could not read.
 - Keep each topic under its own `## ` heading, with a title that says what it is about: the titles are how sections are asked for.
 - Do not give two sections the same heading.
 - State a hard rule as one ("must", "this is a hard rule"). Anything not written as required is treated as a preference.
@@ -383,6 +387,129 @@ The same week's other services (sung, planned, draft) are listed with their song
 - **Suggest with AI** is in the song picker ("Change song" or an empty place), not another button on the row: a phone row has no room for one. A suggestion is chosen like any other song, through the picker's own `choose()`. It is replaced by a hint to unlock when the song is locked.
 - Words: `servicePlannerContent.ai` in `src/content/service-planner.ts`.
 
+## Persistence, memory and configuration (Phase 6)
+
+### The kinds of context, and what outranks what
+
+| Kind | Where it lives | Authority |
+|---|---|---|
+| The site's own rules (permissions, locks, valid song ids, answer checks, the Christmas rule) | code | Enforced in code. Nothing in a prompt changes them |
+| Service Planning Philosophy | `planning_philosophy_revisions` | The ministry's official guidance |
+| This request's instruction | the request; never stored | May set aside a preference of the philosophy for one service, never a hard rule or a lock |
+| Global memory | `ai_memories`, `scope = 'global'` | Context to weigh. Below everything above |
+| Personal memory | `ai_memories`, `scope = 'personal'` | One person's preference. Does not stand for the ministry |
+| Conversation | `conductor_*` | Conductor's only. Never a source of facts |
+
+`src/lib/ai/context/authority.ts` holds the one wording of this (`MEMORY_AUTHORITY`), sent with the memories themselves to every feature: memory never outranks a lock, a hard rule or the philosophy; a conflict is named, not silently resolved; a memory is something a person said, not a record.
+
+### The context layer
+
+```
+Conductor · Generate with AI · Suggest with AI
+        │  assembleAiContext(viewer, feature, { query })     src/lib/ai/context/assemble.ts
+        ▼
+CONTEXT_SOURCES[feature]        what this feature MAY be given            (authority.ts)
+        ├─ philosophy           loadPlanningPhilosophy(env): the version in force
+        └─ memory               memoryForRequest(): global + the person's own, per their permissions,
+                                each scope chosen and bounded on its own (selectMemories)
+```
+
+| Feature | Philosophy | Global memory | Personal memory | Conversation |
+|---|---|---|---|---|
+| Conductor (`assistant`) | section titles in the instructions; text through `get_planning_philosophy` | yes | yes | its own: latest turns + summary |
+| Generate with AI, Suggest with AI | whole, in the instructions | yes, in the prompt (`MEMORY` block) | yes | **never**: `PlanStandingContext` has no field for one |
+| `conductor_summary`, `connection_test`, `library_indexing` | none | none | none | none |
+
+Personal memory needs `use_personal_ai_memory`; without it none is read or sent. Memory that cannot be read is no memory: a request is not failed for it.
+
+**Retrieval:** every memory of a scope is sent while the scope fits in 3,000 characters. Past that, `selectMemories()` keeps the ones sharing most words with the request, then the most recent. That one function is where a search by meaning would go if memory ever grows large; there are no memory embeddings today.
+
+### Saved conversations
+
+```
+browser: conductor-store.ts          holds the open conversation and the list; remembers only WHICH was open
+   │  POST /api/conductor { question, conversationId?, retry?, context }      <- no transcript is sent
+   ▼
+answerConductor()                    conversation looked up AS THIS PERSON (else 404) or created;
+   │                                 the question stored; history read from the database
+   ▼
+conversationContext()                latest turns word for word (12 turns / 12,000 chars, as before)
+   │                                 + the conversation's summary, in the instructions
+   ▼
+streamAiText()                       preface: which conversation this is · tools may emit a card
+   │  onSettled                      the answer stored (complete / stopped / error) with its cards,
+   ▼                                 BEFORE the page hears "done"; after() keeps the function alive
+refreshConversationSummary()         once 6+ messages have dropped out of the word-for-word part
+```
+
+- **Routes** (all in the proxy's matcher as `/api/conductor/:path*`, all `use_ai`): `GET /api/conductor/conversations`, `GET | PATCH | DELETE /api/conductor/conversations/[id]`, `POST /api/conductor/actions/[id]`. Routes, not server actions, because the panel is open over pages the session proxy does not run for.
+- **Titles:** the first question, cut at a word (`titleFromQuestion`). Renaming sets `title_source = 'user'`. No model call.
+- **Try again** sends `retry: true`; the server removes the last exchange only if its question is the one being asked, so a question that never arrived cannot delete the exchange before it.
+- **A refused question** (cap, not configured) is taken back: a conversation begun for it is deleted.
+- **Summaries** are one `generateAiText` call under the feature `conductor_summary` (so it does not count against 40 questions an hour), with no tools. The summary is written only to `conductor_conversations.summary`, is told to add nothing, is marked "not a source of facts" in Conductor's instructions, and **never becomes a memory**. Until one is written, a long conversation simply sends its latest turns.
+- **Cards in history:** each proposal is replayed to the model as one bracketed line saying what the person chose (`describeAction`). That line is the only way Conductor learns something was saved.
+
+### Memory
+
+- **Two scopes.** Personal: one person's, used only when AI is helping them. Global: the ministry's, used for everyone who uses AI.
+- **Nothing is saved without a person.** Conductor may call `propose_memory_save` only when the latest message explicitly asks it to remember something (instructions and tool description both say so). The tool writes a waiting proposal and shows a card with the exact text and **Personal / Global / Cancel**. A scope the person named is preselected and never applied for them. Cancel stores nothing. This is true every time, whatever the request said.
+- **The hard guarantee is in code, not the prompt:** `ai_memories` is written only by `memory/service.ts`, called from the Memory page's actions and from `resolveAction()`. No tool imports it.
+- **Rules** (`memory/service.ts`, unit tested with an in-memory store): personal writes need `use_personal_ai_memory` and reach only one's own rows; global writes need `manage_global_ai_memory`; moving between scopes needs both. A save refused for one scope is refused, never made in the other. Another person's personal memory is "not found" by id.
+- **Conductor's tools:** `list_memories` (read, with ids), `propose_memory_save`, `propose_memory_update`, `propose_memory_delete`. The propose tools are not offered to someone who could never use them.
+- **Admin → AI → Memory** (`/admin/ai/memory`): My memory / Global memory, add, edit, delete, move, search, category (free text; a few are suggested), when and by whom.
+- Limits: 500 characters a memory, 300 memories a scope, 3 cards an answer.
+
+### The configurable philosophy
+
+- **Runtime source:** the latest row of `planning_philosophy_revisions` for the environment. Each row is the whole document. Nothing is updated or deleted.
+- **Seeding:** the first time an environment is asked for its philosophy and has none, `currentPhilosophyRevision()` copies `src/content/music-planning-philosophy.md` in as a `seed` revision (a partial unique index makes that happen once). Every route that can ask is listed in `next.config.ts` `outputFileTracingIncludes`; **a new one must be listed too**.
+- **One way to change it:** `savePhilosophy()` / `restorePhilosophy()` in `planning/service.ts`. Needs `manage_planning_philosophy`; the new document must pass `parsePlanningPhilosophy`; it is applied only on top of the revision it was made from (`baseRevisionId`), otherwise "conflict"; an unchanged document is refused.
+- **Admin → AI → Planning philosophy** (`/admin/ai/philosophy`): each `## ` section its own card (read as Markdown, edited in place, added, removed, reordered), one **Save changes** making one revision with an optional note. Read-only without the permission.
+- **AI-assisted editing:** `propose_philosophy_change({ section, newText, explanation })`, offered only with `manage_planning_philosophy`. The card shows what changes (a word diff, condensed to the text around the change), the proposed text and the current text, with **Apply / Cancel**. Apply calls `savePhilosophy` with `source: 'ai'`; a proposal made against a revision no longer in force is refused and stays pending. One section per proposal; it cannot add or remove a section.
+- **History:** who, when, how (`seed`, `manual`, `ai`, `restore`), which sections, the note. View any version, compare it with the one in force, restore it. A restore is a new revision.
+- **Checking a change:** the page offers a question to ask Conductor ("explain how you would approach this Sunday morning"). It reads the live philosophy and changes no plan. There is no separate preview feature.
+
+### Proposals (`conductor_actions`)
+
+`conductor/actions.ts` (kinds, payload schemas, choices), `conductor/resolve.ts` (settling one), `ConductorActionCard.tsx` (the card).
+
+1. The proposal must be this person's and still `pending`.
+2. Permission for the chosen option is checked before anything is claimed; a refusal leaves the card waiting.
+3. It is claimed (`pending` → `applied`/`cancelled` in one `UPDATE … WHERE status = 'pending'`), so two clicks or two tabs settle it once.
+4. The write runs through the shared service function. If it fails, the claim is released.
+5. The request body carries only the choice. The text written is what was recorded when the card was made.
+
+### Permissions added
+
+| Permission | Allows | Default |
+|---|---|---|
+| `use_personal_ai_memory` | keep and manage your own memories; have AI use them for you | Administrator, Music Director |
+| `manage_global_ai_memory` | add, change, delete global memories; move a memory between scopes (with the personal one) | Administrator, Music Director |
+| `manage_planning_philosophy` | edit the philosophy, apply a proposal, restore a version | Administrator, Music Director |
+
+Each means something only with `use_ai`. Global memory is **read** by AI for everyone holding `use_ai`. The memory permissions are separate on purpose: a Musician later given `use_ai` and `use_personal_ai_memory` gets their own memory and cannot touch the ministry's. Existing sites get them on the Music Director role once (`PERMISSION_FIXUPS`); custom roles are untouched.
+
+### Files added in Phase 6
+
+| File | Job |
+|---|---|
+| `src/lib/ai/context/authority.ts`, `assemble.ts` | What each feature may be given; the authority wording; the one loader |
+| `src/lib/ai/conversations/model.ts`, `store.ts`, `summary.ts` | Titles, what the model is sent, when to summarise (pure); the three tables; the summary call |
+| `src/lib/ai/memory/memory.ts`, `service.ts`, `store.ts` | Limits, selection, rendering (pure); who may do what; `ai_memories` |
+| `src/lib/ai/planning/revisions.ts`, `service.ts`, `store.ts`, `run.ts` | Sections to edit, diffs (pure); the change rules; the revisions table; the real deps |
+| `src/lib/ai/conductor/actions.ts`, `resolve.ts`, `request.ts` | Proposals; settling one; the routes' shared guard |
+| `src/app/api/conductor/conversations/`, `actions/[id]/` | The routes |
+| `src/app/admin/ai/layout.tsx`, `memory/`, `philosophy/` | Admin → AI's sub-pages |
+| `src/components/conductor/ConductorHistory.tsx`, `ConductorActionCard.tsx` | The conversation list (one component, three places); the cards |
+| `src/components/admin/MemoryManager.tsx`, `PhilosophyEditor.tsx`, `PhilosophyHistory.tsx`, `src/components/ai/TextDiff.tsx` | The admin interfaces |
+| `src/lib/ai/__fixtures__/` | In-memory stores the tests share |
+
+### Tests
+
+`npm test` covers, without a database or a model: `conversations/conversations.test.ts` (titles, ids, what a long conversation sends, cards replayed, when to summarise), `memory/memory.test.ts` (both scopes, each permission alone, no downgrade, isolation by id, selection, rendering), `conductor/actions.test.ts` (Cancel writes nothing, settle once, another person's card not found, each permission, a payload pointed at someone else's memory, stale philosophy proposals), `planning/revisions.test.ts` (round trip of the real document, edits, conflicts, restore, diffs, the planner receiving the new version), `context/context.test.ts` (per-feature sources, only Conductor gets a conversation, one authority wording), plus the updated `conductor.test.ts`, `service-planner.test.ts` and `auth/permissions.test.ts`.
+
+Not covered by automated tests: the SQL itself (the stores), and the model's own behaviour.
+
 ## Grounding
 
 `instructions.ts` tells the model, every question:
@@ -433,10 +560,9 @@ Both render `ConductorChat` over the same store, so they cannot differ.
 
 ## The conversation
 
-- **One per browser tab**, in `conductor-store.ts`, shared by the page and the panel. The store owns the request, so an answer keeps streaming when the panel closes or the page changes.
-- Kept in `sessionStorage` (`fwm:conductor-session`) with its owner's user ID: it survives a reload, ends when the tab or the installed app closes, and is discarded if someone else signs in.
-- **New conversation** clears it everywhere.
-- **Nothing is stored on the server.** There are no conversation tables.
+- **Saved on the server** since Phase 6 (see below). `conductor-store.ts` is the browser's one view of it, shared by the page, the panel and the sheet. The store owns the request, so an answer keeps streaming when the panel closes or the page changes.
+- The browser remembers only **which** conversation was open (`localStorage`, `fwm:conductor-active`: an id and whose it is), so Conductor carries on with it wherever it is next opened.
+- **New chat** starts a new one; nothing is stored until its first question.
 
 ## Page context
 
@@ -505,6 +631,18 @@ All created on first use and tagged `clerk_env` (Local, Preview and Production s
 
 `CREATE EXTENSION IF NOT EXISTS vector` runs with the schema. The Drive file ID is server-only, as everywhere: no tool result, page or log carries it.
 
+### Phase 6 tables
+
+| Table | Holds |
+|---|---|
+| `conductor_conversations` | `id` (uuid), `clerk_user_id`, `title`, `title_source`, `summary`, `summary_through`, `created_at`, `last_message_at` |
+| `conductor_messages` | `conversation_id` (cascade), `role`, `text`, `status` (`complete`, `stopped`, `error`), `error_message` (the error code), `created_at` |
+| `conductor_actions` | `id` (uuid), `conversation_id`, `message_id`, `clerk_user_id`, `kind`, `payload`, `status` (`pending`, `applied`, `cancelled`), `result`, `resolved_at` |
+| `ai_memories` | `scope`, `owner_user_id` (set exactly when personal, by a CHECK), `text`, `category`, `created_by`, `updated_by`, timestamps |
+| `planning_philosophy_revisions` | `markdown`, `source`, `restored_from`, `changed_sections`, `note`, `created_by`, `created_at` |
+
+Deleting a conversation deletes its messages and proposals. A memory or a philosophy revision made from a proposal stays.
+
 ## Failures
 
 Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into a code (`errors.ts`), logged as `[ai] <feature> failed (<code>): <detail>`, recorded, and reported with wording from `src/content/ai.ts`: `forbidden`, `not-configured`, `auth`, `budget`, `rate-limited`, `model-unavailable`, `timeout`, `invalid-response`, `provider`, `unknown`. Before a stream starts it is a JSON response with a status code; once it has started it is an `error` event. Either way the conversation shows the message under the question, with **Try again**, and keeps any text already written.
@@ -521,7 +659,15 @@ Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into
 - **History begins October 2025**, so "usual" and "never" are only as good as the records. Most of the hymnal has never been sung in them, and a search by theme returns such songs unless asked for songs sung before.
 - **Cost pending:** a request shows "Cost pending" until every one of its calls has a cost; the backfill fills them in when Admin → AI is next opened.
 - **The hourly cap counts rows in `ai_usage`**, so it is per environment, like the usage figures.
-- **The conversation is per tab.** A second tab starts its own.
+- **Two tabs on one conversation do not see each other's messages** until it is reopened or the page reloaded.
+- **Opening another conversation while an answer is streaming stops that answer**; it is stored as stopped.
+- **A summary is the model's reading** of the older messages. It is bounded and told to add nothing, but it is not checked.
+- **Memory is matched by words**, not meaning, once a scope outgrows 3,000 characters.
+- **"Only when asked" is an instruction to the model.** What code guarantees is that nothing is saved without the person's click; a card the person did not ask for could still be shown, and cancelled.
+- **A philosophy proposal changes one existing section.** Adding, removing, renaming or reordering sections is done in the editor.
+- **Conversations are kept until deleted.** There is no retention limit or export.
+- **Blockquotes in the philosophy** show with their `>` in the editor's read view; the AI reads them correctly.
+- **Not verified live in Phase 6:** a person holding only some of the new permissions (covered by tests; verified as Administrator), a phone itself and the phone sheet's conversation list, a conversation long enough to be summarised against the real model, Generate and Suggest run against a real service with a memory saved (the prompt is covered by tests), and the deployed site.
 - **Planning advice is judgement.** The philosophy is quoted faithfully, but whether a song fits a place is the model's reading of it. There is no data on what the congregation loves, on musical character, or on which songs are Thanksgiving or Easter songs: those are found by theme, from the lyrics.
 - **The philosophy's hard rule is enforced only on what AI puts in.** Generate with AI and Suggest with AI offer only established Christmas songs in the season; a plan made by hand is not checked against it, and Conductor only describes it.
 - **"Established as a Christmas song" is conservative.** A carol never sung here whose lyrics are not indexed, or one whose lyrics use none of the listed words, is not offered by AI until it has been sung in a season; a carol also sung at another time of year stops counting. Each can still be chosen by hand, or locked. The first recorded season is December 2025, so that season's songs are the base.
@@ -548,5 +694,7 @@ For Phase 3:
 - The Google service account needs nothing new: it already reads the Sheet Music folder.
 
 Nothing for Phase 4: no key, table or setting.
+
+For Phase 6: no key, package or setting. The five tables are created on first use, and each environment's philosophy is seeded from the repository's document the first time it is asked for. The Music Director role receives the three new permissions once, automatically; **give them to any custom role that should have them** (Admin → Roles). To change the philosophy from now on, use Admin → AI → Planning philosophy, not the Markdown file.
 
 Nothing for Phase 5 either: no key, table, setting or package. It uses `AI_MODEL` (which must support structured output, as the default does) and the library index as it stands; refresh the index if sheet music has been added since.

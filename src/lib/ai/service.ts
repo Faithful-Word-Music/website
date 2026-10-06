@@ -72,6 +72,8 @@ interface AiOperation {
   calls: AiCallUsage[];
   /** The first failure of a call made beneath it, for a request that is only its calls (withAiOperation). */
   failed: ReturnType<typeof classifyAiError> | null;
+  /** For a streamed answer: sends an event to the page (emitAiStreamData). */
+  send?: (event: AiStreamEvent) => void;
 }
 
 const operations = new AsyncLocalStorage<AiOperation>();
@@ -340,6 +342,35 @@ export interface AiStreamRequest {
    * are never sent.
    */
   toolStatus?: (toolName: string) => string | null;
+  /** Sent to the page before anything else: what the feature wants it to know from the start. */
+  preface?: ReadonlyArray<{ name: string; value: unknown }>;
+  /**
+   * Called once when the answer has ended, however it ended, BEFORE the page
+   * is told it is done - so a feature that keeps its answers (Conductor's
+   * saved conversations) has stored this one by the time the page hears
+   * "done". It must not throw; what it does is not part of the usage log.
+   */
+  onSettled?: (answer: AiStreamOutcome) => Promise<void>;
+}
+
+/** How a streamed answer ended, for whoever keeps it. */
+export interface AiStreamOutcome {
+  /** Everything written to the page, as it was written. */
+  text: string;
+  /** Stopped by the person, or by their leaving. */
+  aborted: boolean;
+  /** Why it failed, when it did. */
+  failed: AiErrorCode | null;
+}
+
+/**
+ * Tells the page something beside the answer, from inside a streamed request
+ * - a tool, usually. Does nothing outside one. The name and value are the
+ * feature's own (src/lib/ai/stream.ts, "data"); a tool's input or result must
+ * never be sent this way.
+ */
+export function emitAiStreamData(name: string, value: unknown): void {
+  operations.getStore()?.send?.({ type: "data", name, value });
 }
 
 export type AiStreamResult =
@@ -416,7 +447,9 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
 
       // What is known about the request, gathered as each call finishes: the model's here, a tool's
       // embedding through embedAiValues(), which finds this operation by itself.
-      const operation: AiOperation = { calls: [], failed: null };
+      const operation: AiOperation = { calls: [], failed: null, send };
+      for (const item of request.preface ?? []) send({ type: "data", name: item.name, value: item.value });
+      let text = "";
       let steps = 0;
       let generationId: string | null = null;
       let responseModel: string | null = null;
@@ -451,10 +484,12 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
             case "text-delta":
               if (part.text === "") break;
               if (breakDue && part.text.trim() !== "") {
+                text += "\n\n";
                 send({ type: "text", delta: "\n\n" });
                 breakDue = false;
               }
               written += part.text.length;
+              text += part.text;
               send({ type: "text", delta: part.text });
               break;
             case "tool-call": {
@@ -529,6 +564,14 @@ export async function streamAiText(request: AiStreamRequest): Promise<AiStreamRe
         finishReason: aborted ? "aborted" : finishReason,
         calls: operation.calls,
       });
+
+      if (request.onSettled) {
+        try {
+          await request.onSettled({ text, aborted, failed: failed?.code ?? null });
+        } catch (error) {
+          console.error(`[ai] ${feature}: could not finish up after the answer:`, error instanceof Error ? error.message : "unknown error");
+        }
+      }
 
       if (failed) send({ type: "error", code: failed.code, message: aiContent.errors[failed.code] });
       else if (!aborted) send({ type: "done" });

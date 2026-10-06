@@ -62,6 +62,13 @@ import {
 } from "@/lib/auth/store";
 import { siteConfig } from "@/config/site";
 import { aiContent } from "@/content/ai";
+import { isMemoryScope } from "@/lib/ai/memory/memory";
+import { createMemory, deleteMemory, moveMemory, updateMemory, type MemoryProblem, type MemoryResult } from "@/lib/ai/memory/service";
+import { memoryDeps } from "@/lib/ai/memory/store";
+import { composePhilosophy, PHILOSOPHY_EDIT_LIMITS, type DraftSection } from "@/lib/ai/planning/revisions";
+import { philosophyDeps } from "@/lib/ai/planning/run";
+import { restorePhilosophy, savePhilosophy, type PhilosophyChangeResult } from "@/lib/ai/planning/service";
+import { getPhilosophyRevision } from "@/lib/ai/planning/store";
 import { generateAiText } from "@/lib/ai/service";
 import type { AiTokenUsage } from "@/lib/ai/usage";
 import { refreshLibraryIndex } from "@/lib/library-content/indexer";
@@ -763,6 +770,125 @@ export async function testAiConnectionAction(): Promise<ActionResult<AiTestOutco
       },
       message: "The model answered.",
     };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// AI memory
+// ---------------------------------------------------------------------------
+
+const MEMORY_ERRORS: Record<MemoryProblem, string> = aiContent.admin.memory.errors;
+
+/** Memory is used by Conductor on every page and by the planner, none of which is cached per memory; only its own page is. */
+function memoryResult(result: MemoryResult, message: string): ActionResult {
+  if (!result.ok) return { ok: false, error: MEMORY_ERRORS[result.problem] };
+  revalidatePath("/admin/ai/memory");
+  return { ok: true, value: null, message };
+}
+
+/**
+ * Admin -> AI -> Memory. Every one of these goes through the memory rules
+ * (src/lib/ai/memory/service.ts), the same ones a card in Conductor is settled
+ * by: a personal memory needs use_personal_ai_memory and is only ever the
+ * person's own; a global one needs manage_global_ai_memory; moving one between
+ * the two needs both. use_ai is only the way in.
+ */
+export async function createMemoryAction(scope: unknown, text: unknown, category: unknown): Promise<ActionResult> {
+  return withPermission("use_ai", async (viewer) => {
+    if (!isMemoryScope(scope)) return { ok: false, error: MEMORY_ERRORS.invalid };
+    return memoryResult(await createMemory(viewer, { scope, text, category }, memoryDeps(viewer.env)), aiContent.admin.memory.saved);
+  });
+}
+
+export async function updateMemoryAction(id: unknown, text: unknown, category: unknown): Promise<ActionResult> {
+  return withPermission("use_ai", async (viewer) => {
+    const memoryId = parseId(id);
+    if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
+    return memoryResult(await updateMemory(viewer, { id: memoryId, text, category }, memoryDeps(viewer.env)), aiContent.admin.memory.saved);
+  });
+}
+
+export async function deleteMemoryAction(id: unknown): Promise<ActionResult> {
+  return withPermission("use_ai", async (viewer) => {
+    const memoryId = parseId(id);
+    if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
+    return memoryResult(await deleteMemory(viewer, memoryId, memoryDeps(viewer.env)), aiContent.admin.memory.deleted);
+  });
+}
+
+export async function moveMemoryAction(id: unknown, scope: unknown): Promise<ActionResult> {
+  return withPermission("use_ai", async (viewer) => {
+    const memoryId = parseId(id);
+    if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
+    if (!isMemoryScope(scope)) return { ok: false, error: MEMORY_ERRORS.invalid };
+    return memoryResult(await moveMemory(viewer, { id: memoryId, scope }, memoryDeps(viewer.env)), aiContent.admin.memory.moved[scope]);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The planning philosophy
+// ---------------------------------------------------------------------------
+
+function philosophyResult(result: PhilosophyChangeResult, message: string): ActionResult {
+  if (!result.ok) return { ok: false, error: aiContent.admin.philosophy.errors[result.problem] };
+  revalidatePath("/admin/ai/philosophy");
+  return { ok: true, value: null, message };
+}
+
+/**
+ * Admin -> AI -> Planning philosophy: applies the document as edited, as a new
+ * version on top of the one the editor was opened on (`baseRevisionId`). The
+ * same function applies a change Conductor proposed (savePhilosophy in
+ * src/lib/ai/planning/service.ts), so both are checked and recorded alike.
+ */
+export async function savePhilosophyAction(input: unknown): Promise<ActionResult> {
+  return withPermission("manage_planning_philosophy", async (viewer) => {
+    const value = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+    const baseRevisionId = parseId(value.baseRevisionId);
+    const sections = Array.isArray(value.sections) ? value.sections : null;
+    if (!baseRevisionId || !sections || typeof value.title !== "string") return { ok: false, error: aiContent.admin.philosophy.errors.invalid };
+
+    const draft: DraftSection[] = [];
+    for (const item of sections as Array<Record<string, unknown> | null>) {
+      if (!item || typeof item.title !== "string" || typeof item.text !== "string") return { ok: false, error: aiContent.admin.philosophy.errors.invalid };
+      const title = item.title.replace(/\s+/g, " ").trim();
+      if (title === "" || title.length > PHILOSOPHY_EDIT_LIMITS.titleChars) return { ok: false, error: aiContent.admin.philosophy.errors.heading };
+      if (item.text.trim() === "") return { ok: false, error: aiContent.admin.philosophy.errors.emptySection.replace("{section}", title) };
+      draft.push({ title, text: item.text });
+    }
+
+    const result = await savePhilosophy(
+      viewer,
+      {
+        markdown: composePhilosophy({ title: value.title, sections: draft }),
+        source: "manual",
+        note: typeof value.note === "string" ? value.note : null,
+        baseRevisionId,
+      },
+      philosophyDeps(viewer.env),
+    );
+    return philosophyResult(result, aiContent.admin.philosophy.saved);
+  });
+}
+
+/** One earlier version of the philosophy, whole, to read or compare. For anyone who may use AI: it is what the AI was planning by. */
+export async function loadPhilosophyRevisionAction(revisionId: unknown): Promise<ActionResult<{ markdown: string }>> {
+  return withPermission("use_ai", async (viewer) => {
+    const id = parseId(revisionId);
+    const revision = id ? await getPhilosophyRevision(viewer.env, id) : null;
+    if (!revision) return { ok: false, error: aiContent.admin.philosophy.errors["not-found"] };
+    return { ok: true, value: { markdown: revision.markdown } };
+  });
+}
+
+/** Brings an earlier version of the philosophy back, as a new version: nothing in the history is lost. */
+export async function restorePhilosophyAction(revisionId: unknown, baseRevisionId: unknown): Promise<ActionResult> {
+  return withPermission("manage_planning_philosophy", async (viewer) => {
+    const id = parseId(revisionId);
+    const base = parseId(baseRevisionId);
+    if (!id || !base) return { ok: false, error: aiContent.admin.philosophy.errors["not-found"] };
+    const result = await restorePhilosophy(viewer, { revisionId: id, baseRevisionId: base }, philosophyDeps(viewer.env));
+    return philosophyResult(result, aiContent.admin.philosophy.restored);
   });
 }
 

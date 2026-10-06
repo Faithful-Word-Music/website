@@ -179,6 +179,168 @@ export const aiContent = {
       },
     },
 
+    /** The pages under Admin -> AI. */
+    nav: {
+      label: "AI",
+      usage: "Usage",
+      memory: "Memory",
+      philosophy: "Planning philosophy",
+    },
+
+    /** Admin -> AI -> Memory: what people have asked the AI to remember (src/lib/ai/memory). */
+    memory: {
+      title: "AI memory",
+      intro:
+        "What the AI has been asked to remember. It only ever remembers what someone tells it to: here, or by asking Conductor and choosing where to keep it. A memory is something for the AI to keep in mind, not a rule; the planning philosophy is where rules for planning belong.",
+      scopes: {
+        personal: {
+          tab: "My memory",
+          heading: "My memory",
+          body: "Yours alone. Used only when the AI is helping you, and nobody else can see it.",
+          empty: "You have not asked the AI to remember anything for you yet.",
+          add: "Add to my memory",
+        },
+        global: {
+          tab: "Global memory",
+          heading: "Global memory",
+          body: "Shared ministry-wide. Used for everyone who uses the AI, whoever is asking.",
+          empty: "Nothing has been saved to global memory yet.",
+          add: "Add to global memory",
+        },
+      },
+      /** Where a scope cannot be changed, or used at all, by this person. */
+      readOnlyGlobal: "You can read global memory, but changing it needs the “Manage global AI memory” permission.",
+      noPersonal: "You do not have personal AI memory. It needs the “Use personal AI memory” permission.",
+      textLabel: "What to remember",
+      textHint: "One short statement",
+      textPlaceholder: "The congregation knows “To God Be the Glory” especially well.",
+      categoryLabel: "Category",
+      categoryHint: "Optional",
+      noCategory: "None",
+      search: "Search memory",
+      noMatches: "No memory has that in it.",
+      /** {count} is a count of memories. */
+      count: ["{count} memory", "{count} memories"],
+      edit: "Edit",
+      save: "Save",
+      cancel: "Cancel",
+      delete: "Delete",
+      confirmDelete: "Delete this memory? The AI will no longer have it.",
+      confirmYes: "Yes, delete",
+      confirmNo: "Keep it",
+      moveTo: { personal: "Move to my memory", global: "Move to global memory" },
+      /** {date} is a date and time; {name} is a person. */
+      saved_on: "Saved {date}",
+      changed_on: "Changed {date}",
+      by: "by {name}",
+      saved: "Memory saved.",
+      deleted: "Memory deleted.",
+      moved: { personal: "Moved to your memory.", global: "Moved to global memory." },
+      errors: {
+        forbidden: "You do not have permission to change that memory.",
+        invalid: "A memory is one short statement, up to 500 characters.",
+        "not-found": "That memory is no longer there.",
+        full: "That memory is full. Delete some before adding more.",
+        unchanged: "Nothing was changed.",
+      },
+      unavailable: {
+        title: "Memory could not be loaded",
+        body: "The AI's memory could not be read just now. Please try again.",
+      },
+    },
+
+    /** Admin -> AI -> Planning philosophy: the document the AI plans by, and its history (src/lib/ai/planning). */
+    philosophy: {
+      title: "Service Planning Philosophy",
+      intro:
+        "How Faithful Word Music plans a song service. Conductor reads it, and Generate with AI and Suggest with AI plan by it. A change made here is in force from the next AI request, with no deploy; every change is kept in the history below and can be brought back.",
+      readOnly: "You can read the philosophy, but changing it needs the “Manage planning philosophy” permission.",
+      /** Above the sections, for someone who can edit. */
+      editing:
+        "Each section is one topic. State a hard rule as one (“must”, “this is a hard rule”); anything else is treated as a preference. The AI repeats what is written and is told to add nothing, so write a number only if it is meant.",
+      documentTitle: "Document title",
+      sectionTitle: "Section heading",
+      sectionText: "Section text",
+      /** {count} is a count of characters. */
+      length: "{count} of {max} characters",
+      tooLong: "The philosophy is longer than the AI can be given. Shorten it before saving.",
+      addSection: "Add a section",
+      newSection: "New section",
+      removeSection: "Remove section",
+      restoreSection: "Put it back",
+      removed: "This section will be removed when you save.",
+      moveUp: "Move {section} up",
+      moveDown: "Move {section} down",
+      edit: "Edit",
+      doneEditing: "Done",
+      changed: "Changed",
+      added: "New",
+      noteLabel: "Note for the history",
+      noteHint: "Optional",
+      notePlaceholder: "Why this change was made",
+      save: "Save changes",
+      discard: "Discard changes",
+      unsaved: ["{count} section changed, not yet saved", "{count} sections changed, not yet saved"],
+      unsavedOrder: "Sections reordered, not yet saved",
+      saved: "The planning philosophy was updated.",
+      restored: "That version is the planning philosophy again.",
+      /** A way to check the AI has understood a change, without touching a plan. */
+      ask: {
+        heading: "Check how the AI reads it",
+        body: "Ask Conductor to explain how it would approach a service under the philosophy as it stands. It only explains: no plan is changed.",
+        link: "Open Conductor",
+        prompt: "Based on the current planning philosophy, explain how you would approach planning this Sunday morning's service. Do not change anything.",
+        copy: "Copy the question",
+        copied: "Copied",
+      },
+      history: {
+        heading: "History",
+        body: "Every version that has been in force, the latest first. Restoring one makes it the philosophy again as a new version; nothing is ever removed from this list.",
+        current: "In force",
+        sources: { seed: "First copy", manual: "Edited by hand", ai: "Proposed by Conductor", restore: "Restored" },
+        /** {name} is a person. */
+        by: "by {name}",
+        /** {sections} is a list of section titles. */
+        sections: "Changed: {sections}",
+        reordered: "Sections reordered",
+        seed: "Taken from the document the site shipped with.",
+        /** {date} is a date and time. */
+        restoredFrom: "Brought back the version of {date}.",
+        view: "View",
+        hide: "Hide",
+        compare: "Compare with the version in force",
+        showVersion: "This version",
+        showCompare: "What differs from now",
+        same: "This version reads the same as the one in force.",
+        restore: "Restore this version",
+        confirmRestore: "Make this the planning philosophy again? The version in force now stays in the history.",
+        confirmYes: "Yes, restore",
+        confirmNo: "Cancel",
+        changes: { same: "Unchanged", changed: "Different", added: "Not in this version", removed: "Only in this version" },
+        loading: "Loading that version…",
+        failed: "That version could not be loaded.",
+      },
+      errors: {
+        forbidden: "You do not have permission to change the planning philosophy.",
+        unavailable: "The planning philosophy could not be saved just now. Please try again.",
+        conflict: "The philosophy was changed by someone else while you were editing. Reload the page to see it, then make your change again.",
+        unchanged: "Nothing was changed.",
+        "not-found": "That version is no longer there.",
+        empty: "The philosophy cannot be empty.",
+        "no-sections": "The philosophy needs at least one section with some text.",
+        "duplicate-section": "Two sections have the same heading. Give each its own.",
+        "too-long": "The philosophy is longer than the AI can be given. Shorten it and save again.",
+        invalid: "That could not be saved. Reload the page and try again.",
+        heading: "Every section needs a heading of up to 80 characters.",
+        /** {section} is a section's heading. */
+        emptySection: "“{section}” has no text. Write something, or remove the section.",
+      },
+      unavailable: {
+        title: "The planning philosophy could not be loaded",
+        body: "It could not be read just now. Until it can, the AI will say the philosophy is not available rather than plan without it.",
+      },
+    },
+
     environment: "These figures are for this environment's accounts. The Gateway's budget is shared by every environment.",
     unavailable: {
       title: "Usage could not be loaded",

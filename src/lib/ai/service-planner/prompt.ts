@@ -1,14 +1,16 @@
 import { z } from "zod";
 
+import { memoryBlock } from "../context/authority";
+import { NO_MEMORY, type MemoryContext } from "../memory/memory";
 import type { PlanBrief } from "./brief";
 
 /**
  * What the model is told when it plans a service, and the shape its answer
  * must have. Pure - unit tested.
  *
- * THE PLANNING PHILOSOPHY IS NOT WRITTEN HERE. It is the Music Director's
- * document (src/content/music-planning-philosophy.md), handed in whole and
- * word for word by whoever calls plannerInstructions(). What this file adds
+ * THE PLANNING PHILOSOPHY IS NOT WRITTEN HERE. It is the philosophy in force
+ * (src/lib/ai/planning: the latest version kept in the database), handed in
+ * whole and word for word by whoever calls plannerInstructions(). What this file adds
  * is only what the document cannot know: what a lock is, what the answer must
  * look like, which facts the model has, and what it must not make up.
  *
@@ -29,7 +31,8 @@ WHAT DECIDES, MOST IMPORTANT FIRST
 2. The Director's locks. A place marked "locked" is not yours: its song stays in that place, exactly as it is. Do not answer for it, do not move its song, and do not use its song anywhere else. A lock outranks DIRECTION: if DIRECTION asks to change a locked song, leave it and say so in your summary.
 3. DIRECTION, when there is one: what the Director asks for this one service. It may set aside one of the philosophy's preferences for this service. It cannot unlock a song, add to CANDIDATES, or set aside a hard rule.
 4. The Music Director's planning philosophy, given below word for word. It governs every choice the three above leave open. A rule in it is hard only where it says so (must, required, a hard rule); everything else is a preference to weigh. Do not add rules, numbers or limits to it.
-5. Your own judgement, for whatever is still open.
+5. MEMORY, when there is any: things people have explicitly asked to be remembered, shared by the ministry or personal to this Director. It is context to weigh within everything above, never a rule, and how to weigh it is said with it.
+6. Your own judgement, for whatever is still open.
 
 THE PLACES
 
@@ -71,9 +74,14 @@ const SEASON_NAMES = {
 
 const block = (title: string, value: unknown) => `${title}\n${typeof value === "string" ? value : JSON.stringify(value)}`;
 
-/** The parts of a request every prompt carries: the service, its season, its places, the week and the candidates. */
-function facts(brief: PlanBrief): string[] {
+/**
+ * The parts of a request every prompt carries: the service, its season, its
+ * places, the week, the candidates - and the memories that apply, with how to
+ * weigh them (src/lib/ai/context/authority.ts), when there are any.
+ */
+function facts(brief: PlanBrief, memory: MemoryContext): string[] {
   const { christmasSeason, easter, thanksgiving } = brief.seasonDates;
+  const remembered = memoryBlock(memory, "MEMORY");
   return [
     block("SERVICE", { date: brief.service.date, service: brief.service.name, ...(brief.service.special ? { special: true } : {}) }),
     block("SEASON", {
@@ -92,13 +100,14 @@ function facts(brief: PlanBrief): string[] {
       }`,
     ),
     block("CANDIDATES", brief.candidates),
+    ...(remembered ? [remembered] : []),
   ];
 }
 
 /** The request to plan the whole service. */
-export function generatePrompt(brief: PlanBrief): string {
+export function generatePrompt(brief: PlanBrief, memory: MemoryContext = NO_MEMORY): string {
   return [
-    ...facts(brief),
+    ...facts(brief, memory),
     block(
       "DIRECTION",
       brief.instruction === ""
@@ -114,10 +123,10 @@ export function generatePrompt(brief: PlanBrief): string {
 export const SUGGESTIONS = 3;
 
 /** The request for a few songs that could go in one place, the rest of the service staying as it is. */
-export function replacePrompt(brief: PlanBrief): string {
+export function replacePrompt(brief: PlanBrief, memory: MemoryContext = NO_MEMORY): string {
   const place = brief.places[(brief.target ?? 1) - 1];
   return [
-    ...facts(brief),
+    ...facts(brief, memory),
     block(
       "DIRECTION",
       `The Director is choosing a song for place ${brief.target} only${

@@ -1,21 +1,27 @@
 import { z } from "zod";
 
-import { CONDUCTOR_LIMITS, type ConductorTurn } from "./limits";
+import { isConversationId } from "../conversations/model";
+import { CONDUCTOR_LIMITS } from "./limits";
 
 /**
- * What the browser sends POST /api/conductor: the conversation so far, ending
- * with the question, and the page Conductor was opened over. Checked here
- * before anything is done with it. Pure - unit tested.
+ * What the browser sends POST /api/conductor: the question, which saved
+ * conversation it belongs to (none yet for the first question of a new one),
+ * and the page Conductor was opened over. Checked here before anything is
+ * done with it. Pure - unit tested.
+ *
+ * The conversation so far is NOT sent: the server reads it from its own
+ * record (src/lib/ai/conversations), for the person asking. An id that is not
+ * theirs finds nothing.
  */
 
 /** Where Conductor's questions are sent. */
 export const CONDUCTOR_ENDPOINT = "/api/conductor";
 
 const requestSchema = z.object({
-  messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(40_000) }))
-    .min(1)
-    .max(CONDUCTOR_LIMITS.storedTurns + 2),
+  question: z.string().max(40_000),
+  conversationId: z.string().refine(isConversationId).nullish(),
+  /** Ask the conversation's last question again, in place of the answer it got. */
+  retry: z.boolean().optional(),
   // Checked on its own (normalizePageContext): a bad page never fails a question.
   context: z.unknown().optional(),
 });
@@ -23,19 +29,19 @@ const requestSchema = z.object({
 export type ConductorRequestProblem = "invalid" | "empty" | "too-long";
 
 export type ParsedConductorRequest =
-  | { ok: true; turns: ConductorTurn[]; context: unknown }
+  | { ok: true; question: string; conversationId: string | null; retry: boolean; context: unknown }
   | { ok: false; problem: ConductorRequestProblem };
 
 export function parseConductorRequest(body: unknown): ParsedConductorRequest {
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) return { ok: false, problem: "invalid" };
 
-  const turns = parsed.data.messages;
-  const question = turns[turns.length - 1];
-  if (question.role !== "user") return { ok: false, problem: "invalid" };
-  const text = question.text.trim();
-  if (text === "") return { ok: false, problem: "empty" };
-  if (text.length > CONDUCTOR_LIMITS.questionChars) return { ok: false, problem: "too-long" };
+  const question = parsed.data.question.trim();
+  if (question === "") return { ok: false, problem: "empty" };
+  if (question.length > CONDUCTOR_LIMITS.questionChars) return { ok: false, problem: "too-long" };
+  const conversationId = parsed.data.conversationId ?? null;
+  // Only a question already in a conversation can be asked again.
+  if (parsed.data.retry && !conversationId) return { ok: false, problem: "invalid" };
 
-  return { ok: true, turns, context: parsed.data.context ?? null };
+  return { ok: true, question, conversationId, retry: parsed.data.retry === true, context: parsed.data.context ?? null };
 }

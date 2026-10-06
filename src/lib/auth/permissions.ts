@@ -85,6 +85,23 @@ export const PERMISSIONS = {
     description: "Use the site's AI features and see what they cost. Every request is paid for.",
     group: "music",
   },
+  use_personal_ai_memory: {
+    label: "Use personal AI memory",
+    description:
+      "Keep your own memories for the AI to use when it is helping you, and edit or delete them. Only with Use AI features.",
+    group: "music",
+  },
+  manage_global_ai_memory: {
+    label: "Manage global AI memory",
+    description:
+      "Add, change and delete the global memories the AI uses for everyone, and move a memory into or out of them. Only with Use AI features.",
+    group: "music",
+  },
+  manage_planning_philosophy: {
+    label: "Manage planning philosophy",
+    description: "Edit the Service Planning Philosophy the AI plans by, approve changes the AI proposes, and restore earlier versions.",
+    group: "music",
+  },
   view_service_plans: {
     label: "View service plans",
     description: "See published service plans and what to prepare for them.",
@@ -169,6 +186,9 @@ export const DEFAULT_ROLES: RoleSeed[] = [
       "manage_availability",
       "view_analytics",
       "use_ai",
+      "use_personal_ai_memory",
+      "manage_global_ai_memory",
+      "manage_planning_philosophy",
       "view_service_plans",
       "view_sheet_music",
       "view_member_resources",
@@ -206,6 +226,10 @@ export const DEFAULT_ROLES: RoleSeed[] = [
 export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readonly Permission[] }> = [
   { key: "2026-10-availability-permissions", permissions: ["view_availability", "manage_availability"] },
   { key: "2026-10-ai-permission", permissions: ["use_ai"] },
+  {
+    key: "2026-10-ai-memory-and-philosophy-permissions",
+    permissions: ["use_personal_ai_memory", "manage_global_ai_memory", "manage_planning_philosophy"],
+  },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

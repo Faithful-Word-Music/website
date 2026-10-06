@@ -73,6 +73,8 @@ export const conductorContent = {
     lyrics: "Reading the lyrics…",
     themes: "Searching the song library…",
     philosophy: "Reading the planning philosophy…",
+    memory: "Checking what has been remembered…",
+    proposal: "Preparing a card for you to review…",
   },
 
   actions: {
@@ -97,6 +99,117 @@ export const conductorContent = {
     invalid: "Conductor could not read that question. Please try again.",
     empty: "Type a question first.",
     hourly: "That is a lot of questions in an hour. Please wait a little before asking more.",
+    unavailable: "Conductor could not reach its saved conversations just now. Please try again.",
+    notFound: "That conversation is no longer there.",
+  },
+
+  /** The person's saved conversations: the list behind "Chats", the same in the page, the panel and the sheet. */
+  history: {
+    /** The button that opens the list, and the list's own heading. */
+    open: "Your conversations",
+    openShort: "Chats",
+    heading: "Conversations",
+    /** A conversation whose first question gave it no title. */
+    untitled: "New conversation",
+    back: "Back to the conversation",
+    close: "Close",
+    newChat: "New chat",
+    search: "Search conversations",
+    loading: "Loading your conversations…",
+    opening: "Opening the conversation…",
+    failed: "Your conversations could not be loaded.",
+    retry: "Try again",
+    empty: "No conversations yet. Whatever you ask Conductor is kept here, so you can come back to it.",
+    noMatches: "No conversation has that in its title.",
+    /** Marks the conversation that is open. */
+    current: "Open",
+    rename: "Rename",
+    /** {title} is the conversation's title. */
+    renameLabel: "New title for {title}",
+    delete: "Delete",
+    /** {title} is the conversation's title. */
+    confirmDelete: "Delete “{title}”? It cannot be brought back.",
+    confirmYes: "Yes, delete",
+    confirmNo: "Keep it",
+    save: "Save",
+    cancel: "Cancel",
+    /** When a conversation was last spoken in. */
+    today: "Today",
+    yesterday: "Yesterday",
+    errors: {
+      title: "Give the conversation a title.",
+    },
+  },
+
+  /**
+   * The cards Conductor shows when it proposes something. Nothing a card
+   * proposes happens until the person chooses on it.
+   */
+  cards: {
+    memorySave: {
+      heading: "Save to memory?",
+      textLabel: "Exactly what will be saved",
+      prompt: "Where should Conductor keep this?",
+      personal: { label: "Personal", detail: "Only used when Conductor is helping you." },
+      global: { label: "Global", detail: "Shared ministry-wide. Used for everyone who uses the AI." },
+      cancel: { label: "Cancel", detail: "Store nothing." },
+      /** Under a scope the person may not save to. */
+      personalNotAllowed: "You do not have personal AI memory.",
+      globalNotAllowed: "You do not have permission to change global memory.",
+      /** Beside the scope the person asked for. */
+      suggested: "You asked for this one",
+      savedPersonal: "Saved to your personal memory.",
+      savedGlobal: "Saved to global memory.",
+      cancelled: "Not saved.",
+    },
+    memoryUpdate: {
+      heading: "Change this memory?",
+      beforeLabel: "Now",
+      afterLabel: "Changed to",
+      apply: "Apply",
+      cancel: "Cancel",
+      applied: "Memory changed.",
+      cancelled: "Left as it was.",
+    },
+    memoryDelete: {
+      heading: "Forget this memory?",
+      textLabel: "This will be deleted",
+      apply: "Forget it",
+      cancel: "Keep it",
+      applied: "Memory deleted.",
+      cancelled: "Kept.",
+    },
+    philosophyEdit: {
+      heading: "Change the planning philosophy?",
+      /** {section} is the section's title. */
+      section: "Section: {section}",
+      currentLabel: "Current text",
+      proposedLabel: "Proposed text",
+      changesLabel: "What changes",
+      showChanges: "Changes",
+      showProposed: "Proposed",
+      showCurrent: "Current",
+      apply: "Apply",
+      cancel: "Cancel",
+      notAllowed: "You do not have permission to change the planning philosophy.",
+      applied: "Applied. The planning philosophy now reads this way, and the change is in its history.",
+      cancelled: "Not applied. The philosophy is unchanged.",
+    },
+    scopes: { personal: "Personal memory", global: "Global memory" },
+    pending: "Saving…",
+    /** Why a choice on a card could not be carried out. Keys are ResolveProblem (src/lib/ai/conductor/resolve.ts). */
+    errors: {
+      "not-found": "This card is no longer there.",
+      settled: "This has already been decided.",
+      "invalid-choice": "That is not one of this card's choices.",
+      forbidden: "You do not have permission to do that. Nothing was saved.",
+      "memory-gone": "That memory is no longer there, or already reads this way. Nothing was changed.",
+      "memory-invalid": "That memory could not be saved as written. Nothing was saved.",
+      "memory-full": "That memory is full. Delete some memories under Admin → AI → Memory first.",
+      "philosophy-changed": "The planning philosophy has been changed since this was proposed. Nothing was applied; ask Conductor to propose it again.",
+      "philosophy-invalid": "With this change the philosophy could not be used. Nothing was applied.",
+      unavailable: "This could not be saved just now. Please try again.",
+    },
   },
 } as const;
 

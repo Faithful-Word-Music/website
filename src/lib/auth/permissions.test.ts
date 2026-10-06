@@ -93,6 +93,37 @@ describe("AI permission", () => {
   });
 });
 
+describe("AI memory and planning philosophy permissions", () => {
+  const AI_EXTRAS = ["use_personal_ai_memory", "manage_global_ai_memory", "manage_planning_philosophy"] as const;
+
+  it("are held by administrators and the Music Director, and nobody else by default", () => {
+    for (const permission of AI_EXTRAS) {
+      const has = (roleKeys: string[]) => resolvePermissions(roleKeys, rolePermissions).has(permission);
+      expect(has([ADMIN_ROLE])).toBe(true);
+      expect(has(["music_director"])).toBe(true);
+      expect(has(["song_leader"])).toBe(false);
+      expect(has(["musician"])).toBe(false);
+      expect(has([])).toBe(false);
+    }
+  });
+
+  it("are separate: personal memory can be given without shared memory or use_ai itself", () => {
+    const permissions = resolvePermissions(["musician"], rolePermissions, [
+      { permission: "use_ai", effect: "grant" },
+      { permission: "use_personal_ai_memory", effect: "grant" },
+    ]);
+    expect(permissions.has("use_personal_ai_memory")).toBe(true);
+    expect(permissions.has("manage_global_ai_memory")).toBe(false);
+    expect(permissions.has("manage_planning_philosophy")).toBe(false);
+  });
+
+  it("are granted once to the existing Music Director role only", () => {
+    const fixup = PERMISSION_FIXUPS.find((item) => item.permissions.includes("manage_global_ai_memory"));
+    expect(fixup).toBeDefined();
+    expect(fixupGrants(fixup!.permissions)).toEqual(AI_EXTRAS.map((permission) => ({ role: "music_director", permission })));
+  });
+});
+
 describe("roleKeyFromLabel", () => {
   it("makes a stable lowercase key", () => {
     expect(roleKeyFromLabel("Assistant Director")).toBe("assistant_director");

@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 
 import type { AiErrorCode } from "@/lib/ai/errors";
 import type { AiFeature } from "@/lib/ai/features";
+import type { MemoryContext } from "@/lib/ai/memory/memory";
 import type { Permission } from "@/lib/auth/permissions";
 
 import { buildBrief, newSongsOffered, placesToFill, type LibraryFindings, type PlanBrief, type PlanContext } from "./brief";
@@ -22,8 +23,10 @@ import { applyPlan, applySuggestions } from "./validate";
  *      AI call at all.
  *   3. The server reads the service and everything a song is chosen by. The
  *      browser's word is taken only for what the editor holds.
- *   4. The model is given the philosophy whole, the facts and a bounded list
- *      of candidates, and answers with song ids in a fixed shape.
+ *   4. The model is given the philosophy whole, the memories that apply
+ *      (shared, and the person's own), the facts and a bounded list of
+ *      candidates, and answers with song ids in a fixed shape. It is never
+ *      given anything said to Conductor.
  *   5. The answer is held to the rules (validate.ts). One that breaks them is
  *      sent back once with what was wrong; a second failure is the end.
  *
@@ -52,9 +55,21 @@ export interface PlanViewer {
 
 export type AskResult<T> = { ok: true; object: T } | { ok: false; code: AiErrorCode };
 
+/**
+ * What a planning request is given beside the service itself, from the shared
+ * context layer (src/lib/ai/context). There is deliberately nothing here for
+ * a Conductor conversation: what was said to Conductor never reaches a plan.
+ */
+export interface PlanStandingContext {
+  /** The planning philosophy in force, whole; null when it cannot be read. */
+  philosophy: string | null;
+  /** Shared memory, and the person's own. Context to weigh, below the philosophy. */
+  memory: MemoryContext;
+}
+
 export interface PlanDeps<V extends PlanViewer> {
-  /** The Music Director's planning philosophy, whole; null when it cannot be read. */
-  philosophy(): Promise<string | null>;
+  /** The standing context every request plans from: the philosophy in force and the memories that apply. */
+  context(viewer: V, feature: Feature, request: PlanAiRequest): Promise<PlanStandingContext>;
   /** The service and what it is planned from, read on the server; null when no service is held then. */
   load(viewer: V, anchor: string): Promise<PlanContext | null>;
   /** What the library adds: lyrics, songs found by meaning, the Nativity's words. Never throws. */
@@ -107,7 +122,7 @@ export async function planWithAi<V extends PlanViewer>(
     console.error("[service-planner] Could not count recent AI requests:", error instanceof Error ? error.message : "unknown error");
   }
 
-  const philosophy = await deps.philosophy();
+  const { philosophy, memory } = await deps.context(viewer, feature, request);
   if (!philosophy) return no("no-philosophy");
 
   let context: PlanContext | null;
@@ -133,8 +148,8 @@ export async function planWithAi<V extends PlanViewer>(
 
     const instructions = plannerInstructions(philosophy);
     return request.mode === "generate"
-      ? generate(viewer, brief, library, { deps, feature, instructions, signal })
-      : suggest(viewer, brief, library, { deps, feature, instructions, signal });
+      ? generate(viewer, brief, library, { deps, feature, instructions, memory, signal })
+      : suggest(viewer, brief, library, { deps, feature, instructions, memory, signal });
   });
 }
 
@@ -142,6 +157,7 @@ interface Asking<V extends PlanViewer> {
   deps: PlanDeps<V>;
   feature: Feature;
   instructions: string;
+  memory: MemoryContext;
   signal?: AbortSignal;
 }
 
@@ -192,7 +208,7 @@ async function askUntilUsable<V extends PlanViewer, T, R>(
 const SUMMARY_CHARS = 500;
 
 async function generate<V extends PlanViewer>(viewer: V, brief: PlanBrief, library: LibraryFindings, asking: Asking<V>): Promise<PlanAiResult> {
-  const result = await askUntilUsable(viewer, asking, generatePrompt(brief), generateSchema([...brief.offered]), (answer) => {
+  const result = await askUntilUsable(viewer, asking, generatePrompt(brief, asking.memory),generateSchema([...brief.offered]), (answer) => {
     const applied = applyPlan(brief, answer);
     return applied.ok ? { ok: true, value: applied } : applied;
   });
@@ -210,7 +226,7 @@ async function generate<V extends PlanViewer>(viewer: V, brief: PlanBrief, libra
 }
 
 async function suggest<V extends PlanViewer>(viewer: V, brief: PlanBrief, library: LibraryFindings, asking: Asking<V>): Promise<PlanAiResult> {
-  const result = await askUntilUsable(viewer, asking, replacePrompt(brief), replaceSchema([...brief.offered]), (answer) => {
+  const result = await askUntilUsable(viewer, asking, replacePrompt(brief, asking.memory),replaceSchema([...brief.offered]), (answer) => {
     const applied = applySuggestions(brief, answer);
     return applied.ok ? { ok: true, value: applied.suggestions } : applied;
   });
