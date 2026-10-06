@@ -49,6 +49,11 @@ export const PERMISSIONS = {
     description: "Change site-wide settings.",
     group: "administration",
   },
+  manage_notifications: {
+    label: "Manage notifications",
+    description: "Choose how each kind of notification reaches people: required, on or off by default, or not offered.",
+    group: "administration",
+  },
   manage_songs: {
     label: "Manage songs",
     description: "Edit songs and their details.",
@@ -131,7 +136,8 @@ export function isPermission(value: string): value is Permission {
  * Permissions that open the admin area. Anyone holding one sees the Admin
  * link. manage_sheet_music is here because each person's sheet music is
  * chosen on their page under People; use_ai because the AI's status and usage
- * are there (/admin/ai).
+ * are there (/admin/ai); manage_notifications because the notification
+ * policies are (/admin/notifications).
  */
 export const ADMIN_PERMISSIONS: Permission[] = [
   "manage_users",
@@ -140,6 +146,7 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "manage_profiles",
   "manage_sheet_music",
   "use_ai",
+  "manage_notifications",
 ];
 
 /** Permissions that open People (/admin/users): everything that works on a person's page. */
@@ -179,6 +186,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     label: "Music Director",
     description: "Leads the music ministry: songs, service plans, sheet music and reports.",
     permissions: [
+      "manage_notifications",
       "manage_songs",
       "manage_service_plans",
       "manage_sheet_music",
@@ -230,6 +238,7 @@ export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readon
     key: "2026-10-ai-memory-and-philosophy-permissions",
     permissions: ["use_personal_ai_memory", "manage_global_ai_memory", "manage_planning_philosophy"],
   },
+  { key: "2026-10-notifications-permission", permissions: ["manage_notifications"] },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

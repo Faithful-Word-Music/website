@@ -22,7 +22,7 @@ import { aiContent } from "@/content/ai";
 
 import { ADMIN_PERMISSIONS, PEOPLE_PERMISSIONS, type Permission } from "./auth/permissions";
 
-export type AdminIconName = "overview" | "requests" | "invitations" | "users" | "roles" | "configuration" | "ai";
+export type AdminIconName = "overview" | "requests" | "invitations" | "users" | "roles" | "configuration" | "notifications" | "ai";
 
 /** One page of the admin area. */
 export interface AdminPage {
@@ -41,6 +41,7 @@ export type AdminPageId =
   | "users"
   | "roles"
   | "configuration"
+  | "notifications"
   | "aiUsage"
   | "aiMemory"
   | "aiPhilosophy";
@@ -80,6 +81,13 @@ export const ADMIN_SECTIONS: AdminSectionGroup[] = [
         label: nav.items.configuration,
         icon: "configuration",
         anyOf: ["manage_profiles", "manage_sheet_music"],
+      },
+      {
+        id: "notifications",
+        href: "/admin/notifications",
+        label: nav.items.notifications,
+        icon: "notifications",
+        anyOf: ["manage_notifications"],
       },
       {
         id: "ai",

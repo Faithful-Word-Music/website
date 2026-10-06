@@ -89,7 +89,8 @@ const APP_NAV: NavEntry[] = [
 
 /** The account menu (the avatar in the header), in order. Log out follows it. */
 const ACCOUNT_MENU: NavEntry[] = [
-  { label: navigationContent.dashboard, href: "/dashboard" },
+  // No Dashboard here: it already leads the main navigation, and the logo goes to it.
+  { label: navigationContent.notifications, href: "/notifications" },
   { label: navigationContent.profile, href: "/profile" },
   { label: navigationContent.accountSettings, href: "/account" },
   { label: navigationContent.admin, href: "/admin", when: (context) => canAccessAdmin(context.permissions) },
@@ -129,7 +130,7 @@ export function accountMenu(context: NavContext): NavItem[] {
 }
 
 /** The pages only a signed-in person can reach (the proxy sends anyone else to /login). */
-const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/profile", "/account", "/admin"];
+const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/account", "/admin"];
 
 /**
  * Whether this page can only be open to someone signed in. While Clerk is

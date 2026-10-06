@@ -9,6 +9,7 @@ import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { NavMenu } from "@/components/layout/NavMenu";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useNavFit } from "@/components/layout/use-nav-fit";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import { Container } from "@/components/ui/Container";
@@ -136,6 +137,9 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                   on phones, so it never needs the menu opened. */}
               <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
               <ThemeToggle className="shrink-0" />
+              {/* Unread notifications, and the latest of them: on phones too,
+                  beside the menu button. Signed-in people only. */}
+              {authEnabled ? <NotificationBell /> : null}
               {/* The signed-in person's menu. Nothing shows for visitors, and
                   nothing at all while accounts are switched off. */}
               {authEnabled ? <UserMenu /> : null}

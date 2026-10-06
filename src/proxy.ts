@@ -8,7 +8,7 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * public site never passes through here (see the matcher below).
  *
  * - The signed-in pages (/dashboard, /service-planner, /conductor,
- *   /availability, /profile, /account, /admin) need a signed-in person - anyone else is sent to /login and brought back
+ *   /availability, /notifications, /profile, /account, /admin) need a signed-in person - anyone else is sent to /login and brought back
  *   afterwards. WHAT a signed-in person may do is not decided here: every
  *   protected page and server action checks permissions itself on the server
  *   (src/lib/auth/session.ts).
@@ -27,7 +27,7 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * decide who is sent to log in - never as the protection itself, which each
  * page and action does for its own data (requireViewer, withPermission).
  */
-const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/profile", "/account", "/admin"];
+const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/account", "/admin"];
 
 function isAccountRoute(request: NextRequest): boolean {
   const { pathname } = request.nextUrl;
@@ -78,6 +78,7 @@ export const config = {
     // Generate with AI: only for a signed-in person holding manage_service_plans and use_ai.
     "/api/service-planner/:path*",
     "/availability/:path*",
+    "/notifications/:path*",
     "/profile/:path*",
     "/account/:path*",
     "/admin/:path*",

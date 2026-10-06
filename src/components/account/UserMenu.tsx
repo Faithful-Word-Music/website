@@ -12,8 +12,7 @@ import { accountMenu, isActivePath } from "@/lib/navigation";
 
 /**
  * The account section at the foot of the mobile menu: who is signed in, then
- * the same links as the header's account menu, and Log out. The Dashboard is
- * left out here - it already leads the menu's main links.
+ * the same links as the header's account menu, and Log out.
  */
 export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
   const { isSignedIn, me, nav } = useAccount();
@@ -24,7 +23,7 @@ export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
   if (!isSignedIn || !user) return null;
 
   const name = user.fullName || user.primaryEmailAddress?.emailAddress || "Your account";
-  const links = accountMenu(nav).filter((item) => item.href !== "/dashboard");
+  const links = accountMenu(nav);
 
   return (
     <div className="border-t border-line pt-6">
@@ -74,7 +73,7 @@ export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
 
 /**
  * The signed-in person's menu in the header: their photo, and links to their
- * Dashboard, Profile, Account settings, the admin area (if they may use it)
+ * Notifications, Profile, Account settings, the admin area (if they may use it)
  * and Log out. Editing lives on the pages themselves, not here.
  *
  * Renders nothing for visitors who are not signed in - the public header looks

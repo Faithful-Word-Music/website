@@ -20,6 +20,7 @@ describe("the admin area's sections", () => {
       "/admin/users",
       "/admin/roles",
       "/admin/configuration",
+      "/admin/notifications",
       "/admin/ai",
       "/admin/ai/memory",
       "/admin/ai/philosophy",
@@ -27,7 +28,7 @@ describe("the admin area's sections", () => {
   });
 
   it("gives the Music Director the pages that role's permissions open, and no others", () => {
-    expect(hrefs(role("music_director"))).toEqual(["/admin", "/admin/users", "/admin/configuration", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
+    expect(hrefs(role("music_director"))).toEqual(["/admin", "/admin/users", "/admin/configuration", "/admin/notifications", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
   });
 
   it("gives a Musician, a Song Leader and a Member nothing", () => {

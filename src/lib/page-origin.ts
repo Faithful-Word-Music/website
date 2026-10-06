@@ -110,12 +110,15 @@ export function backLabel(entry: string): string {
     "/contact": labels.contact,
     "/profile": labels.profile,
     "/account": labels.account,
+    "/notifications": labels.notifications,
+    "/notifications/settings": labels.notificationSettings,
     "/admin": labels.admin,
     "/admin/requests": labels.requests,
     "/admin/invitations": labels.invitations,
     "/admin/users": labels.people,
     "/admin/roles": labels.roles,
     "/admin/configuration": labels.configuration,
+    "/admin/notifications": labels.notificationPolicies,
     "/admin/ai": labels.ai,
   };
   return named[path] ?? labels.generic;

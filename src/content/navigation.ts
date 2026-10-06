@@ -10,6 +10,7 @@ export const navigationContent = {
   /** The menu holding the Service Planner and Conductor, for someone who may open both. */
   tools: "Tools",
   availability: "Availability",
+  notifications: "Notifications",
   profile: "Profile",
   accountSettings: "Account settings",
   admin: "Admin",
@@ -37,6 +38,9 @@ export const navigationContent = {
     contact: "Back to Contact",
     profile: "Back to your profile",
     account: "Back to Account settings",
+    notifications: "Back to Notifications",
+    notificationSettings: "Back to notification settings",
+    notificationPolicies: "Back to notification policies",
     admin: "Back to Admin",
     requests: "Back to requests",
     invitations: "Back to invitations",

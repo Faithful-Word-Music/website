@@ -103,8 +103,8 @@ describe("accountMenu", () => {
     expect(accountMenu(SIGNED_OUT)).toEqual([]);
   });
 
-  it("keeps Dashboard, Profile and Account settings apart, with no Admin for a member", () => {
-    expect(hrefs(accountMenu(signedIn(["musician"])))).toEqual(["/dashboard", "/profile", "/account"]);
+  it("holds Notifications, Profile and Account settings - not the Dashboard - with no Admin for a member", () => {
+    expect(hrefs(accountMenu(signedIn(["musician"])))).toEqual(["/notifications", "/profile", "/account"]);
   });
 
   it("adds Admin for an administrator", () => {

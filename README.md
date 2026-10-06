@@ -221,6 +221,7 @@ src/
 | `dashboard/` | The Dashboard's logic: `focus` (what is relevant to this person), `attention` + `providers` ("Needs your attention"), `coming-up`, `repertoire`, `sheet-gaps`, `new-sheet-music` and `people` (pure); `load.ts` does the reads (server-only) |
 | `ai/` | The AI system (see [AI.md](./AI.md)): `service.ts`, the one place a model is called (server-only); `store.ts`, the usage log (server-only); `config.ts`; `stream.ts`, the streamed answer's format; and `features`, `settings`, `errors`, `usage`, `format` (pure). `ai/conductor/` is the assistant: `tools`, `data`, `conductor` (server-only); `facts`, `lyrics`, `instructions`, `context`, `limits`, `protocol`, `session`, `drawer`, `markdown` (pure) |
 | `library-content/` | The library index, the songs' lyrics (see [AI.md](./AI.md)): `musescore.ts` reads lyrics out of a `.mscz`, `lyrics.ts` turns them into verses and a refrain, `plan.ts` decides what a refresh must do, `directory.ts` finds a song and folds its copies (all pure); `indexer.ts`, `store.ts`, `search.ts` (server-only) |
+| `notifications/` | Notifications (see [NOTIFICATIONS.md](./NOTIFICATIONS.md)): `model` (channels, policies, the effective-setting rule), `audience` (who is told), `catalog` (the events), `service` (every rule, over `deps`), `format` (pure); `store.ts` (server-only) |
 | `availability/` | Availability: `occurrences` (which services happen), `effective` (normal + exception = effective, the one rule), `board`, `summary`, `range`, `access` (who is on the board, whose records someone may change), `forms`, `format` (pure); `store.ts` and `load.ts` (server-only) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
@@ -494,7 +495,7 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
   - and only then does the action run.
   This all goes through `src/lib/auth/session.ts`.
 - **Things that are never trusted:** hidden buttons, the header menu, the proxy and the admin layout. The header's "Admin" link is only a convenience.
-- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/dashboard`, `/availability`, `/profile`, `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards, and sends signed-in visitors on `/` to `/dashboard`. It doesn't run on any other public page, so they stay static and cached. It matches those sections with its own prefix list, not Clerk's deprecated `createRouteMatcher`: path matching here only decides a redirect, and each page and action protects its own data.
+- **The proxy** (`src/proxy.ts`) only sends signed-out visitors on `/dashboard`, `/availability`, `/notifications`, `/profile`, `/account` and `/admin` to `/login?redirect_url=…`, so they come back afterwards, and sends signed-in visitors on `/` to `/dashboard`. It doesn't run on any other public page, so they stay static and cached. It matches those sections with its own prefix list, not Clerk's deprecated `createRouteMatcher`: path matching here only decides a redirect, and each page and action protects its own data.
 
 **One database, two Clerk instances:**
 - Local, Preview and Production share one Neon database, but Clerk Development and Production have separate users.
@@ -517,7 +518,7 @@ The site is two experiences on one codebase:
 |---|---|---|
 | `/dashboard` | What do I need to know and do? What is coming up? | Built from current data |
 | `/profile` | Who am I in the ministry? (names, photo, bio, titles, instruments, music answers) | The site, plus name and photo from Clerk |
-| `/account` | How do I sign in? (email, password, devices). Later: account-wide settings such as notifications and profile privacy | Clerk |
+| `/account` | How do I sign in? (email, password, devices). Links to notification settings (`/notifications/settings`). Later: profile privacy | Clerk |
 | `/admin` | Running the ministry's accounts | The site |
 
 Editing happens on the page being edited (the **Edit profile** button on `/profile`), never from a menu.
@@ -533,7 +534,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 **Navigation** (`src/lib/navigation.ts`, one place for every menu):
 - Visitors: Home, Song List, Library, Contact.
 - Signed in, in this order: **Dashboard** (in Home's place), **Service Planner** (`manage_service_plans`), **Song List**, **Library**, **Availability** (`view_availability`, never Member-only accounts), **Contact**. Each signed-in destination shows only to someone holding its permission.
-- The avatar menu holds Dashboard, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar. The bar gives way to the menu below 1024px (`lg`), so the links never wrap.
+- The avatar menu holds Notifications, Profile, Account settings, Admin (only with an admin permission) and Log out. On phones the avatar stays in the header bar; the full-screen menu shows the same main links as the desktop bar. The bar gives way to the menu below 1024px (`lg`), so the links never wrap.
 - A new destination is one entry in `APP_NAV` (or `ACCOUNT_MENU`) with the `permission` that opens it. Nothing unfinished is listed.
 
 **Why the header finds out in the browser:** public pages are static, so they can't know who is looking. `AccountProvider` (`components/account/AccountContext.tsx`) reads the Clerk session in the browser and asks `/api/account/me` once for the person's own permissions. The header, footer, search and members' sheet music all share that one answer. A signed-in person briefly sees the visitor's links on a static page until Clerk loads; that is the price of keeping the public site static. **Showing a link is never the protection**: every page, file and action checks permissions again on the server.
@@ -719,6 +720,19 @@ The site has an internal AI system, built in six phases, now complete; **[AI.md]
 - **Admin → AI** (`/admin/ai`): whether AI is connected, **Run test request** (one fixed, tiny request that proves the key, model and log end to end), the library index (songs indexed, without a file, without lyrics, unreadable, out of date) with **Refresh library index**, this month's cost against the budget, usage by feature and by model, and the latest requests.
 - **Without a key** the site is unchanged: the page says "Not set up" and no request is made.
 
+### Notifications
+
+In-app notifications, built in phases; **[NOTIFICATIONS.md](./NOTIFICATIONS.md)** is the authoritative description and the handoff between phases. Phase 1 is the core: nothing in the site sends a notification yet except a development-only test button. Push, the app-icon badge, a composer and email are later phases.
+
+- **A notification is not a push message.** It is a durable record of something a person should know about; the app's bell, push and email are channels that deliver it. A feature calls `notify()` in `src/lib/notifications/service.ts` with an event and an audience, and nothing else.
+- **Where it shows:** a bell in the header for signed-in people (a panel on wide screens, a dialog on a phone), the history at `/notifications`, and each person's choices at `/notifications/settings` (linked from `/account`).
+- **Policies are data.** Every category has a policy per channel (mandatory, default on, default off, unavailable), set under **Admin → Setup → Notifications** by anyone holding `manage_notifications` (Administrator, and Music Director by default). Nothing is mandatory in code; Announcements only start that way.
+- **A person's choices are stored only when they make one, and a policy change never erases them.** `effectiveSetting()` in `src/lib/notifications/model.ts` combines the two each time, so a choice outranked by "mandatory" counts again when the policy is relaxed.
+- **Email shows as "Coming soon"** and cannot be switched on by anyone, administrators included. When it launches nobody is opted in.
+- **A notification's link grants nothing.** Links are internal paths only, and the page they lead to checks permissions itself.
+- **One unread count:** `components/notifications/notification-store.ts`. The bell and the history page read it, and the app-icon badge will.
+- **Tables** are created on first use and tagged `clerk_env`, like the account tables. No migration, no new environment variables.
+
 ---
 
 ## Design conventions
@@ -787,6 +801,7 @@ Vitest covers the pure logic in `src/lib`:
 - the site search: what each person is offered by their permissions (visitor, Member, Musician, Music Director, Administrator, and single permissions granted or denied), Ask Conductor only with `use_ai` and something typed, the availability command only with `view_availability` (`site-search.test.ts`); the admin area's sections by permission (`admin-sections.test.ts`); the open link and group of a navigation (`current-href.test.ts`); the quick availability action's services, choices and filter (`availability/quick.test.ts`)
 - Generate with AI: both permissions, AI locks and their defaults (both inserts of a week with two), improving a plan and generating a new one, an insert held or replaced, no insert AI could add, the shortlist, what the model is told, every way an answer is refused, keys, the Christmas rule, the retry, and suggestions for one place (`ai/service-planner/service-planner.test.ts`)
 - the library index: reading lyrics out of MuseScore 3 and 4 scores (`library-content/musescore.test.ts`); verses, refrains, Psalms, echoes and folded text (`library-content/lyrics.test.ts`); what a refresh must do for each song, finding a song and folding its copies (`library-content/plan.test.ts`). `library-content/survey.test.ts` is not a test: run by hand, it reads every real file and prints what the extractor makes of it (see AI.md)
+- notifications: every policy with and without a stored choice, a choice kept through mandatory and back, email never switched on, who may change policies, nobody reading or marking another person's, unread counts and mark all read, paging, audiences by permission and role, links kept on the site (`notifications/notifications.test.ts`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.

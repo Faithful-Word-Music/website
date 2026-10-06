@@ -238,7 +238,7 @@ describe("who the search offers what", () => {
 
   it("keeps the opening list short: Admin's sections, Inserts and the year recaps wait to be typed for", () => {
     const opening = searchSite(index, "", false, administrator).groups.find((group) => group.group === "pages")!.entries.map((entry) => entry.href);
-    expect(opening).toEqual(["/dashboard", "/service-planner", "/conductor", "/song-list", "/library", "/availability", "/song-list/archive", "/song-list/year", "/profile", "/account", "/contact", "/admin"]);
+    expect(opening).toEqual(["/dashboard", "/service-planner", "/conductor", "/song-list", "/library", "/availability", "/song-list/archive", "/song-list/year", "/profile", "/account", "/notifications", "/contact", "/admin"]);
   });
 
   it("finds the new pages by the words people would use for them", () => {

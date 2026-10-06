@@ -16,6 +16,7 @@ export const adminContent = {
       users: "People",
       roles: "Roles",
       configuration: "Configuration",
+      notifications: "Notifications",
       ai: "AI",
     },
     developmentNote: "Development accounts (Clerk test instance)",

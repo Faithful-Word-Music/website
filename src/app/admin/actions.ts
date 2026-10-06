@@ -23,7 +23,7 @@ import {
 } from "@/lib/auth/forms";
 import { ADMIN_ROLE, MEMBER_ROLE, isPermission, roleKeyFromLabel, type Permission } from "@/lib/auth/permissions";
 import { normalizeEmail } from "@/lib/auth/request-status";
-import { siteOrigin, withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, siteOrigin, withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
 import {
   addOption,
   assignRole,
@@ -74,6 +74,11 @@ import type { AiTokenUsage } from "@/lib/ai/usage";
 import { refreshLibraryIndex } from "@/lib/library-content/indexer";
 import type { RefreshReport } from "@/lib/library-content/plan";
 import { MAX_ACCIDENTALS } from "@/lib/capo-policy";
+import { users } from "@/lib/notifications/audience";
+import { CHANNELS, allowedPolicies, isChannelPolicy } from "@/lib/notifications/model";
+import { notify, setPolicy } from "@/lib/notifications/service";
+import { deleteNotificationData, notificationDeps } from "@/lib/notifications/store";
+import { notificationsContent } from "@/content/notifications";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
 import { describeSource } from "@/lib/sheet-music-type";
@@ -445,6 +450,7 @@ export async function deleteUserAction(userId: unknown): Promise<ActionResult> {
       if (!deleted.ok) return clerkError(deleted, "The account could not be deleted. Please try again.");
     }
     await deleteUserData(viewer.env, target.data);
+    await deleteNotificationData(viewer.env, target.data);
     revalidatePath("/admin", "layout");
     // Their page no longer exists; go back to the list.
     redirect("/admin/users");
@@ -916,5 +922,71 @@ export async function refreshLibraryIndexAction(continuing: unknown): Promise<Ac
       return { ok: false, error: errors[result.reason].replace("{type}", siteConfig.sheetMusic.lyricsType) };
     }
     return { ok: true, value: { report: result.report, embeddingMessage: result.embeddingMessage } };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Admin -> Notifications: one category's policy for each channel
+ * (src/lib/notifications/service.ts). Only the policies are written - nobody's
+ * own choices are touched, so they count again whenever a policy allows.
+ * A channel that cannot deliver yet (email) can only stay "unavailable":
+ * every value is checked before anything is saved.
+ */
+export async function setNotificationPoliciesAction(category: unknown, policies: unknown): Promise<ActionResult> {
+  return withPermission("manage_notifications", async (viewer) => {
+    const copy = notificationsContent.admin;
+    const chosen = (policies && typeof policies === "object" ? policies : {}) as Record<string, unknown>;
+    const changes = CHANNELS.filter((channel) => chosen[channel] !== undefined).map((channel) => ({ channel, policy: chosen[channel] }));
+    if (typeof category !== "string" || changes.length === 0) return { ok: false, error: copy.unknown };
+    for (const { channel, policy } of changes) {
+      if (!isChannelPolicy(policy) || !allowedPolicies(channel).includes(policy)) return { ok: false, error: copy.notAllowed };
+    }
+
+    const deps = notificationDeps(viewer.env);
+    for (const change of changes) {
+      const result = await setPolicy(viewer, { category, ...change }, deps);
+      if (!result.ok) {
+        return { ok: false, error: result.problem === "forbidden" ? ACTION_ERRORS.forbidden : result.problem === "not-allowed" ? copy.notAllowed : copy.unknown };
+      }
+    }
+    revalidatePath("/admin/notifications");
+    revalidatePath("/notifications/settings");
+    return { ok: true, value: null, message: copy.saved };
+  });
+}
+
+/**
+ * Admin -> Notifications -> "Send me a test notification". Development only
+ * (the Clerk test instance), and only ever to the person pressing it: this is
+ * a way to see the system work before any feature sends one, not a way to
+ * send notifications. It goes through notify() like every real one, so the
+ * category's policy and the person's own choice apply.
+ */
+export async function sendTestNotificationAction(category: unknown): Promise<ActionResult> {
+  return withPermission("manage_notifications", async (viewer) => {
+    const copy = notificationsContent.admin.test;
+    if (viewer.env !== "development") return { ok: false, error: copy.productionOnly };
+    if (typeof category !== "string") return { ok: false, error: notificationsContent.admin.unknown };
+
+    const deps = notificationDeps(viewer.env);
+    const name = (await deps.listCategories()).find((item) => item.key === category)?.name;
+    if (!name) return { ok: false, error: notificationsContent.admin.unknown };
+    const result = await notify(
+      {
+        event: "system.test",
+        category,
+        audience: users(viewer.userId),
+        title: copy.notificationTitle,
+        body: copy.notificationBody.replace("{category}", name),
+        actorUserId: viewer.userId,
+      },
+      deps,
+    );
+    if (!result.ok) return { ok: false, error: notificationsContent.admin.unknown };
+    return { ok: true, value: null, message: result.recipients > 0 ? copy.sent : copy.skipped };
   });
 }

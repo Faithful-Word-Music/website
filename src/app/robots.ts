@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: "/",
       // Endpoints are not pages, and the members' area is private: keep them
       // out of crawl budgets. (The pages also say noindex themselves.)
-      disallow: ["/api/", "/admin", "/account", "/profile", "/dashboard", "/service-planner", "/availability", "/accept-invite", "/login"],
+      disallow: ["/api/", "/admin", "/account", "/profile", "/dashboard", "/service-planner", "/availability", "/notifications", "/accept-invite", "/login"],
     },
     sitemap: `${siteConfig.url}/sitemap.xml`,
   };

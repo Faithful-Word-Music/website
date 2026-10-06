@@ -49,6 +49,8 @@ export const searchContent = {
     dashboard: { label: "Dashboard", keywords: "home start coming up next attention my services sheet music" },
     profile: { label: "Your profile", keywords: "me instruments titles bio edit" },
     account: { label: "Account settings", keywords: "password email security sign in devices" },
+    notifications: { label: "Notifications", keywords: "alerts bell unread inbox messages announcements history" },
+    notificationSettings: { label: "Notification settings", keywords: "alerts preferences push email turn off mute choose" },
     /** For someone who plans the services. */
     servicePlanner: { label: "Service Planner", keywords: "plan planning songs services draft publish queue choose schedule next sunday wednesday" },
     inserts: { label: "Inserts", keywords: "service planner psalm weekly insert second week month plan ahead" },
@@ -77,6 +79,7 @@ export const searchContent = {
     users: { label: "Admin: People", keywords: "users accounts members musicians person roles sheet music assign disable" },
     roles: { label: "Admin: Roles", keywords: "permissions role access who can music director musician member" },
     configuration: { label: "Admin: Configuration", keywords: "settings titles instruments sheet music types capo options setup" },
+    notifications: { label: "Admin: Notifications", keywords: "notification policies categories mandatory required default push email in-app alerts configure" },
     aiUsage: { label: "Admin: AI Usage", keywords: "ai cost tokens budget spending requests model status library index refresh" },
     aiMemory: { label: "Admin: AI Memory", keywords: "ai remember remembered memories personal global forget conductor" },
     aiPhilosophy: { label: "Admin: Planning Philosophy", keywords: "ai service planning philosophy guidance rules how to plan history versions restore" },

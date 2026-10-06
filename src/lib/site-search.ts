@@ -156,6 +156,8 @@ const PAGES: PageDefinition[] = [
   { href: "/song-list/year", copy: "years" },
   { href: "/profile", copy: "profile", only: "member" },
   { href: "/account", copy: "account", only: "member" },
+  { href: "/notifications", copy: "notifications", only: "member" },
+  { href: "/notifications/settings", copy: "notificationSettings", only: "member", quiet: true },
   { href: "/contact", copy: "contact" },
 ];
 
