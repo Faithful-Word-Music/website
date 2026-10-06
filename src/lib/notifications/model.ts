@@ -6,7 +6,8 @@
  * one. The three channels:
  *
  *   in_app   the bell in the header and the Notifications page
- *   push     the person's devices (a later phase)
+ *   push     the person's devices: every browser or installed app they
+ *            switched push on in (push.ts, delivery.ts)
  *   email    (a later phase)
  *
  * Every category has its own policy for each channel, set by whoever holds
@@ -62,7 +63,7 @@ export function isPriority(value: unknown): value is NotificationPriority {
  */
 export const CHANNEL_STATUS: Record<Channel, "live" | "planned" | "soon"> = {
   in_app: "live",
-  push: "planned",
+  push: "live",
   email: "soon",
 };
 

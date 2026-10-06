@@ -63,7 +63,7 @@ export const notificationsContent = {
     in_app: { name: "In the app", detail: "The bell at the top of the site, and this page." },
     push: {
       name: "Push",
-      detail: "Sent to your phone or computer. Push notifications arrive in a later update; your choices here are saved for then.",
+      detail: "Sent to each device you have switched push on for, even when the site is closed.",
     },
     email: { name: "Email", detail: "Email notifications are not available yet." },
   },
@@ -77,6 +77,12 @@ export const notificationsContent = {
     /** A mandatory category: on, and not the person's to change. */
     required: "Always on",
     requiredDetail: "Required by Faithful Word Music",
+    /** Under the list: what "Always on" can and cannot mean for push. */
+    requiredPushNote:
+      "\"Always on\" means it cannot be switched off here. A push still only reaches a device where push is switched on and your browser or device allows notifications.",
+    /** The heading over the categories, beneath "Push on this device". */
+    categoriesTitle: "What you hear about",
+    categoriesLead: "These choices follow you to every device.",
     /** A channel not offered for a category. */
     unavailable: "Not available",
     comingSoon: "Coming soon",
@@ -91,6 +97,69 @@ export const notificationsContent = {
     /** On /account: the way here. */
     accountLink: "Notification settings",
     accountLead: "Choose which notifications you receive.",
+  },
+
+  /**
+   * Push on THIS browser or installed app (components/notifications/PushDevice.tsx):
+   * the device's side of things, which is not the same as the choices above.
+   */
+  device: {
+    title: "Push on this device",
+    lead: "Push notifications reach you when Faithful Word Music is closed. They are switched on separately on each phone, tablet and computer you use.",
+    /** What each state says: a line, and where it helps, what to do about it. */
+    states: {
+      checking: { status: "Checking this device…", detail: "" },
+      off: {
+        status: "Push notifications are off on this device.",
+        detail: "Your browser will ask for permission once.",
+      },
+      enabled: {
+        status: "Push notifications are on for this device.",
+        detail: "What is sent here follows your choices below.",
+      },
+      denied: {
+        status: "Notifications are blocked for this site.",
+        detail:
+          "Faithful Word Music cannot ask again. Allow notifications for this site in your browser or device settings, then come back to this page.",
+      },
+      unsupported: {
+        status: "This browser cannot receive push notifications.",
+        detail: "A current version of Chrome, Edge, Firefox or Safari can, and so can the installed app.",
+      },
+      "needs-install": {
+        status: "On an iPhone or iPad, push needs the installed app.",
+        detail:
+          "Add Faithful Word Music to your Home Screen (Share, then Add to Home Screen), open it from there, and switch push on from this page inside the app.",
+      },
+      "needs-repair": {
+        status: "This device needs to be reconnected.",
+        detail: "Push was switched on here, but the connection to this device was lost.",
+      },
+      "not-set-up": {
+        status: "Push notifications are not set up for this site yet.",
+        detail: "",
+      },
+    },
+    enable: "Enable push notifications",
+    enabling: "Enabling…",
+    disable: "Turn off on this device",
+    disabling: "Turning off…",
+    repair: "Reconnect this device",
+    repairing: "Reconnecting…",
+    installLink: "How to install the app",
+    errors: {
+      failed: "Push notifications could not be changed on this device. Please try again.",
+      notSetUp: "Push notifications are not set up for this site yet.",
+      notGranted: "Permission was not given, so push notifications are still off.",
+    },
+    /** The Dashboard's reminder, until it is put away or push is switched on. */
+    card: {
+      title: "Get important music updates",
+      detail: "Receive service plan, availability and account notifications even when Faithful Word Music isn't open.",
+      button: "Enable notifications",
+      dismiss: "Not now",
+      dismissLabel: "Not now: hide this reminder about notifications",
+    },
   },
 
   /**
@@ -214,7 +283,7 @@ export const notificationsContent = {
     },
     channels: {
       in_app: { name: "In the app", note: "" },
-      push: { name: "Push", note: "Kept for when push notifications launch. Nothing is pushed yet." },
+      push: { name: "Push", note: "Reaches only the devices a member has switched push on for. Mandatory cannot override a browser or device that blocks notifications." },
       email: { name: "Email", note: "Coming soon. Email notifications cannot be switched on yet." },
     },
     /** A select's accessible name. {category} and {channel} are replaced. */
@@ -232,11 +301,11 @@ export const notificationsContent = {
       body: "Development only. Sends one notification to you, through the same path every real one will take, so you can see it arrive.",
       category: "Category",
       button: "Send me a test notification",
-      sent: "Sent. Look at the bell.",
-      skipped: "Nothing was sent: this category is switched off for you in the app.",
+      sent: "Sent. Look at the bell, and at this device if push is on for it.",
+      skipped: "Nothing was sent: this category is switched off for you, in the app and by push.",
       productionOnly: "Test notifications can only be sent in development.",
       notificationTitle: "Test notification",
-      notificationBody: "This is a test of {category}. If you can read this, in-app notifications are working.",
+      notificationBody: "This is a test of {category}. If you can read this, notifications are working.",
     },
   },
 } as const;

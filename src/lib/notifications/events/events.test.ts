@@ -161,17 +161,35 @@ describe("every real event", () => {
     expect(JSON.stringify(item)).not.toContain("anchor");
   });
 
-  it("is delivered in the app only: push and email send nothing", async () => {
-    expect(CHANNEL_STATUS).toEqual({ in_app: "live", push: "planned", email: "soon" });
-    const { deps, preferences, rows } = notificationStore(TEAM);
-    // In the app off, push on: with push not delivering, John is not told at all.
+  it("is delivered in the app and by push, and never by email", async () => {
+    expect(CHANNEL_STATUS).toEqual({ in_app: "live", push: "live", email: "soon" });
+    const { deps, preferences, rows, sent, device } = notificationStore(TEAM);
+    for (const userId of ["user_john", "user_mary", "user_assistant"]) device(userId);
+    // In the app off, push on: John is told, by push alone.
     preferences.push({ userId: "user_john", category: "service_plan_published", channel: "in_app", enabled: false });
     preferences.push({ userId: "user_john", category: "service_plan_published", channel: "push", enabled: true });
     preferences.push({ userId: "user_john", category: "service_plan_published", channel: "email", enabled: true });
+    // Push off, in the app on: Mary is told in the app alone.
+    preferences.push({ userId: "user_mary", category: "service_plan_published", channel: "push", enabled: false });
     await notify(samples[0], deps);
-    expect(told(rows)).toEqual(["user_assistant", "user_mary"]);
-    // And nothing in what notify() is given can send anything anywhere else.
-    expect(Object.keys(deps).some((name) => /push|email|deliver|send/i.test(name))).toBe(false);
+    expect(told(rows)).toEqual(["user_assistant", "user_john", "user_mary"]);
+    expect(rows.find((row) => row.recipient === "user_john")!.inApp).toBe(false);
+    expect((await listNotifications(actor("user_john"), {}, deps)).items).toEqual([]);
+    expect(sent.map((message) => message.userId).sort()).toEqual(["user_assistant", "user_john"]);
+    // And nothing in what notify() is given can send an email.
+    expect(Object.keys(deps).some((name) => /email|mail/i.test(name))).toBe(false);
+  });
+
+  it("is pushed with nothing of its payload, and only ever to a page on this site", async () => {
+    const { deps, sent, device } = notificationStore(TEAM);
+    for (const userId of TEAM.accountIds) device(userId);
+    for (const sample of samples) await notify(sample, deps);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const { payload } of sent) {
+      expect(Object.keys(payload).sort()).toEqual(["body", "id", "priority", "tag", "title", "unread", "url", "v"]);
+      expect(safeActionUrl(payload.url)).toBe(payload.url);
+      expect(JSON.stringify(payload)).not.toContain("anchor");
+    }
   });
 });
 

@@ -11,6 +11,7 @@ import { ConductorDock } from "@/components/conductor/ConductorDock";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
+import { PushSync } from "@/components/notifications/PushSync";
 import { PageHistoryTracker } from "@/components/ui/BackLink";
 import { BackToTop } from "@/components/ui/BackToTop";
 import { NavigationProgress } from "@/components/ui/NavigationProgress";
@@ -121,6 +122,9 @@ function AccountsProvider({ enabled, children }: { enabled: boolean; children: R
       <AccountProvider>
         {/* The installed app: members only (src/lib/app-only.ts). */}
         <AppOnly />
+        {/* Push: the service worker, this device's subscription, and the
+            app icon's unread count (src/components/notifications/PushSync.tsx). */}
+        <PushSync />
         {children}
       </AccountProvider>
     </ClerkProvider>

@@ -17,12 +17,13 @@ import type { NotificationPage } from "@/lib/notifications/service";
  * /api/account/notifications; this store shows them and asks for changes.
  * A change shows at once and is put back if the server refuses it.
  *
- * `unread` is THE unread count. Anything else that shows it - the installed
- * app's icon badge, when that is built - reads it from here.
+ * `unread` is THE unread count. Anything else that shows it reads it from
+ * here: the installed app's icon badge does (PushSync.tsx).
  *
  * Kept fresh without a socket: asked again when a page is opened, when the
  * tab is looked at again, and once a minute while it is in view
- * (useNotificationSync).
+ * (useNotificationSync) - and at once when a push arrives or is tapped, which
+ * the service worker tells every open page (PushSync.tsx).
  */
 
 const ENDPOINT = "/api/account/notifications";
@@ -32,6 +33,8 @@ export interface NotificationState {
   /** Whose these are; null when signed out. */
   userId: string | null;
   unread: number;
+  /** `unread` has come from the server for this person: until then it is only a zero to start from. */
+  counted: boolean;
   /** Newest first, as far as has been loaded. */
   items: NotificationItem[];
   /** Where the next page starts; null when everything is loaded. */
@@ -46,6 +49,7 @@ export interface NotificationState {
 const EMPTY: NotificationState = {
   userId: null,
   unread: 0,
+  counted: false,
   items: [],
   nextCursor: null,
   loaded: false,
@@ -101,7 +105,7 @@ export async function refreshUnread() {
   const data = await request<{ unread: number }>(`${ENDPOINT}/unread`);
   if (!data || !stillFor(userId)) return;
   const changed = data.unread !== state.unread;
-  set({ unread: data.unread });
+  set({ unread: data.unread, counted: true });
   // Something arrived (or was read elsewhere): a list already on show follows.
   if (changed && state.loaded && !state.loading) void loadNotifications();
 }
@@ -114,7 +118,7 @@ export async function loadNotifications() {
   const page = await request<NotificationPage>(`${ENDPOINT}?limit=${NOTIFICATION_LIMITS.page}`);
   if (!stillFor(userId)) return;
   if (!page) return set({ loading: false, error: notificationsContent.errors.load });
-  set({ items: page.items, nextCursor: page.nextCursor, unread: page.unread, loaded: true, loading: false, error: null });
+  set({ items: page.items, nextCursor: page.nextCursor, unread: page.unread, counted: true, loaded: true, loading: false, error: null });
 }
 
 /** Adds the next, older page to the end. */
@@ -130,6 +134,7 @@ export async function loadMoreNotifications() {
     items: [...state.items, ...page.items.filter((item) => !known.has(item.id))],
     nextCursor: page.nextCursor,
     unread: page.unread,
+    counted: true,
     loading: false,
     error: null,
   });
@@ -152,6 +157,7 @@ export function hydrateNotifications(userId: string, page: NotificationPage) {
     items: [...items, ...older],
     nextCursor: older.length > 0 ? state.nextCursor : page.nextCursor,
     unread: local ? state.unread : page.unread,
+    counted: true,
     loaded: true,
     error: null,
   };
@@ -171,7 +177,7 @@ async function change(body: Record<string, unknown>, before: Pick<NotificationSt
   if (!stillFor(userId)) return;
   // Refused: put it back as it was, and say so.
   if (!data) return set({ ...before, error: notificationsContent.errors.update });
-  set({ unread: data.unread, error: null });
+  set({ unread: data.unread, counted: true, error: null });
 }
 
 /** Marks one read or unread: at once here, then on the server. */
@@ -192,6 +198,44 @@ export function markAllNotificationsRead() {
   const now = new Date().toISOString();
   set({ items: state.items.map((entry) => (entry.readAt ? entry : { ...entry, readAt: now })), unread: 0 });
   void change({ action: "read-all" }, before);
+}
+
+/**
+ * A push arrived, or something else changed on the server: the count, and a
+ * list already on show. A folded notification replaces another without
+ * changing the count, so a list that is showing is always loaded again.
+ */
+export async function refreshNotifications() {
+  if (state.loaded) await loadNotifications();
+  else await refreshUnread();
+}
+
+/**
+ * A push was tapped while the site was open (PushSync.tsx): that
+ * notification is read. One already in the list is marked as any other is;
+ * one not loaded here is marked on the server and the count follows. A
+ * notification that never showed in the app (push only) has nothing to mark,
+ * which is not an error.
+ */
+export async function openedFromPush(id: number | null) {
+  const { userId } = state;
+  if (!userId) return;
+  if (id !== null) {
+    if (state.items.some((entry) => entry.id === id)) {
+      markNotification(id, true);
+      return;
+    }
+    inFlight += 1;
+    const data = await request<{ unread: number }>(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read", id }),
+    });
+    inFlight -= 1;
+    if (!stillFor(userId)) return;
+    if (data) set({ unread: data.unread, counted: true });
+  }
+  await refreshNotifications();
 }
 
 export function useNotifications(): NotificationState {

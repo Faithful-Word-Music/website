@@ -94,6 +94,10 @@ export function NotificationPreferences({ categories }: { categories: CategoryPr
           </li>
         ))}
       </ul>
+      {/* "Always on" is the site's rule, not the device's: said once, plainly. */}
+      {categories.some((category) => category.channels.push.locked && category.channels.push.enabled) ? (
+        <p className="mt-5 text-sm text-muted">{copy.requiredPushNote}</p>
+      ) : null}
     </div>
   );
 }

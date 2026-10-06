@@ -103,7 +103,9 @@ describe("publishing", () => {
 
   it("respects someone who turned the category off", async () => {
     const { deps, rows } = notificationStore(TEAM);
+    // Off on every channel that delivers: with only the app's off, he would still be told by push.
     await setPreference(john, { category: "service_plan_published", channel: "in_app", enabled: false }, deps);
+    await setPreference(john, { category: "service_plan_published", channel: "push", enabled: false }, deps);
     await send(servicePlanPublished({ actorId: DIRECTOR, publicationId: "pub-1", services: [sundayAm], now: NOW }), deps);
     expect(recipientsOf(rows)).toEqual(["user_assistant", "user_mary"]);
   });

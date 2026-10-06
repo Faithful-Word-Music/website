@@ -80,7 +80,7 @@ import { libraryIndexProblem } from "@/lib/notifications/events/library";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import { CHANNELS, allowedPolicies, isChannelPolicy } from "@/lib/notifications/model";
 import { notify, setPolicy } from "@/lib/notifications/service";
-import { deleteNotificationData, notificationDeps } from "@/lib/notifications/store";
+import { deleteNotificationData, deletePushSubscriptions, notificationDeps } from "@/lib/notifications/store";
 import { notificationsContent } from "@/content/notifications";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
@@ -435,6 +435,14 @@ export async function setBannedAction(userId: unknown, banned: unknown): Promise
 
     const result = await setBanned(target.data, banned);
     if (!result.ok) return clerkError(result, "The account could not be updated. Please try again.");
+    // Signed out everywhere: nothing more should reach their devices either.
+    // Their choices stay, and they switch push on again if re-enabled. Not a
+    // reason to fail: a device left behind is retired when it stops answering.
+    if (banned) {
+      await deletePushSubscriptions(viewer.env, target.data).catch((error: unknown) =>
+        console.error("[notifications] Could not remove a disabled account's devices:", error instanceof Error ? error.message : "unknown error"),
+      );
+    }
     revalidatePath("/admin", "layout");
     return {
       ok: true,

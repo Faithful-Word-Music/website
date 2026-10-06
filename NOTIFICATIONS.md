@@ -8,12 +8,12 @@ The authoritative description of the notification system, and the handoff betwee
 |---|---|---|
 | 1 | Notification core and configuration: domain, tables, policies, preferences, the bell, the history page, settings, admin policies | **Built** |
 | 2 | Product notification events (Service Planner, Availability, account access, the library index), folding, the best-effort rule, settings relevance | **Built** |
-| 3 | PWA Web Push and the app-icon unread badge | Next |
-| 4 | Manual notification centre: composer, audiences, templates, send history | Later |
+| 3 | Web Push to every device a person switched it on for, delivery tracking, the service worker, and the app-icon unread badge | **Built** |
+| 4 | Manual notification centre: composer, audiences, templates, send history | Next |
 | 5 | Reliability, scheduling, reminders, AI budget alerts, advanced preferences | Later |
 | 6 | Email through Resend | Later |
 
-**Not built yet:** Web Push, push subscriptions, VAPID, the browser permission flow, app-icon badging, the custom composer, saved templates, scheduling and reminders, digests, AI budget alerts, notification email, and sheet-music report events (the report feature itself does not exist yet; its category is ready). Everything a notification does today is in the app.
+**Not built yet:** the custom composer, saved templates, an admin view of what was sent and delivered, scheduling and reminders, digests, retries of a failed push, AI budget alerts, notification email, offline use, and sheet-music report events (the report feature itself does not exist yet; its category is ready).
 
 ## The idea
 
@@ -26,7 +26,9 @@ something happens
   -> recipients resolved           audience.ts, from roles and permissions
   -> effective setting per channel the category's policy + the person's own choice
   -> notifications                 one row per person told, title and body as sent
-  -> channels that deliver         in the app now; push and email later
+  -> channels that deliver         in the app: the row itself
+                                   push: every device the person registered
+                                   email: later
 ```
 
 A feature never inserts a row, reads a policy or knows which channels exist. What it does is one line, after its own change is saved:
@@ -40,7 +42,7 @@ await notifyBestEffort(viewer.env, servicePlanPublished({ actorId, publicationId
 
 ### The best-effort rule
 
-**A notification that cannot be made never fails the change it is about.** `notifySafely()` in `service.ts` does nothing for `null`, logs a refused notification (`console.warn`) and any thrown error (`console.error`), and never throws. Features call it after their write and their `revalidatePath`, and need no `try/catch` of their own. Where a feature reads something only for the sake of the notification (availability's exceptions as they stood, a person's name from Clerk), that read is guarded the same way: if it fails, nobody is told and the change still stands.
+**A notification that cannot be made never fails the change it is about.** `notifySafely()` in `service.ts` does nothing for `null`, logs a refused notification (`console.warn`) and any thrown error (`console.error`), and never throws. Push is held to the same rule twice over: it is sent after the response has gone, and `dispatchPush()` and `deliverPush()` catch everything of their own before `notifySafely()` would have to (see [Push](#push)). Features call it after their write and their `revalidatePath`, and need no `try/catch` of their own. Where a feature reads something only for the sake of the notification (availability's exceptions as they stood, a person's name from Clerk), that read is guarded the same way: if it fails, nobody is told and the change still stands.
 
 ## Files
 
@@ -54,10 +56,16 @@ await notifyBestEffort(viewer.env, servicePlanPublished({ actorId, publicationId
 | `src/lib/notifications/send.ts` | `notifyBestEffort(env, input)`: what features call (server-only) |
 | `src/lib/notifications/store.ts` | The tables, the seed and the real `deps` (server-only) |
 | `src/lib/notifications/format.ts` | Relative times (pure) |
+| `src/lib/notifications/push.ts` | The push payload, the folding tag, subscription and endpoint checks, what a push service's answer means, the app-badge rule, this device's push state (pure) |
+| `src/lib/notifications/delivery.ts` | `dispatchPush` / `deliverPush` (one attempt per device, recorded, never throws) and a person's own devices: register, status, remove. Takes `PushDeps`, so it is tested without a push service |
+| `src/lib/notifications/push-store.ts` | VAPID config, the `web-push` sender, and the real `PushDeps` (server-only) |
+| `public/sw.js` | The service worker: push and notification taps only. No fetch handler, no cache |
 | `src/app/api/account/notifications/` | `GET` a page, `POST` read / unread / read-all; `unread/` for the bell's count |
+| `src/app/api/account/push/` | `POST` register / status / remove for the browser asking |
 | `src/app/notifications/` | The history page, the settings page, and the preference action |
+| `src/app/notifications/open/[id]/` | Where a tapped push lands: marks it read as the session's person, then redirects to its stored link |
 | `src/app/admin/notifications/` | The policy page. Its actions are in `src/app/admin/actions.ts` |
-| `src/components/notifications/` | `notification-store.ts` (the one browser store), the bell, the list, the history, the settings |
+| `src/components/notifications/` | `notification-store.ts` (the one browser store), the bell, the list, the history, the settings; `push-device.ts` (this device's push state and its three actions), `PushSync.tsx` (service-worker messages and the app badge), `PushDevice.tsx` (the settings section and the Dashboard card) |
 | `src/components/admin/NotificationPolicyEditor.tsx` | The policy editor and the development test button |
 | `src/content/notifications.ts` | All wording |
 
@@ -71,10 +79,13 @@ Created on first use, like the account tables, on top of them (`db()` in `src/li
 | `notification_channel_policies` | One row per category and channel: `policy`, `updated_by`, `updated_at` |
 | `user_notification_preferences` | A person's explicit choice for a category and channel. **Only when they made one.** No row means "follow the policy" |
 | `notification_events` | `category_key`, `event_key`, `actor_user_id`, `entity_type`, `entity_id`, `payload`, `group_key` (the folding family, or null; added in Phase 2 with `ADD COLUMN IF NOT EXISTS`) |
-| `notifications` | `event_id`, `recipient_user_id`, `category_key`, `title`, `body`, `action_url`, `priority`, `in_app`, `read_at`, `created_at` |
+| `notifications` | `event_id`, `recipient_user_id`, `category_key`, `title`, `body`, `action_url`, `priority`, `in_app`, `read_at`, `created_at`. `in_app = false` is someone told by push alone: the row is what their push is about, and stays out of the list and the unread count |
+| `push_subscriptions` | One row per browser or installed app: `clerk_user_id`, `endpoint` (**unique on its own**), `p256dh`, `auth`, `device` ("Chrome on Windows"), `user_agent`, `created_at`, `updated_at`, `last_seen_at`, `last_success_at`, `failure_count` |
+| `notification_deliveries` | One row per attempt to reach one device: `event_id`, `notification_id`, `recipient_user_id`, `channel`, `push_subscription_id`, `device`, `status` (`sent`, `failed`, `expired`), `status_code`, `error`, `attempted_at`, `delivered_at` |
 
+- **Delivery history has no foreign key to a notification or a device.** A notification is replaced when a later one folds into it and a dead device is retired; neither takes the history with it. `device` is the device's name as it was. The endpoint and keys are never written there. `delivered_at` means the push service accepted it, which is all a server is ever told.
 - **Indexes:** `notifications (clerk_env, recipient_user_id, id DESC) WHERE in_app` for the list; `notifications (clerk_env, recipient_user_id) WHERE in_app AND read_at IS NULL` for the unread count, which is one `count(*)` over it.
-- **History is durable.** Title and body are stored as sent. An event's entity is plain text with no foreign key, so deleting a service or a request never deletes the notifications about it. A person's rows go only with their account (`deleteNotificationData`, called from `deleteUserAction`).
+- **History is durable.** Title and body are stored as sent. An event's entity is plain text with no foreign key, so deleting a service or a request never deletes the notifications about it. A person's rows go only with their account (`deleteNotificationData`, called from `deleteUserAction`): their notifications, choices, **devices** and delivery rows.
 - **The payload never reaches the browser** and is never used to decide access.
 - **Seeding:** the starting categories and policies are inserted with `ON CONFLICT DO NOTHING`. A category added to `DEFAULT_CATEGORIES` later arrives by itself; nothing an administrator changed is put back.
 
@@ -85,7 +96,7 @@ Channels: `in_app`, `push`, `email`. `CHANNEL_STATUS` in `model.ts` says how far
 | Channel | Status | Meaning |
 |---|---|---|
 | `in_app` | `live` | Delivered now |
-| `push` | `planned` | Policies and people's choices are kept; nothing is pushed |
+| `push` | `live` | Delivered to every device the person switched push on for |
 | `email` | `soon` | Not offered: no policy but `unavailable` can be chosen, and nothing can switch it on |
 
 Policies, per category and channel, set under **Admin → Notifications**:
@@ -97,7 +108,9 @@ Policies, per category and channel, set under **Admin → Notifications**:
 | `default_off` | Off unless the person turned it on |
 | `unavailable` | Not offered on that channel |
 
-Mandatory push will never override the browser or the operating system: if permission is denied there, the site cannot deliver.
+**Mandatory push** means the person cannot switch that category's push off in the site. It never overrides the browser or the operating system: a push reaches only a device where the person switched push on and notifications are allowed. With no such device, a mandatory push is simply not sent, and the notification is still in the app. The settings page says so beneath the list.
+
+A recipient is told when **any** live channel is on for them, and each channel is decided separately by `effectiveSetting()`: in the app only, push only, both, or neither (not told at all).
 
 Starting policies (data, changeable; nothing is mandatory in code):
 
@@ -151,7 +164,7 @@ Starting policies (data, changeable; nothing is mandatory in code):
 
 `read_at` on the row. Opening a notification marks it read; the dot at the end of a row marks it read or unread; **Mark all as read** does the rest. Reading again keeps the first time.
 
-`components/notifications/notification-store.ts` is the one browser store. The bell, its panel and the history page all show it, and its `unread` is THE count. It is refreshed when a page opens, when the tab is looked at again, and once a minute while visible. Changes show at once and are put back if the server refuses.
+`components/notifications/notification-store.ts` is the one browser store. The bell, its panel, the history page and the app-icon badge all show it, and its `unread` is THE count. It is refreshed when a page opens, when the tab is looked at again, once a minute while visible, and at once when the service worker says a push arrived or was tapped. Changes show at once and are put back if the server refuses. Push adds no second store: `push-device.ts` holds only how push stands on this device.
 
 ## Interface
 
@@ -159,12 +172,175 @@ Starting policies (data, changeable; nothing is mandatory in code):
 |---|---|
 | Header | The bell, for signed-in people, at every width. A panel from `sm` up; a dialog on a phone |
 | `/notifications` | The history, twenty at a time with **Load more** |
-| `/notifications/settings` | A person's own choices, for the categories that concern them. Linked from `/account` |
+| `/notifications/settings` | **Push on this device** (the browser's side), then a person's own choices for the categories that concern them. Linked from `/account` |
+| `/dashboard` | A dismissible card offering to switch push on, only where pressing it can work |
 | **Admin → Setup → Notifications** | The policies, and in development a test button |
 
 ## Development test
 
-**Admin → Notifications → Send me a test notification** shows only on the Clerk development instance. The action refuses anywhere else, needs `manage_notifications`, and only ever sends to the person pressing it. It goes through `notify()`, so the chosen category's policy and your own choice apply.
+**Admin → Notifications → Send me a test notification** shows only on the Clerk development instance. The action refuses anywhere else, needs `manage_notifications`, and only ever sends to the person pressing it. It goes through `notify()`, so the chosen category's policy and your own choice apply, and it is pushed to your devices like any other. It is the quickest way to test push.
+
+## Push
+
+Standard Web Push (VAPID) through the `web-push` package, straight to the browsers' own push services. No third party holds or decides anything.
+
+```
+notify()                         decides WHO is pushed to: policy + the person's choice
+  -> dispatchPush()              hands over; runs after the response (after())
+  -> deliverPush()               every device each person registered, all at once
+       -> push service           one attempt per device
+       -> notification_deliveries   one row per attempt
+       -> a device answering 404/410 is retired
+  -> public/sw.js on the device  shows it, sets the app badge, tells open pages
+  -> tap                         marked read, the site opens at its page
+```
+
+Features never see any of this: they call `notifyBestEffort()` exactly as before.
+
+### Two things that are not each other
+
+| | Answers | Lives |
+|---|---|---|
+| **Preference** | Should this person hear about this category by push? | The site, one per person and category, the same on every device |
+| **Subscription** | Where can a push physically be sent? | `push_subscriptions`, one per browser or installed app; a person may have up to 10 |
+
+And a third that is neither: **the browser's permission**, which only the person and their browser decide. `/notifications/settings` shows the device first ("Push on this device") and the preferences beneath it ("What you hear about").
+
+### Setting it up (VAPID)
+
+```
+npx web-push generate-vapid-keys
+```
+
+| Variable | |
+|---|---|
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Handed to browsers when they subscribe. Public. **Read at build time**, so redeploy after changing it |
+| `VAPID_PRIVATE_KEY` | Signs every push. Server only; never `NEXT_PUBLIC_` |
+| `VAPID_SUBJECT` | Optional: `mailto:…` or an `https://` address a push service may contact. Defaults to the site's address |
+
+- Use **one pair for development and Preview and a different pair for Production**, as with the Clerk keys.
+- Without them push is "not set up": nothing is sent, the settings page says so, and everything else works.
+- Changing a pair disconnects every device subscribed with the old one. Each reconnects itself on its owner's next visit (the page sees the key no longer matches).
+
+### A device's life
+
+| Moment | What happens |
+|---|---|
+| **Enable** (a button press, on the settings page or the Dashboard card) | `Notification.requestPermission()`, then the service worker is registered, the browser subscribes, and `POST /api/account/push {action: "register"}` stores it under the **session's** user. The browser remembers who switched it on (`localStorage`, `fwm:push-owner`) |
+| **Every visit, signed in** | `PushSync` asks the server whether this browser's subscription is still this person's. Lost (signed out and back, the browser rotated it, the key changed) and it is reconnected without asking, because permission is already theirs. Only if that fails does the page say "needs to be reconnected" |
+| **Turn off on this device** | The server row is removed, the browser's subscription is ended, the owner mark is cleared. Other devices and the preferences are untouched |
+| **Log out** | The server row is removed and the browser's subscription ended *before* Clerk signs out (never waited on for more than 2.5 seconds). The owner mark stays, so the same person is reconnected on signing in again |
+| **Someone else signs in on the same browser** | Push is off for them until they press Enable. If the first person's subscription somehow survived, registering moves it: an endpoint is unique, so it belongs to one account at a time |
+| **Signed out some other way** (session expired, signed out from another device) | The next time the site loads signed out, the browser's subscription is ended. The server's row is retired the next time it is tried |
+| **Account disabled** | `setBannedAction` deletes the person's subscriptions |
+| **Account deleted** | `deleteNotificationData` deletes their subscriptions and delivery rows |
+| **Push service says 404 or 410** | The row is deleted and never tried again |
+
+Permission is requested **only** from `enablePush()`, which is only ever called by a button's `onClick`. Nothing asks on load.
+
+### What a device is sent
+
+`buildPushPayload()` in `push.ts`:
+
+```
+{ v: 1, id, title, body, url, tag, unread, priority }
+```
+
+- `id` is the notification's id: what a tap marks read.
+- `url` is checked by `safeActionUrl` when built, by the service worker when shown and again when tapped, and by the page before it navigates.
+- `unread` is the person's in-app unread count after this notification, for the app badge.
+- The event's `payload` is never in it, nor whose it is. A test checks the keys of every real event's push.
+- If the service worker cannot read a payload it still shows a generic "You have a new notification" leading to `/notifications`: a push that shows nothing costs the site its permission.
+
+Sent with a TTL of 72 hours, urgency `high` for `important` and `critical` (else `normal`), and a 5 second timeout per device.
+
+### Folding
+
+Push uses the same family and entity that fold a notification in the app (`pushTag()`):
+
+| Event | Tag |
+|---|---|
+| Folds (`coalesce` in the catalog) and names an entity | `<family>\|<entityType>:<entityId>`, for example `service_plan.change\|service:2026-10-11-am` |
+| Anything else | `n:<notificationId>`, so it never replaces anything |
+
+A device shows one notification per tag, so five quick corrections are one notification on the phone. It is replaced quietly (`renotify: false`), and where the in-app notification was replaced the push carries the folded wording too. The tag, hashed, is also the Web Push `Topic`, so a phone that was switched off receives one message rather than five.
+
+Unlike the app, a tag has no time window: a later change about the same service replaces what is still on screen however old it is.
+
+### Tapping a push
+
+The service worker closes the notification, then:
+
+- **The site is open:** it focuses that window and hands it the tap (`fwm:push-click`). `PushSync` answers, marks the notification read through `/api/account/notifications` and goes to its page with `router.push`, asking first if there is unsaved work. If the page does not answer within 1.5 seconds, the next case applies.
+- **The site is closed:** it opens `/notifications/open/<id>`. That route marks the notification read **as the session's person** and redirects to the link **stored** with it (or `/notifications` when it is not theirs, or was since folded into a later one). Signed out, the proxy sends the person to log in and back.
+
+The service worker never calls the API itself. Clerk's session cookie lasts about a minute and is renewed by an open page, so a request from a worker with the site closed would arrive signed out. Opening a page lets Clerk restore the session, and needs no token of any kind.
+
+### The app badge
+
+- **Open:** `PushSync` mirrors the store's `unread` onto the icon with `navigator.setAppBadge()`, and clears it at zero. It waits for the count to come from the server first, so the zero the store starts from never wipes a badge. When the count falls to zero, notifications still on screen are closed as well.
+- **Closed:** the service worker sets it from `unread` in the push.
+- Unsupported: nothing happens, and nothing is said.
+
+### Delivery tracking
+
+One `notification_deliveries` row per device per notification:
+
+| Status | Push service said | The device |
+|---|---|---|
+| `sent` | 2xx | `last_success_at` set, `failure_count` reset |
+| `failed` | Anything else, or nothing | **Kept.** `failure_count + 1`. Includes 401 and 403, which can be this site's own keys |
+| `expired` | 404 or 410 | Deleted |
+
+Every device is attempted whatever happens to the others. Nothing is retried, and nothing reads this table yet: it is there for Phase 4's send history and Phase 5's retries. Someone with push on and no device registered produces no row, because nothing was attempted.
+
+### Security
+
+- A subscription's owner is always the session's user. `registerSubscription`, `subscriptionStatus` and `removeSubscription` take it from the actor, and a `userId` in the body goes nowhere.
+- An endpoint must be `https` on a known push service (`PUSH_SERVICE_HOSTS`: FCM, Mozilla, Apple, Windows), so the server can never be made to call an address of someone's choosing.
+- Endpoints and keys are never logged, never returned to a browser, and never written to the delivery history. The endpoint travels in a POST body, not a query string.
+- `VAPID_PRIVATE_KEY` is read only in `push-store.ts` (`server-only`).
+- Rows carry `clerk_env`, and a browser's subscription belongs to its origin, so a development device never receives a production event or the other way round.
+- `/sw.js` is served `no-cache` with its own `Content-Security-Policy` (`next.config.ts`).
+
+### Testing it
+
+**Automated** (`npm test`): `push.test.ts`, `delivery.test.ts`, `sw.test.ts` (which runs the real `public/sw.js` against a pretend browser), and the push cases in `events/events.test.ts`.
+
+**By hand.** `http://localhost:3000` is a secure context, so desktop Chrome, Edge and Firefox work against `npm run dev` with the development keys in `.env.local`. An iPhone or iPad needs HTTPS and the Home Screen app, so use a Preview deployment. In development, **Admin → Notifications → Send me a test notification** sends one through the whole path.
+
+| # | Check | Expect |
+|---|---|---|
+| 1 | Desktop Chrome, `/notifications/settings` | "Push notifications are off on this device" and an Enable button. No permission prompt until it is pressed |
+| 2 | Press Enable, allow | "on for this device". A row in `push_subscriptions` |
+| 3 | Send a test notification with the tab open | An OS notification; the bell's count rises without a reload |
+| 4 | Close every tab of the site, send another (from a second browser or device) | The OS notification still arrives |
+| 5 | Click it with the site closed | The site opens at the notification's page; it is read; the bell agrees |
+| 6 | Click one with the site open on another page | That window comes forward and goes to the page; nothing new opens |
+| 7 | Installed app (Chrome or Edge: Install) | The icon shows the unread count; **Mark all as read** clears it, and clears notifications still on screen |
+| 8 | Installed app closed, send one | The badge rises |
+| 9 | Publish a service, then edit it five times quickly | One notification on the device, reading "Several changes…", not five |
+| 10 | Block notifications for the site in the browser | "Notifications are blocked for this site", no button; in-app notifications still arrive |
+| 11 | Enable on a second browser or device, same account | Both receive; **Turn off on this device** on one leaves the other working |
+| 12 | Settings: turn "In the app" off and leave Push on for a category | The push arrives; nothing appears in the bell |
+| 13 | Settings: turn Push off for a category | In the bell only |
+| 14 | Log out, sign in as someone else in the same browser | Push is off for them; a notification to the first person does not appear |
+| 15 | Sign back in as the first person | Push is on again without pressing anything |
+| 16 | Dead subscription: Chrome site settings → reset permission, then send | `notification_deliveries.status = 'expired'` and the `push_subscriptions` row is gone |
+| 17 | iPhone or iPad in Safari | "needs the installed app", no Enable button |
+| 18 | iPhone or iPad, Home Screen app | Enable works; the push arrives with the app closed; tapping opens the app at the page; the icon shows the count |
+| 19 | Remove the VAPID keys and restart | "not set up"; publishing and everything else works |
+
+### Known limits
+
+- **iPhone and iPad:** only the Home Screen app (iOS 16.4 or later), never a browser tab. Apple ignores `renotify`, and may show a replaced notification as new.
+- **Firefox** has no app badge. **Safari on a Mac** badges the Dock icon only for a site added to the Dock.
+- **Android** shows a badge dot rather than a number on most launchers; that is the launcher's choice.
+- **A session that ends silently** (expired, or signed out from another device) leaves its device registered until that browser next opens the site signed out, or the push service retires the endpoint. In that gap a push can still reach it. Logging out with the button, disabling the account and deleting it all close the gap at once.
+- **A push-only notification** (the app's off, push on) is not in the bell, so it does not count toward the badge.
+- **`delivered_at` is acceptance by the push service.** Whether a device showed it is never reported.
+- **A push is a few hundred milliseconds behind the action**, because it is sent after the response.
+- **Clearing the browser's site data** drops the subscription and the owner mark: push is off there until enabled again, and the old row is retired on its next attempt.
 
 ## Events
 
@@ -189,7 +365,7 @@ An anchor is a service's address, `2026-10-11-am`. In every row the actor is lef
 
 **Availability's recipients.** Someone changing their own: `availabilityManagers`. A leader changing someone else's: that person ("Your availability was changed") and the other `availabilityManagers` ("John's availability changed"), as two events about the same entity, because the two are worded differently. The whole music team is never told. The note written with an exception is never put in a notification.
 
-**Entities.** Every real event names one (a test enforces it). The type says what kind of thing, the id is stable for that thing, and together they are what folding keys on and what push replacement and an activity view will key on later. The payload beside it holds detail (the services of a publication, the changes of an edit); it stays on the server and never decides access.
+**Entities.** Every real event names one (a test enforces it). The type says what kind of thing, the id is stable for that thing, and together they are what folding keys on, what a push's replacement tag is made from, and what an activity view will key on later. The payload beside it holds detail (the services of a publication, the changes of an edit); it stays on the server and never decides access.
 
 **Where each is sent from**
 
@@ -259,6 +435,18 @@ Admin → Notifications still lists every category.
 - **The library index notifies on newly failed files only**, which is what keeps an unresolved problem from repeating without storing any state.
 - **Titles use the planner's own names** ("Sunday Morning", capitalised) so a service reads the same in a notification as on its page.
 
+## Decisions that differ from the Phase 3 brief
+
+- **The service worker does not mark a notification read itself.** It has no dependable session with the site closed. It opens a page that does (`/notifications/open/<id>`), or hands the tap to a page already open.
+- **The service worker is registered when push is switched on**, not for every signed-in visitor: someone who never enables push never has one.
+- **Push is sent after the response** (`after()`), not inside the action, so nobody waits on Apple or Google.
+- **Signing out ends the browser's subscription as well as the server's record**, and the same person is reconnected silently on return. "Repair" is therefore almost always automatic; the button appears only when it fails.
+- **Endpoints are restricted to known push services**, which the brief did not ask for.
+- **401 and 403 do not retire a device.** They usually mean this site's keys are wrong, and deleting every subscription for that would be worse than the failure.
+- **A person's delivery rows are deleted with their account**, like their notifications; delivery history otherwise outlives the notification and the device it refers to.
+- **`unread` in a push is the in-app count**, so a push-only notification does not raise the badge.
+- **No `renotify` field in the payload:** replacement is always quiet, so the service worker sets it.
+
 ## Adding an event
 
 1. Add its key to `NOTIFICATION_EVENTS` in `catalog.ts`: category, priority, default link, and `coalesce` if repeats should fold.
@@ -269,8 +457,6 @@ Admin → Notifications still lists every category.
 
 ## Later phases
 
-- **Phase 3 (push and badge):** set `CHANNEL_STATUS.push` to `live`; add `push_subscriptions` (several per person) and `notification_deliveries (notification_id, channel, status, attempted_at, delivered_at, error)`; send from the marked place at the end of `notify()`. The app-icon badge subscribes to `unread` in `notification-store.ts` and is cleared at zero. `notifications.in_app` already allows a push to someone whose in-app setting is off.
-  Push can use an event's entity and folding family as its replacement tag, so a folded notification replaces its push too.
-- **Phase 4 (composer):** calls `notify()` with the `admin_announcement` category. It needs its own "send" permission or reuses `manage_notifications`.
-- **Phase 5 (scheduling and reliability):** upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
+- **Phase 4 (composer):** calls `notify()` with the `admin_announcement` category, and so is pushed with no further work. It needs its own "send" permission or reuses `manage_notifications`; a composer UI with audiences from `AUDIENCES`, saved templates, and a send history. That history can read `notification_events` joined to `notification_deliveries` (per device: sent, failed, expired), which nothing shows yet.
+- **Phase 5 (scheduling and reliability):** retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
 - **Phase 6 (email):** set `CHANNEL_STATUS.email` to `planned` then `live`. `allowedPolicies("email")` then offers mandatory, default off and unavailable; "default on" is never offered for email.

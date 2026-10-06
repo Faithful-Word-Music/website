@@ -330,7 +330,9 @@ describe("notify", () => {
 
   it("leaves out someone who turned the category off, and whoever is excepted", async () => {
     const { deps, rows } = notificationStore();
+    // Off on every channel that delivers. (The app's alone would leave her told by push: delivery.test.ts.)
     await setPreference(mary, { category: CATEGORY, channel: "in_app", enabled: false }, deps);
+    await setPreference(mary, { category: CATEGORY, channel: "push", enabled: false }, deps);
     const result = await notify(send(["user_john", "user_mary", "user_director"], { except: ["user_director"] }), deps);
     expect(result).toMatchObject({ ok: true, recipients: 1 });
     expect(rows.map((row) => row.recipient)).toEqual(["user_john"]);

@@ -20,6 +20,24 @@ const nextConfig: NextConfig = {
   },
 
   /**
+   * The service worker (public/sw.js: push notifications only). Never cached,
+   * so a new version is picked up at once; and allowed to load nothing but
+   * itself.
+   */
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
+    ];
+  },
+
+  /**
    * Song pages moved from /song-list/archive/<song> to /library/songs/<song>.
    * Links already shared (and the quarterly emails) keep working. The archive
    * itself stays at /song-list/archive, and /song-list/archive/services (the

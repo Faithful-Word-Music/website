@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InstallAppCard } from "@/components/account/InstallApp";
+import { PushCard } from "@/components/notifications/PushDevice";
 import { AttentionList } from "@/components/dashboard/AttentionList";
 import { AvailabilitySummary } from "@/components/dashboard/AvailabilitySummary";
 import { ComingUp } from "@/components/dashboard/ComingUp";
@@ -222,7 +223,11 @@ export default async function DashboardPage() {
             5. People, the quarter    - the wider picture
         */}
         {/* Shown by the browser only where installing is possible, until dismissed. */}
-        <InstallAppCard className="mt-10" />
+        {/* And, where push can be switched on and is not, one offer to do so. Nothing at all when neither shows. */}
+        <div className="mt-10 space-y-4 empty:hidden">
+          <InstallAppCard />
+          <PushCard />
+        </div>
 
         {attention.length > 0 ? <AttentionList items={attention} className="mt-10" /> : null}
 

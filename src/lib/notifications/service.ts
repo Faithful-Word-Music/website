@@ -2,6 +2,7 @@ import type { Permission } from "@/lib/auth/permissions";
 
 import { needsEveryAccount, resolveAudience, type Audience, type Directory } from "./audience";
 import { NOTIFICATION_EVENTS, isNotificationEvent, type NotificationEventDefinition, type NotificationEventKey } from "./catalog";
+import { dispatchPush, type PushDeps } from "./delivery";
 import {
   CHANNELS,
   CHANNEL_STATUS,
@@ -23,6 +24,7 @@ import {
   type NotificationItem,
   type NotificationPriority,
 } from "./model";
+import { pushTag, type PushMessage } from "./push";
 
 /**
  * Notifications: THE one way one is made, read and configured.
@@ -34,7 +36,9 @@ import {
  *     -> each channel's effective       the category's policy + the person's own
  *        setting, per recipient         choice (effectiveSetting in model.ts)
  *     -> one notification per person    durable: its title and body are stored
- *     -> the channels that deliver      in the app now; push and email later
+ *     -> the channels that deliver      in the app, the row IS the delivery;
+ *                                       push goes to the person's devices
+ *                                       (delivery.ts); email later
  *
  * A feature never inserts a notification row, never looks at a policy and
  * never knows which channels exist: it calls notify() and is done.
@@ -84,7 +88,13 @@ export interface NotificationWrite {
   body: string;
   actionUrl: string | null;
   priority: NotificationPriority;
-  recipients: ReadonlyArray<{ userId: string; inApp: boolean }>;
+  /**
+   * Everyone told, on any channel. `inApp` is whether it shows in their bell
+   * and history: someone with the app's switched off and push on still has a
+   * row (it is what their push is about, and what a tap marks read), kept
+   * out of the list and the unread count.
+   */
+  recipients: ReadonlyArray<{ userId: string; inApp: boolean; push: boolean }>;
   /**
    * Set when the event folds (catalog.ts) and says what it is about. For each
    * recipient, an UNREAD notification of the same family about the same
@@ -108,13 +118,25 @@ export interface NotificationDeps {
   loadDirectory(): Promise<Directory>;
   /** Every account's ID (from Clerk). Only asked for when an audience needs it. */
   listAccountIds(): Promise<string[]>;
-  record(write: NotificationWrite): Promise<{ eventId: number }>;
+  /**
+   * Writes the event and each recipient's notification. Says which
+   * notification each person now has, and whether it replaced an unread one
+   * (an event that folds), so their push can say and replace the same.
+   */
+  record(write: NotificationWrite): Promise<{ eventId: number; notifications: Array<{ userId: string; id: number; replaced: boolean }> }>;
   /** A person's own notifications in the app, newest first, older than `before`. */
   list(userId: string, options: { before: number | null; limit: number }): Promise<NotificationItem[]>;
   countUnread(userId: string): Promise<number>;
   /** Marks one of THIS person's notifications. False when it is not theirs, or not there. */
   setRead(userId: string, id: number, read: boolean): Promise<boolean>;
   setAllRead(userId: string): Promise<void>;
+  /**
+   * Where one of THIS person's notifications leads (null: nowhere), whether
+   * or not it shows in the app. Undefined when it is not theirs, or not there.
+   */
+  actionUrlOf(userId: string, id: number): Promise<string | null | undefined>;
+  /** The person's devices and the push service (delivery.ts). */
+  push: PushDeps;
 }
 
 export type NotificationProblem = "forbidden" | "invalid" | "not-found" | "unknown-category" | "locked" | "unavailable" | "not-allowed";
@@ -278,10 +300,12 @@ export type NotifyResult =
  * Tells an audience that something happened.
  *
  * The event is always recorded. A recipient gets a notification when at
- * least one channel that delivers today is on for them (the category's
- * policy and their own choice, together); today that is the app alone.
- * A channel still to come is evaluated by the same rule, so launching it is
- * adding its delivery below, not changing how anything is decided.
+ * least one channel that delivers is on for them (the category's policy and
+ * their own choice, together): the app, push, or both. Each channel is
+ * decided by the same rule, effectiveSetting(), and by nothing else - whether
+ * a person has a device to push to is a matter for the delivery, not for who
+ * is told. A channel still to come (email) is evaluated the same way, so
+ * launching it is adding its delivery below.
  *
  * An event that folds (catalog.ts) replaces a recipient's unread
  * notification about the same thing rather than adding to it; one they have
@@ -326,10 +350,10 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
   const recipients = userIds.flatMap((userId) => {
     const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel)).enabled;
     // Someone with every delivering channel off is not told at all.
-    return live.some(on) ? [{ userId, inApp: on("in_app") }] : [];
+    return live.some(on) ? [{ userId, inApp: live.includes("in_app") && on("in_app"), push: live.includes("push") && on("push") }] : [];
   });
 
-  const { eventId } = await deps.record({
+  const { eventId, notifications } = await deps.record({
     category: category.key,
     eventKey: input.event,
     actorUserId: input.actorUserId ?? null,
@@ -344,9 +368,33 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
     coalesce,
   });
 
-  // In the app, the row just written IS the delivery. Push and email hand
-  // each recipient whose setting is on to their own sender here, once they
-  // exist - with a notification_deliveries row per attempt (NOTIFICATIONS.md).
+  // In the app, the row just written IS the delivery. Push goes to each
+  // recipient whose setting is on, for every device they have registered,
+  // with a notification_deliveries row per attempt (delivery.ts). It is set
+  // going and not waited for, and whatever becomes of it stays there: the
+  // notification is already made. Email will hand over here too.
+  const written = new Map(notifications.map((notification) => [notification.userId, notification]));
+  const messages = recipients.flatMap((recipient): PushMessage[] => {
+    const notification = recipient.push ? written.get(recipient.userId) : undefined;
+    if (!notification) return [];
+    // Someone whose unread notification was replaced reads the folded wording on their phone as well.
+    const wording = notification.replaced && coalesce ? coalesce : { title, body };
+    return [
+      {
+        notificationId: notification.id,
+        eventId,
+        userId: recipient.userId,
+        title: wording.title,
+        body: wording.body,
+        actionUrl,
+        priority,
+        // The same family and entity that fold it in the app replace it on the device.
+        ...pushTag(coalesce, input.entity, notification.id),
+      },
+    ];
+  });
+  await dispatchPush(messages, deps.push);
+
   return { ok: true, eventId, recipients: recipients.length };
 }
 
@@ -409,6 +457,22 @@ export async function markRead(actor: NotificationActor, input: { id: unknown; r
   if (typeof input.id !== "number" || !Number.isInteger(input.id) || input.id <= 0) return no("invalid");
   if (!(await deps.setRead(actor.userId, input.id, input.read))) return no("not-found");
   return { ok: true, unread: await deps.countUnread(actor.userId) };
+}
+
+export type OpenResult = { ok: true; url: string | null } | { ok: false; problem: "invalid" | "not-found" };
+
+/**
+ * A push was tapped: marks the person's own notification read and says where
+ * it leads - the address stored with it, never one handed in. Anyone else's
+ * is "not found". One that never showed in the app (push only) has nothing
+ * to mark, and still leads where it leads.
+ */
+export async function openNotification(actor: NotificationActor, input: { id: unknown }, deps: NotificationDeps): Promise<OpenResult> {
+  if (typeof input.id !== "number" || !Number.isInteger(input.id) || input.id <= 0) return no("invalid");
+  const stored = await deps.actionUrlOf(actor.userId, input.id);
+  if (stored === undefined) return no("not-found");
+  await deps.setRead(actor.userId, input.id, true);
+  return { ok: true, url: safeActionUrl(stored) ?? null };
 }
 
 export async function markAllRead(actor: NotificationActor, deps: NotificationDeps): Promise<ReadResult> {

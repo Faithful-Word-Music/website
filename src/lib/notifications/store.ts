@@ -15,6 +15,7 @@ import {
   type NotificationItem,
   type NotificationPriority,
 } from "./model";
+import { pushDeps } from "./push-store";
 import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
 
 /**
@@ -36,6 +37,9 @@ import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
  *   notifications                   one row per person told: the title and
  *                                   body as they were sent, and when it was
  *                                   read
+ *   push_subscriptions              the devices a person receives push on
+ *   notification_deliveries         each attempt to reach one of them
+ *                                   (both: push-store.ts)
  *
  * Created on first use, on top of the account tables (db() in
  * src/lib/auth/store.ts); every row carries the Clerk environment, so a test
@@ -43,8 +47,8 @@ import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
  *
  * An event's entity (what it was about) is plain text with no foreign key:
  * deleting a service or a request never deletes the notifications about it.
- * A person's notifications and choices go only when their account does
- * (deleteNotificationData).
+ * A person's notifications, choices, devices and delivery history go only
+ * when their account does (deleteNotificationData).
  *
  * A notification is only ever reached through its recipient: every query
  * that takes an id also takes the person asking. Who may configure what is
@@ -104,9 +108,9 @@ const SCHEMA = [
   `ALTER TABLE notification_events ADD COLUMN IF NOT EXISTS group_key text`,
   `CREATE INDEX IF NOT EXISTS notification_events_entity
      ON notification_events (clerk_env, entity_type, entity_id, created_at DESC) WHERE entity_type IS NOT NULL`,
-  // in_app: whether it shows in the bell and the history. Always true while
-  // the app is the only channel that delivers; a later channel can deliver
-  // to someone who has the app's switched off without changing this table.
+  // in_app: whether it shows in the bell and the history. False for someone
+  // told by push alone (the app's switched off for the category): the row is
+  // what their push is about, and stays out of their list and unread count.
   `CREATE TABLE IF NOT EXISTS notifications (
      id                bigserial   PRIMARY KEY,
      ${ENV},
@@ -127,6 +131,47 @@ const SCHEMA = [
   // The unread count the bell asks for: only ever the unread rows.
   `CREATE INDEX IF NOT EXISTS notifications_unread
      ON notifications (clerk_env, recipient_user_id) WHERE in_app AND read_at IS NULL`,
+  // One row per browser or installed app a person switched push on in
+  // (push-store.ts). The endpoint is unique on its own, across everyone and
+  // both environments: a browser belongs to one account at a time.
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
+     id              bigserial   PRIMARY KEY,
+     ${ENV},
+     clerk_user_id   text        NOT NULL,
+     endpoint        text        NOT NULL UNIQUE,
+     p256dh          text        NOT NULL,
+     auth            text        NOT NULL,
+     device          text        NOT NULL DEFAULT '',
+     user_agent      text        NOT NULL DEFAULT '',
+     created_at      timestamptz NOT NULL DEFAULT now(),
+     updated_at      timestamptz NOT NULL DEFAULT now(),
+     last_seen_at    timestamptz NOT NULL DEFAULT now(),
+     last_success_at timestamptz,
+     failure_count   integer     NOT NULL DEFAULT 0
+   )`,
+  `CREATE INDEX IF NOT EXISTS push_subscriptions_user ON push_subscriptions (clerk_env, clerk_user_id)`,
+  // One row per attempt to reach one device. notification_id and
+  // push_subscription_id are plain numbers, not foreign keys: a notification
+  // is replaced when a later one folds into it and a dead device is retired,
+  // and neither takes this history with it. `device` is the device's name as
+  // it was. The endpoint is never written here.
+  `CREATE TABLE IF NOT EXISTS notification_deliveries (
+     id                   bigserial   PRIMARY KEY,
+     ${ENV},
+     event_id             bigint      NOT NULL REFERENCES notification_events (id) ON DELETE CASCADE,
+     notification_id      bigint      NOT NULL,
+     recipient_user_id    text        NOT NULL,
+     ${CHANNEL},
+     push_subscription_id bigint,
+     device               text        NOT NULL DEFAULT '',
+     status               text        NOT NULL CHECK (status IN ('sent', 'failed', 'expired')),
+     status_code          integer,
+     error                text,
+     attempted_at         timestamptz NOT NULL DEFAULT now(),
+     delivered_at         timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS notification_deliveries_notification ON notification_deliveries (clerk_env, notification_id)`,
+  `CREATE INDEX IF NOT EXISTS notification_deliveries_recipient ON notification_deliveries (clerk_env, recipient_user_id, id DESC)`,
 ];
 
 let schemaReady = false;
@@ -343,9 +388,14 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
                   CASE WHEN r.user_id IN (SELECT recipient_user_id FROM replaced) THEN $16::text ELSE $9::text END,
                   $10, $11, r.in_app
              FROM event CROSS JOIN jsonb_to_recordset($12::jsonb) AS r(user_id text, in_app boolean)
-           RETURNING 1
+           RETURNING id, recipient_user_id
          )
-         SELECT event.id, (SELECT count(*) FROM sent) AS sent FROM event`,
+         SELECT event.id,
+                COALESCE((SELECT json_agg(json_build_object(
+                            'id', sent.id, 'user', sent.recipient_user_id,
+                            'replaced', sent.recipient_user_id IN (SELECT recipient_user_id FROM replaced)))
+                            FROM sent), '[]') AS sent
+           FROM event`,
         [
           env,
           write.category,
@@ -364,8 +414,11 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
           write.coalesce?.title ?? write.title,
           write.coalesce?.body ?? write.body,
         ],
-      )) as Array<{ id: string | number }>;
-      return { eventId: Number(row.id) };
+      )) as Array<{ id: string | number; sent: Array<{ id: number; user: string; replaced: boolean }> }>;
+      return {
+        eventId: Number(row.id),
+        notifications: row.sent.map((sent) => ({ userId: sent.user, id: Number(sent.id), replaced: sent.replaced })),
+      };
     },
 
     async list(userId, { before, limit }) {
@@ -409,14 +462,43 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
         [env, userId],
       );
     },
+
+    // Not limited to what shows in the app: a push to someone with the app's switched off still leads somewhere.
+    async actionUrlOf(userId, id) {
+      const sql = await notificationSql(env);
+      const rows = (await sql.query(`SELECT action_url FROM notifications WHERE clerk_env = $1 AND recipient_user_id = $2 AND id = $3`, [
+        env,
+        userId,
+        id,
+      ])) as Array<{ action_url: string | null }>;
+      return rows.length > 0 ? rows[0].action_url : undefined;
+    },
+
+    push: pushDeps(env, () => notificationSql(env)),
   };
 }
 
-/** A person's notifications and choices, for when their account is deleted. */
+/**
+ * A person's notifications, choices, devices and delivery history, for when
+ * their account is deleted. The devices matter most: a subscription left
+ * behind could still be sent to.
+ */
 export async function deleteNotificationData(env: ClerkEnv, userId: string): Promise<void> {
   const sql = await notificationSql(env);
   await sql.transaction((txn) => [
+    txn.query(`DELETE FROM push_subscriptions WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
+    txn.query(`DELETE FROM notification_deliveries WHERE clerk_env = $1 AND recipient_user_id = $2`, [env, userId]),
     txn.query(`DELETE FROM notifications WHERE clerk_env = $1 AND recipient_user_id = $2`, [env, userId]),
     txn.query(`DELETE FROM user_notification_preferences WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
   ]);
+}
+
+/**
+ * Every device a person receives push on, for when their account is disabled:
+ * they are signed out everywhere, and nothing more should reach those devices.
+ * Their choices and history stay; re-enabled, they switch push on again.
+ */
+export async function deletePushSubscriptions(env: ClerkEnv, userId: string): Promise<void> {
+  const sql = await notificationSql(env);
+  await sql.query(`DELETE FROM push_subscriptions WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]);
 }

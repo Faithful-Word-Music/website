@@ -20,7 +20,8 @@
  *   - Firefox on the desktop cannot install sites at all, so nothing is shown.
  *
  * No service worker is needed for any of this: Chromium dropped that
- * requirement, and Safari never had it.
+ * requirement, and Safari never had it. The site's one service worker
+ * (public/sw.js) is there for push notifications only.
  */
 
 export type InstallMode = "installed" | "prompt" | "ios" | "ios-open-safari" | "mac-safari" | "none";

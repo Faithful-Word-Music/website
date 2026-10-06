@@ -5,10 +5,22 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
+import { disconnectForSignOut } from "@/components/notifications/push-device";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { accountContent } from "@/content/account";
 import { accountMenu, isActivePath } from "@/lib/navigation";
+
+/**
+ * Log out. This device stops receiving the person's push notifications first
+ * (push-device.ts), while there is still a session to say whose device it
+ * is - so nothing addressed to them can reach whoever uses this browser next.
+ * That never holds up signing out for more than a moment.
+ */
+async function logOut(signOut: (options: { redirectUrl: string }) => Promise<void>) {
+  await disconnectForSignOut();
+  await signOut({ redirectUrl: "/" });
+}
 
 /**
  * The account section at the foot of the mobile menu: who is signed in, then
@@ -60,7 +72,7 @@ export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
         <li>
           <button
             type="button"
-            onClick={() => signOut({ redirectUrl: "/" })}
+            onClick={() => void logOut(signOut)}
             className="flex min-h-11 w-full items-center text-left text-base text-muted transition-colors hover:text-ink"
           >
             {accountContent.menu.logout}
@@ -171,7 +183,7 @@ export function UserMenu() {
             <li className="mt-1 border-t border-line pt-1">
               <button
                 type="button"
-                onClick={() => signOut({ redirectUrl: "/" })}
+                onClick={() => void logOut(signOut)}
                 className={cn(itemClass, "text-muted hover:text-ink")}
               >
                 {accountContent.menu.logout}
