@@ -10,18 +10,21 @@ export const conductorContent = {
   description: "Faithful Word Music AI Assistant",
   metaDescription: "Ask about the songs, services and plans of Faithful Word Music.",
 
-  page: {
-    eyebrow: "Faithful Word Music AI Assistant",    intro:
-      "Ask about what has been sung, what is planned and how often songs come round, or anything about music, sound and equipment.",
-  },
+  /** Beside the name in the Conductor page's bar, where there is room. */
+  tag: "AI Assistant",
 
-  /** What it can and cannot do yet, under the conversation. */
+  /**
+   * What it can and cannot do yet. Said once: on the Conductor page as the
+   * small line under the box to type in, in the panel over the suggestions.
+   * Short enough for a line or two on a phone.
+   */
   capabilities:
-    "Conductor answers from the site's own records of songs, services and plans, from the lyrics in the song library, and from the Music Director's planning philosophy. It cannot read the music itself, and it cannot change anything.",
+    "Conductor reads the site's records, the lyrics and the planning philosophy. It cannot read the music itself or change anything.",
 
   empty: {
     heading: "What would you like to know?",
-    body: "Conductor looks things up in the song history, the plans, the lyrics of the song library and the planning philosophy. It only reads: nothing you ask can change a service.",
+    /** The one sentence under the heading, on the Conductor page. */
+    body: "Ask what has been sung, what is planned and how often songs come round, or anything about music, sound and equipment.",
     examplesLabel: "Try asking",
     examples: [
       "When did we last sing Blessed Assurance?",
@@ -56,6 +59,9 @@ export const conductorContent = {
   responding: "Conductor is responding…",
   stopped: "Stopped.",
   retry: "Try again",
+  /** Under a finished answer. */
+  copy: "Copy",
+  copied: "Copied",
 
   /** What Conductor is doing while it looks something up. Keys are sent by the server (tools.ts). */
   status: {
@@ -76,6 +82,8 @@ export const conductorContent = {
     /** What the link itself shows, where there is room for two words. */
     openFullShort: "Full page",
     newConversation: "New conversation",
+    /** What the button itself shows, in the Conductor page's bar. */
+    newConversationShort: "New chat",
   },
 
   resize: {

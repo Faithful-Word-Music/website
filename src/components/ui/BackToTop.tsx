@@ -53,9 +53,10 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
         // Solid, with a border and a lifted shadow: frosted glass all but
         // vanished against the paper background.
         // Measured from the window's edge less Conductor's panel, when that is open beside the page (globals.css).
-        "group fixed bottom-5 right-[calc(var(--conductor-inset)+1.25rem)] z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:bottom-8 sm:right-[calc(var(--conductor-inset)+2rem)] print:hidden",
+        // On a phone both floating buttons keep 1.75rem from the edges, clear of the screen's rounded corner.
+        "group fixed bottom-7 right-[calc(var(--conductor-inset)+1.75rem)] z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:bottom-8 sm:right-[calc(var(--conductor-inset)+2rem)] print:hidden",
         // Above Conductor's button, while that is showing in the same corner.
-        "conductor-launcher:bottom-[calc(5rem+env(safe-area-inset-bottom))] sm:conductor-launcher:bottom-[5.75rem]",
+        "conductor-launcher:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:conductor-launcher:bottom-[5.75rem]",
         "transition-[opacity,transform,translate,scale,rotate,box-shadow,border-color,bottom] duration-300",
         "hover:-translate-y-0.5 hover:border-gold active:translate-y-0 active:scale-95",
         visible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0",

@@ -145,7 +145,8 @@ export const dashboardContent = {
     sheetNewTab: "(PDF, opens in a new tab)",
     /** The whole service's sheet music as one PDF, to print in one go. */
     packet: {
-      button: "Sheet music for this service",
+      /** Short enough for one line beside the "i" and the three dots, at every card width. */
+      button: "Sheet music",
       /** In place of the button, when none of the service's songs has their sheet music. */
       none: "No sheet music for this service in your types yet",
       /** {count} songs in it. */

@@ -15,7 +15,7 @@ import {
 
 import { useAccount } from "@/components/account/AccountContext";
 import { ConductorChat } from "@/components/conductor/ConductorChat";
-import { ConductorMark } from "@/components/conductor/ConductorMark";
+import { ConductorMark, NewChatIcon } from "@/components/conductor/ConductorMark";
 import { useConductor } from "@/components/conductor/conductor-store";
 import { cn } from "@/components/ui/cn";
 import { modalDialogFocusClasses, modalDialogProps, useModalDialog } from "@/components/ui/use-modal-dialog";
@@ -157,9 +157,7 @@ function PanelHeader({ headingId, onClose }: { headingId: string; onClose: () =>
           title={copy.actions.newConversation}
           className={iconButton}
         >
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M8 3.25v9.5M3.25 8h9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+          <NewChatIcon />
         </button>
         <button type="button" onClick={onClose} aria-label={copy.actions.close} title={copy.actions.close} className={iconButton}>
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -337,7 +335,7 @@ const KEYBOARD_AT_LEAST = 120;
  *
  * It follows the visual viewport, not the layout one: when a phone's keyboard
  * opens, the sheet shrinks to the space above it and the composer stays in
- * view. Pulling the handle down closes it, as does Escape or a tap outside.
+ * view. Pulling its top down (the handle, or anywhere on the header) closes it, as does Escape or a tap outside.
  */
 function Sheet({ onClosed }: { onClosed: () => void }) {
   const { leaving, leave, finished } = useLeaving(onClosed);
@@ -388,6 +386,8 @@ function Sheet({ onClosed }: { onClosed: () => void }) {
   }
 
   function onPullStart(event: ReactPointerEvent<HTMLDivElement>) {
+    // The whole top of the sheet pulls - but its buttons and its link are still theirs to press.
+    if (event.target instanceof Element && event.target.closest("a, button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     pull.current = { startY: event.clientY, dy: 0 };
     if (sheetRef.current) sheetRef.current.style.transition = "none";
@@ -435,17 +435,20 @@ function Sheet({ onClosed }: { onClosed: () => void }) {
         }}
         className="conductor-sheet absolute inset-x-0 mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface shadow-lift"
       >
-        {/* The handle: says "this pulls down", and does. */}
+        {/* The handle says "this pulls down" - and the whole top of the sheet does, header included,
+            as on a native sheet: a finger does not have to find the little line. */}
         <div
           onPointerDown={onPullStart}
           onPointerMove={onPullMove}
           onPointerUp={onPullEnd}
           onPointerCancel={onPullEnd}
-          className="flex shrink-0 cursor-grab touch-none justify-center pb-1 pt-2.5 active:cursor-grabbing"
+          className="shrink-0 cursor-grab touch-none select-none active:cursor-grabbing"
         >
-          <span aria-hidden="true" className="h-1 w-10 rounded-full bg-staff" />
+          <div className="flex justify-center pb-1.5 pt-3">
+            <span aria-hidden="true" className="h-1 w-10 rounded-full bg-staff" />
+          </div>
+          <PanelHeader headingId={headingId} onClose={onClose} />
         </div>
-        <PanelHeader headingId={headingId} onClose={onClose} />
         <ConductorChat variant="panel" />
       </div>
     </dialog>
@@ -476,7 +479,7 @@ function Launcher({ onOpen }: { onOpen: () => void }) {
       title={copy.actions.open}
       className={cn(
         // The same lifted, bordered surface as "Back to top": part of the site, not a widget on it.
-        "conductor-launcher group fixed right-5 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:right-8 print:hidden",
+        "conductor-launcher group fixed right-7 z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:right-8 print:hidden",
         // Under the pointer it rises and grows a touch, unhurried, and settles back the same way;
         // pressed, it gives quickly. Longer than the site's usual 250ms: a float, not a snap.
         "transition-[transform,translate,scale,rotate,border-color,background-color,bottom] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",

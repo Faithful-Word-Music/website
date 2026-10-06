@@ -488,7 +488,7 @@ html.motion-ready .reveal {
   box-shadow: var(--shadow-card-next);
 }
 
-/* A song-list card's "Sheet music for this service" while the person's
+/* A song-list card's "Sheet music" button while the person's
    answer is still on its way (ServicePackets.tsx, src/lib/service-packets.ts):
    an invisible copy of the button. Nothing for visitors; for someone this
    browser expects a button for, its exact space, so the card never grows
@@ -654,8 +654,10 @@ html[data-conductor-resizing] body {
   animation: conductor-drawer-in 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
+/* The same time and curve as the body's margin, above: the panel and the page
+   it gives room back to move as one. */
 .conductor-drawer[data-leaving] {
-  animation: conductor-drawer-out 240ms cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+  animation: conductor-drawer-out 250ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes conductor-drawer-in {
@@ -681,8 +683,12 @@ html[data-conductor-resizing] body {
    keyframe for the way out, because only a transition starts from where the
    sheet already is. */
 .conductor-sheet {
-  bottom: var(--sheet-lift, 0px);
-  height: min(93dvh, calc(var(--sheet-space, 100dvh) - 0.75rem));
+  /* It runs on down behind the keyboard, which it clears with padding: an
+     iPhone's keyboard is see-through at its edges, and what shows there is
+     then the sheet itself rather than the page. */
+  bottom: 0;
+  height: calc(min(93dvh, var(--sheet-space, 100dvh) - 0.75rem) + var(--sheet-lift, 0px));
+  padding-bottom: var(--sheet-lift, 0px);
   animation: conductor-sheet-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
@@ -723,7 +729,8 @@ html[data-conductor-resizing] body {
    bar of actions (the planner's Save and Publish, marked data-action-bar) so
    it never sits on a button. */
 .conductor-launcher {
-  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  /* Clear of a phone's rounded corner (and 1.75rem in from the side, in ConductorDock). */
+  bottom: calc(1.75rem + env(safe-area-inset-bottom));
 }
 
 :root:has([data-action-bar]) .conductor-launcher {

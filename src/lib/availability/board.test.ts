@@ -98,6 +98,25 @@ describe("buildAvailabilitySummary", () => {
     expect(summary.self).toBeNull();
     expect(summary.ministry).toHaveLength(2);
   });
+
+  it("keeps the team view for a leader", () => {
+    expect(buildAvailabilitySummary({ occurrences, roster, exceptions, viewerId: "user_alex", now }).team).toBeUndefined();
+  });
+
+  it("gives a leader everyone expected and away at the next three services, and who has set nothing", () => {
+    const withNew: RosterPerson[] = [...roster, { id: "user_new", name: "Newcomer", normal: [] }];
+    const { team } = buildAvailabilitySummary({ occurrences, roster: withNew, exceptions, viewerId: "user_director", now, leader: true });
+
+    expect(team?.services.map((service) => `${service.date} ${service.slot}`)).toEqual(["2026-10-18 AM", "2026-10-18 PM", "2026-10-21 PM"]);
+    const [sundayAm, , wednesday] = team!.services;
+    expect(sundayAm.expected.map((person) => person.name)).toEqual(["Director", "John"]);
+    expect(sundayAm.away).toEqual([{ id: "user_alex", name: "Alex", state: "unavailable-by-exception", note: "Out of town" }]);
+    // There by exception: expected, and marked as such.
+    expect(wednesday.expected).toContainEqual({ id: "user_john", name: "John", state: "available-by-exception", note: null });
+    expect(wednesday.away).toEqual([]);
+    expect(team?.unset).toEqual([{ id: "user_new", name: "Newcomer" }]);
+    expect(team?.size).toBe(4);
+  });
 });
 
 describe("availability forms", () => {

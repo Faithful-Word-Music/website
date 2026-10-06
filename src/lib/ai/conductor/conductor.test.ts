@@ -217,12 +217,15 @@ describe("the conversation", () => {
     expect(sessionTurns(failed)).toEqual([{ role: "user", text: "When?" }]);
   });
 
-  it("offers the failed question again", () => {
+  it("offers the last question again, once its answer has settled", () => {
     const failed = run([{ type: "fail", message: "Lost." }], asked);
     expect(retryQuestion(failed)).toBe("When?");
     expect(withoutLastExchange(failed)).toEqual(EMPTY_SESSION);
+    // Not while the answer is still on its way.
     expect(retryQuestion(asked)).toBeNull();
-    expect(retryQuestion(run([{ type: "delta", text: "Yes." }, { type: "done" }], asked))).toBeNull();
+    // A finished answer can be asked for again too.
+    expect(retryQuestion(run([{ type: "delta", text: "Yes." }, { type: "done" }], asked))).toBe("When?");
+    expect(retryQuestion(EMPTY_SESSION)).toBeNull();
   });
 
   it("is kept for its owner only", () => {

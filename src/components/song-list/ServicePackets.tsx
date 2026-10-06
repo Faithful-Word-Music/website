@@ -10,7 +10,7 @@ import type { PacketTypeOption, ServicePacket } from "@/lib/dashboard/coming-up"
 import { PACKETS_ATTRIBUTE, PACKETS_STORAGE_KEY } from "@/lib/service-packets";
 
 /**
- * "Sheet music for this service" on the song list's cards - the same button
+ * "Sheet music" on the song list's cards - the same button
  * (and PDF) the Dashboard's Coming up offers, for every published service.
  *
  * The song list is static and the same for everyone, so the signed-in
@@ -202,7 +202,7 @@ export function NoServiceSheetMusic({ types = [], own = true }: { types?: Packet
       {types.length > 0 ? (
         <>
           <span aria-hidden="true" className="my-2.5 w-px shrink-0 bg-line" />
-          <SheetTypeMenu types={types} className="w-12 hover:bg-paper" />
+          <SheetTypeMenu types={types} className="w-11 hover:bg-paper" />
         </>
       ) : null}
     </div>

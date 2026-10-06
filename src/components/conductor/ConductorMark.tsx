@@ -14,3 +14,13 @@ export function ConductorMark({ size = 18, className }: { size?: number; classNa
     </svg>
   );
 }
+
+/** A pencil over a fresh page: "New chat", wherever a conversation can be started over. */
+export function NewChatIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M7.25 2.75H4a1.5 1.5 0 0 0-1.5 1.5V12A1.5 1.5 0 0 0 4 13.5h7.75a1.5 1.5 0 0 0 1.5-1.5V8.75" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12.3 2.2a1.06 1.06 0 0 1 1.5 1.5L8.6 8.9l-2.1.6.6-2.1 5.2-5.2Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}

@@ -150,6 +150,21 @@ export const availabilityContent = {
     more: "and {count} more",
     ministry: "Ministry changes, next two weeks",
     unavailable: "Availability could not be loaded just now.",
+    /** Only for someone who looks after the team's availability (manage_availability). */
+    team: {
+      label: "The team, next three services",
+      /** {count} of {total} people. */
+      expected: "{count} of {total} expected",
+      nobody: "Nobody is expected yet.",
+      away: "Away",
+      /** Beside someone who is there though it is not one of their services. */
+      extra: "Available by exception",
+      /** Before the names of people with no normal services. */
+      unset: "No normal services set yet:",
+      /** {name} is replaced, for screen readers. */
+      manage: "Manage {name}'s availability",
+      noServices: "No upcoming services.",
+    },
   },
 
   /** The "Needs your attention" item. */

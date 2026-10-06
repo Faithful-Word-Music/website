@@ -67,7 +67,9 @@ export const metadata: Metadata = {
  *   everyone                 Coming up, New sheet music
  *   view_availability        Availability (always, even when nothing is
  *                            unusual), and "Set your normal services"
- *   assigned sheet types     each service's sheet music as one PDF, and under
+ *   manage_availability      under it, the whole team at the next three
+ *                            services: who is expected, who is away
+ *   assigned sheet types    each service's sheet music as one PDF, and under
  *                            each song the type it uses (their first choice
  *                            it has), their others it has, or "none yet"
  *   plays or leads singing   Songs to brush up on

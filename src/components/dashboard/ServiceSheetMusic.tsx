@@ -70,8 +70,9 @@ export function ServiceSheetMusic({
             <SheetIcon />
           </span>
           <span className="min-w-0 flex-1 leading-tight">
-            <span className="block text-sm font-medium text-ink">{copy.button}</span>
-            <span className="mt-0.5 block text-xs text-muted">{count}</span>
+            {/* One line each, always: beside two more buttons a wrapped label crowds the card. */}
+            <span className="block truncate text-sm font-medium text-ink">{copy.button}</span>
+            <span className="mt-0.5 block truncate text-xs text-muted">{count}</span>
             <span className="sr-only"> {copy.newTab}</span>
           </span>
         </a>
@@ -85,7 +86,7 @@ export function ServiceSheetMusic({
           title={copy.help.toggle}
           onClick={() => setOpen(true)}
           className={cn(
-            "grid w-12 shrink-0 place-items-center text-muted transition-colors focus-visible:-outline-offset-2",
+            "grid w-11 shrink-0 place-items-center text-muted transition-colors focus-visible:-outline-offset-2",
             "hover:bg-[color-mix(in_srgb,var(--color-gold)_9%,transparent)] hover:text-ink",
           )}
         >
@@ -97,7 +98,7 @@ export function ServiceSheetMusic({
             <span aria-hidden="true" className="my-2.5 w-px shrink-0 bg-[color-mix(in_srgb,var(--color-gold)_30%,var(--color-line))]" />
             <SheetTypeMenu
               types={types}
-              className="w-12 hover:bg-[color-mix(in_srgb,var(--color-gold)_9%,transparent)]"
+              className="w-11 hover:bg-[color-mix(in_srgb,var(--color-gold)_9%,transparent)]"
             />
           </>
         ) : null}

@@ -1,5 +1,5 @@
 /**
- * The song list's "Sheet music for this service" buttons, remembered in the
+ * The song list's "Sheet music" buttons, remembered in the
  * browser (src/components/song-list/ServicePackets.tsx).
  *
  * The song list is static and the same for everyone, so it cannot render a

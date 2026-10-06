@@ -10,6 +10,7 @@ import {
   sheetMusicTypesForUsers,
   titlesForUsers,
 } from "@/lib/auth/store";
+import { LEADER_PERMISSION } from "@/lib/availability/access";
 import { loadPlannedServices, loadRoster } from "@/lib/availability/load";
 import { addDays, churchDate, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
@@ -114,7 +115,15 @@ export async function loadAvailabilitySummary(viewer: Viewer): Promise<Availabil
       loadPlannedServices(viewer.env, today, to),
     ]);
     const occurrences = serviceOccurrences(today, to, songList);
-    return buildAvailabilitySummary({ occurrences, roster, exceptions, viewerId: viewer.userId, now });
+    return buildAvailabilitySummary({
+      occurrences,
+      roster,
+      exceptions,
+      viewerId: viewer.userId,
+      now,
+      // The whole team's view is worked out only for someone who looks after it.
+      leader: viewer.can(LEADER_PERMISSION),
+    });
   } catch (error) {
     console.error("[dashboard] Could not load availability:", error instanceof Error ? error.message : "unknown error");
     return null;

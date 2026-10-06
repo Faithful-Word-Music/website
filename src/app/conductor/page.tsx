@@ -4,7 +4,6 @@ import { NoAccess } from "@/components/account/Notices";
 import { ConductorWorkspace } from "@/components/conductor/ConductorWorkspace";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
-import { SectionHeading } from "@/components/ui/SectionHeading";
 import { conductorContent } from "@/content/conductor";
 import { requireViewer } from "@/lib/auth/session";
 
@@ -36,14 +35,11 @@ export default async function ConductorPage() {
   return (
     <PageTransition>
       {/* At least the height of the window below the header, so the box to
-          type in sits at the bottom of the screen from the start. */}
-      <Container size="wide" className="flex min-h-[calc(100dvh-4rem)] flex-col pt-8 sm:pt-12">
-        <SectionHeading as="h1" eyebrow={conductorContent.page.eyebrow} title={conductorContent.name}>
-          <p className="text-base">{conductorContent.page.intro}</p>
-        </SectionHeading>
-        <div className="mt-6 flex flex-1 flex-col">
-          <ConductorWorkspace />
-        </div>
+          type in sits at the bottom of the screen from the start. No page
+          heading of the usual kind: the workspace is a chat, with its own
+          bar (and the page's h1) at the top of its column. */}
+      <Container size="wide" className="flex min-h-[calc(100dvh-4rem)] flex-col">
+        <ConductorWorkspace />
       </Container>
     </PageTransition>
   );

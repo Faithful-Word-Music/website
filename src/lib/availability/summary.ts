@@ -10,12 +10,25 @@
  * Someone who may see the board without being on it (an administrator with
  * no music role) gets only the ministry's changes.
  *
+ * A leader (manage_availability) also gets the team: for each of the next
+ * few services, everyone expected and everyone away, and who has yet to set
+ * their normal services - what a director needs to know before a service.
+ *
  * Pure - no server-only import - so it can be unit tested.
  */
 
 import type { ServiceAvailability } from "@/lib/auth/profile-options";
 
-import { personStatus, indexExceptions, upcomingChanges, type ExceptionRecord, type RosterPerson, type UpcomingChange } from "./board";
+import {
+  buildBoard,
+  personStatus,
+  indexExceptions,
+  upcomingChanges,
+  type ExceptionRecord,
+  type PersonStatus,
+  type RosterPerson,
+  type UpcomingChange,
+} from "./board";
 import type { AvailabilityState } from "./effective";
 import { churchDate, addDays, type Occurrence } from "./occurrences";
 import { isEditable } from "./access";
@@ -37,6 +50,33 @@ export interface AvailabilitySummary {
   /** Other people's changes in the next SUMMARY_MINISTRY_DAYS. */
   ministry: UpcomingChange[];
   totalMinistry: number;
+  /**
+   * For a leader (manage_availability) only: the whole team at the next few
+   * services, rather than just who differs. Absent for everyone else.
+   */
+  team?: TeamAvailability;
+}
+
+/** How many services ahead a leader's team view covers: the same three as Coming up. */
+export const SUMMARY_TEAM_SERVICES = 3;
+
+export interface TeamService {
+  date: string;
+  slot: Occurrence["slot"];
+  startsAt: string;
+  kind: Occurrence["kind"];
+  /** Everyone expected, by name - those there by exception marked as such by their state. */
+  expected: PersonStatus[];
+  /** Normally there, but away for this one. */
+  away: PersonStatus[];
+}
+
+export interface TeamAvailability {
+  services: TeamService[];
+  /** On the board with no normal services set: nothing can be expected of them yet. */
+  unset: Array<{ id: string; name: string }>;
+  /** How many people are on the board. */
+  size: number;
 }
 
 /**
@@ -49,6 +89,8 @@ export function buildAvailabilitySummary(input: {
   exceptions: readonly ExceptionRecord[];
   viewerId: string;
   now: number;
+  /** The viewer holds manage_availability: include the team view. */
+  leader?: boolean;
 }): AvailabilitySummary {
   const ahead = input.occurrences.filter((occ) => isEditable(occ, input.now));
   const me = input.roster.find((person) => person.id === input.viewerId) ?? null;
@@ -75,5 +117,33 @@ export function buildAvailabilitySummary(input: {
     input.exceptions,
   );
 
-  return { self, ministry: ministry.slice(0, SUMMARY_LIMIT), totalMinistry: ministry.length };
+  return {
+    self,
+    ministry: ministry.slice(0, SUMMARY_LIMIT),
+    totalMinistry: ministry.length,
+    ...(input.leader ? { team: buildTeam(ahead.slice(0, SUMMARY_TEAM_SERVICES), input.roster, input.exceptions) } : {}),
+  };
+}
+
+function buildTeam(
+  occurrences: readonly Occurrence[],
+  roster: readonly RosterPerson[],
+  exceptions: readonly ExceptionRecord[],
+): TeamAvailability {
+  const board = buildBoard({ occurrences, roster, exceptions, subjectId: null, view: "everyone" });
+  return {
+    services: board.map((service) => ({
+      date: service.date,
+      slot: service.slot,
+      startsAt: service.startsAt,
+      kind: service.kind,
+      expected: service.expected,
+      away: service.changes.filter((person) => person.state === "unavailable-by-exception"),
+    })),
+    unset: roster
+      .filter((person) => person.normal.length === 0)
+      .map((person) => ({ id: person.id, name: person.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    size: roster.length,
+  };
 }

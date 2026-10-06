@@ -103,16 +103,20 @@ export function sessionTurns(session: ConductorSession): ConductorTurn[] {
     .map((message) => ({ role: message.role, text: message.text }));
 }
 
-/** The question behind the last answer, for "Try again"; null when there is nothing to retry. */
+/**
+ * The question behind the last answer, for "Try again" - after a failure, or
+ * simply for another go at an answer; null while one is still on its way, or
+ * when there is nothing to ask again.
+ */
 export function retryQuestion(session: ConductorSession): string | null {
   if (session.pending) return null;
   const answer = session.messages.at(-1);
   const question = session.messages.at(-2);
-  if (answer?.role !== "assistant" || !answer.error || question?.role !== "user") return null;
+  if (answer?.role !== "assistant" || question?.role !== "user") return null;
   return question.text;
 }
 
-/** The conversation without its last question and failed answer, ready for that question to be asked again. */
+/** The conversation without its last question and answer, ready for that question to be asked again. */
 export function withoutLastExchange(session: ConductorSession): ConductorSession {
   return { messages: session.messages.slice(0, -2), pending: false, status: null };
 }

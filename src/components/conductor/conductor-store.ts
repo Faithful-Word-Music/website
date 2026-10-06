@@ -168,7 +168,7 @@ function reset() {
   dispatch({ type: "reset" });
 }
 
-/** Asks the last question again after a failure, in place of the failed answer. */
+/** Asks the last question again, in place of the answer it got - after a failure, or for another go. */
 function retry(pathname: string) {
   const question = retryQuestion(session);
   if (!question) return;
