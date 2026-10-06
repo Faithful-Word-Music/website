@@ -7,8 +7,8 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { readSheetSchedule } from "@/lib/google-sheets";
 import { scheduleEnv } from "@/lib/schedule";
 import { siteConfig } from "@/config/site";
-import { takesWeekInsert, weekStartOf, type InsertWeek, type PlanSlots } from "@/lib/service-planner/model";
-import { getPlan, publishPlans, savePlan, setInsertWeek } from "@/lib/service-planner/store";
+import { planSong, takesWeekInsert, weekStartOf, type InsertWeek, type PlanSlots } from "@/lib/service-planner/model";
+import { getPlan, publishPlans, savePlan, setWeekInserts } from "@/lib/service-planner/store";
 import { monthInTitle } from "@/lib/service-time";
 import { ARCHIVE_TAG } from "@/lib/song-archive";
 import { pastServices } from "@/lib/song-history";
@@ -93,7 +93,7 @@ export async function GET(request: Request) {
     const first = songs[0];
     // A hymn from the hymnal is never an insert, even in the insert's place.
     if (services.length < 2 || !first || first.number !== null || songs.some((song) => !song || songKey(song.title) !== songKey(first.title))) continue;
-    weekInserts.set(weekStart, { weekStart, title: first.title, number: first.number, key: first.key });
+    weekInserts.set(weekStart, { weekStart, index: 1, title: first.title, number: first.number, key: first.key });
   }
 
   const report: Array<{ service: string; songs: number; status: string; result: string }> = [];
@@ -102,9 +102,7 @@ export async function GET(request: Request) {
   for (const { service, tab, publish: visibleTab } of upcoming) {
     const name = `${service.date} ${service.slot}`;
     const week = takesWeekInsert(service.date, service.slot) ? (weekInserts.get(weekStartOf(service.date)) ?? null) : null;
-    const slots: PlanSlots = serviceSlots(service).map((song, index) =>
-      song ? { ...song, insert: week !== null && index === insertPlace } : null,
-    );
+    const slots: PlanSlots = serviceSlots(service).map((song) => (song ? planSong(song) : null));
     // Finished (or already held) services stay public; a service still being
     // filled in comes over as a draft, so it is in the planner's queue.
     const publish = visibleTab && (service.pendingSongs === 0 || Date.parse(service.startsAt) <= now);
@@ -143,7 +141,7 @@ export async function GET(request: Request) {
 
   const publication = toPublish.length > 0 ? await publishPlans(env, toPublish, ACTOR) : null;
   if (!dry) {
-    for (const week of weekInserts.values()) await setInsertWeek(env, week.weekStart, week, ACTOR);
+    for (const week of weekInserts.values()) await setWeekInserts(env, week.weekStart, [week], ACTOR);
   }
 
   if (!dry) {

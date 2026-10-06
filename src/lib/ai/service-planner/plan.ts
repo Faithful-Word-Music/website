@@ -31,8 +31,14 @@ import { applyPlan, applySuggestions } from "./validate";
  *      sent back once with what was wrong; a second failure is the end.
  *
  * NOTHING HERE WRITES. It does not save or publish a service, touch another
- * service, or change the week's insert: it returns songs, and the editor
+ * service, or change the week's inserts: it returns songs, and the editor
  * holds them as unsaved changes like any other edit.
+ *
+ * A whole service is planned one of two ways (request.strategy): "improve",
+ * where the songs already in unlocked places may stay on their merits, and
+ * "fresh", where every unlocked place starts again. It is one request and one
+ * set of rules either way - the difference is what the model is shown of the
+ * open places (brief.ts) and one paragraph of the prompt (prompt.ts).
  *
  * What it needs from the server (the reads, the model, the usage log) comes
  * in as `deps`, so every rule above is unit tested without any of them

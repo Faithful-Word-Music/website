@@ -10,7 +10,7 @@ import { toDraft, type PhilosophyRevisionSummary } from "@/lib/ai/planning/revis
 import { listPhilosophyRevisions } from "@/lib/ai/planning/store";
 import { requireAnyPermission } from "@/lib/auth/session";
 
-export const metadata = { title: "Planning philosophy" };
+export const metadata = { title: aiContent.admin.nav.philosophy };
 
 const content = aiContent.admin.philosophy;
 

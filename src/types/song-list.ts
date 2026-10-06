@@ -54,11 +54,12 @@ export interface Service {
    */
   placeholder?: boolean;
   /**
-   * On a placeholder: the week's insert already planned for it (a Psalm or
-   * other song). Shown on its own before the rest of the service is posted;
-   * never shared, printed or counted as history.
+   * On a placeholder: the week's inserts already planned for it (a Psalm or
+   * other song; one, or two in a week given a second), in order. Shown on
+   * their own before the rest of the service is posted; never shared, printed
+   * or counted as history. Left out when there are none.
    */
-  plannedInsert?: Song;
+  plannedInserts?: Song[];
 }
 
 /** One calendar month of the schedule. */

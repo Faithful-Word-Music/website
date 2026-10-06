@@ -184,7 +184,7 @@ export const aiContent = {
       label: "AI",
       usage: "Usage",
       memory: "Memory",
-      philosophy: "Planning philosophy",
+      philosophy: "Planning Philosophy",
     },
 
     /** Admin -> AI -> Memory: what people have asked the AI to remember (src/lib/ai/memory). */
@@ -249,7 +249,7 @@ export const aiContent = {
       },
     },
 
-    /** Admin -> AI -> Planning philosophy: the document the AI plans by, and its history (src/lib/ai/planning). */
+    /** Admin -> AI -> Planning Philosophy: the document the AI plans by, and its history (src/lib/ai/planning). */
     philosophy: {
       title: "Service Planning Philosophy",
       intro:

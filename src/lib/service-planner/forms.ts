@@ -28,7 +28,8 @@ export const songSchema = z.object({
   title: text(200, "the title").min(1, "Every song needs a title."),
   number: optional(20, "the hymn number"),
   key: optional(30, "the key"),
-  insert: z.boolean(),
+  /** Sent by the editor, and not believed: whether a song is an insert is read off its number (planSong). */
+  insert: z.boolean().optional(),
 });
 
 export const saveServiceSchema = z.object({
@@ -60,6 +61,8 @@ export const specialServiceSchema = z.object({
 
 export const insertWeekSchema = z.object({
   weekStart: dateSchema,
+  /** Which of the week's inserts: 1, or 2 for the optional second. */
+  index: z.union([z.literal(1), z.literal(2)]).optional().default(1),
   song: z
     .object({
       title: text(200, "the title").min(1),

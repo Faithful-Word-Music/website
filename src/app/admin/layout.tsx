@@ -5,13 +5,11 @@ import { AdminSidebar, type AdminNavGroup } from "@/components/admin/AdminSideba
 import { Container } from "@/components/ui/Container";
 import { RehearsalMark } from "@/components/ui/SectionHeading";
 import { adminContent } from "@/content/admin";
-import { aiContent } from "@/content/ai";
-import { PEOPLE_PERMISSIONS } from "@/lib/auth/permissions";
+import { adminSectionsFor } from "@/lib/admin-sections";
 import { requireViewer } from "@/lib/auth/session";
 import { countRequestsByStatus } from "@/lib/auth/store";
 
 const copy = adminContent.nav;
-const aiNav = aiContent.admin.nav;
 
 export const metadata: Metadata = {
   title: { default: "Admin", template: "%s | Admin | Faithful Word Music" },
@@ -20,6 +18,9 @@ export const metadata: Metadata = {
 
 /**
  * The admin area's frame: a sidebar of whatever sections the person may use.
+ * Which those are is src/lib/admin-sections.ts, the same list the site search
+ * reads; a section with pages of its own (AI) is a group that opens, not a
+ * link (AdminSidebar).
  *
  * This is presentation only. Every admin page and every server action checks
  * permissions again for itself - a layout is not re-run on every navigation,
@@ -37,61 +38,19 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   }
 
   const pending = viewer.can("manage_users") ? (await countRequestsByStatus(viewer.env)).pending : 0;
-  const groups: AdminNavGroup[] = [
-    { items: [{ href: "/admin", label: copy.items.overview, icon: "overview" as const, show: true }] },
-    {
-      label: copy.groups.people,
-      items: [
-        {
-          href: "/admin/requests",
-          label: copy.items.requests,
-          icon: "requests" as const,
-          show: viewer.can("manage_users"),
-          badge: pending,
-        },
-        {
-          href: "/admin/invitations",
-          label: copy.items.invitations,
-          icon: "invitations" as const,
-          show: viewer.can("manage_users"),
-        },
-        {
-          href: "/admin/users",
-          label: copy.items.users,
-          icon: "users" as const,
-          show: PEOPLE_PERMISSIONS.some((permission) => viewer.can(permission)),
-        },
-        { href: "/admin/roles", label: copy.items.roles, icon: "roles" as const, show: viewer.can("manage_roles") },
-      ],
-    },
-    {
-      label: copy.groups.setup,
-      items: [
-        {
-          href: "/admin/configuration",
-          label: copy.items.configuration,
-          icon: "configuration" as const,
-          show: viewer.can("manage_profiles") || viewer.can("manage_sheet_music"),
-        },
-        {
-          href: "/admin/ai",
-          label: copy.items.ai,
-          icon: "ai" as const,
-          show: viewer.can("use_ai"),
-          children: [
-            { href: "/admin/ai", label: aiNav.usage },
-            { href: "/admin/ai/memory", label: aiNav.memory },
-            { href: "/admin/ai/philosophy", label: aiNav.philosophy },
-          ],
-        },
-      ],
-    },
-  ]
-    .map((group) => ({
-      ...group,
-      items: group.items.filter((item) => item.show),
-    }))
-    .filter((group) => group.items.length > 0);
+  const groups: AdminNavGroup[] = adminSectionsFor(viewer.permissions).map((group) => ({
+    label: group.label,
+    items: group.sections.map((section) =>
+      section.children
+        ? { id: section.id, label: section.label, icon: section.icon, children: section.children.map(({ href, label }) => ({ href, label })) }
+        : {
+            href: section.href,
+            label: section.label,
+            icon: section.icon,
+            ...(section.id === "requests" ? { badge: pending } : {}),
+          },
+    ),
+  }));
 
   return (
     <Container size="wide" className="pb-14 pt-8 sm:pb-20 sm:pt-10">

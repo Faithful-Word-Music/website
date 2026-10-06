@@ -118,10 +118,11 @@ describe("candidates", () => {
 
 describe("serviceSignals", () => {
   const slots = [
-    { title: "Amazing Grace", number: null, key: "G", insert: false },
-    { title: "Victory in Jesus", number: null, key: "Bb", insert: false },
-    { title: "Amazing Grace", number: null, key: "G", insert: false },
-    { title: "O Come All Ye Faithful", number: null, key: "G", insert: false },
+    // Hymns from the hymnal: each has its number. (A song without one is an insert, which is not flagged for repeating in its own week.)
+    { title: "Amazing Grace", number: "236", key: "G", insert: false },
+    { title: "Victory in Jesus", number: "100", key: "Bb", insert: false },
+    { title: "Amazing Grace", number: "236", key: "G", insert: false },
+    { title: "O Come All Ye Faithful", number: "401", key: "G", insert: false },
     null,
   ];
   const signals = serviceSignals({

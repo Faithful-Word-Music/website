@@ -1,4 +1,4 @@
-import { AdminNav } from "@/components/admin/AdminNav";
+import { SectionNav } from "@/components/ui/SectionNav";
 import { songListContent } from "@/content/song-list";
 
 const { views } = songListContent.archive;
@@ -6,7 +6,7 @@ const { views } = songListContent.archive;
 /** Songs | Service plans - the archive's two views of the same history. */
 export function ArchiveSwitch() {
   return (
-    <AdminNav
+    <SectionNav
       label={views.label}
       items={[
         { href: "/song-list/archive", label: views.songs },

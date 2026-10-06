@@ -88,11 +88,11 @@ export function NextServiceCard({ services, serverNow }: { services: Service[]; 
         {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
           <li className="py-2 pl-11 text-[0.95rem] italic text-muted">{states.notPosted}</li>
         ) : null}
-        {featured.plannedInsert ? (
-          <li className="py-2 pl-11">
-            <PlannedInsert song={featured.plannedInsert} />
+        {featured.plannedInserts?.map((song) => (
+          <li key={song.title} className="py-2 pl-11">
+            <PlannedInsert song={song} />
           </li>
-        ) : null}
+        ))}
       </ol>
 
       <Link href="/song-list" className={buttonClasses("secondary", "md", "group mt-5 w-full px-6")}>

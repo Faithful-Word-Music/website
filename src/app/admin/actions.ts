@@ -836,7 +836,7 @@ function philosophyResult(result: PhilosophyChangeResult, message: string): Acti
 }
 
 /**
- * Admin -> AI -> Planning philosophy: applies the document as edited, as a new
+ * Admin -> AI -> Planning Philosophy: applies the document as edited, as a new
  * version on top of the one the editor was opened on (`baseRevisionId`). The
  * same function applies a change Conductor proposed (savePhilosophy in
  * src/lib/ai/planning/service.ts), so both are checked and recorded alike.

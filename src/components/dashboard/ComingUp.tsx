@@ -99,11 +99,11 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
           <SongRow key={index} song={song} showLabel={service.showLabels} />
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
-        {service.plannedInsert ? (
-          <li className="py-2">
-            <PlannedInsert song={service.plannedInsert} />
+        {service.plannedInserts.map((song) => (
+          <li key={song.title} className="py-2">
+            <PlannedInsert song={song} />
           </li>
-        ) : null}
+        ))}
       </ol>
 
       {service.packetHref ? (

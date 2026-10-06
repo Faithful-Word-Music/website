@@ -23,7 +23,7 @@ import { canonicalKey } from "@/lib/song-key";
 import { normalizeKey, songKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
-import { weekStartOf, type PlanSlots } from "./model";
+import { isInsert, weekStartOf, type PlanSlots } from "./model";
 
 const DAY_MS = 86_400_000;
 
@@ -404,7 +404,7 @@ export function serviceSignals(input: {
 
     // The week's insert is meant to be sung in each of the week's services:
     // repeating it within its own week is the plan, not something to flag.
-    const sameWeek = (startsAt: string) => song.insert && weekStartOf(startsAt.slice(0, 10)) === weekStartOf(service.date);
+    const sameWeek = (startsAt: string) => isInsert(song) && weekStartOf(startsAt.slice(0, 10)) === weekStartOf(service.date);
 
     const last = earlier.find((other) => other.songs.some((sung) => songKey(sung.title) === id));
     if (last && !sameWeek(last.startsAt)) {

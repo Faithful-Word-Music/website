@@ -11,7 +11,7 @@ import {
   type ConductorAction as ProposedAction,
   type ConductorActionChoice,
 } from "@/lib/ai/conductor/actions";
-import { pageContextFor } from "@/lib/ai/conductor/context";
+import { pageContextFor, type ConductorPageContext } from "@/lib/ai/conductor/context";
 import { CONDUCTOR_ENDPOINT } from "@/lib/ai/conductor/protocol";
 import {
   CONDUCTOR_ACTIVE_KEY,
@@ -29,6 +29,8 @@ import {
 import type { ConversationSummary, StoredMessage } from "@/lib/ai/conversations/model";
 import type { AiErrorCode } from "@/lib/ai/errors";
 import { parseStreamLine, splitStreamLines } from "@/lib/ai/stream";
+
+import { plannerDraftFor } from "./planner-draft";
 
 /**
  * Conductor in this browser: THE conversation that is open, and the list of
@@ -250,6 +252,16 @@ function claim(userId: string | null) {
 // ---------------------------------------------------------------------------
 
 /**
+ * The page a question is asked from, and - over a service in the planner -
+ * that service as it stands on screen at this moment, saved or not.
+ */
+function contextFor(pathname: string): ConductorPageContext {
+  const context = pageContextFor(pathname);
+  const plan = plannerDraftFor(context.service);
+  return plan ? { ...context, plan } : context;
+}
+
+/**
  * Asks Conductor. `pathname` is the page it is being asked from, for "this
  * service" and "this song". `again` asks the conversation's last question
  * once more, in place of the answer it got.
@@ -274,7 +286,7 @@ async function ask(text: string, pathname: string, again = false) {
         // The server takes the last exchange back only if this IS its question, so it is safe to ask even when
         // the question never arrived.
         retry: again && conversationId !== null,
-        context: pageContextFor(pathname),
+        context: contextFor(pathname),
       }),
       signal: controller.signal,
       cache: "no-store",
@@ -365,7 +377,13 @@ const getServerSnapshot = () => EMPTY;
 export interface Conductor {
   session: ConductorSession;
   history: ConductorHistory;
-  ask: (text: string, pathname: string) => void;
+  /**
+   * Asks. False when the question could not be taken just now - there is
+   * nothing to ask, or Conductor is still answering (or opening a saved
+   * conversation) - so whoever asked from outside the conversation, where
+   * that cannot be seen, can say so (the site search).
+   */
+  ask: (text: string, pathname: string) => boolean;
   stop: () => void;
   /** Start a new conversation. */
   reset: () => void;
@@ -397,7 +415,12 @@ export function useConductor(userId: string | null): Conductor {
 
 /** The same functions every time, so an effect can depend on one without running again each render. */
 const commands: Omit<Conductor, "session" | "history"> = {
-  ask: (text, pathname) => void ask(text, pathname),
+  ask: (text, pathname) => {
+    // The same test ask() makes for itself, made here first so the answer can be given at once.
+    if (state.session.pending || state.session.loading || text.trim() === "") return false;
+    void ask(text, pathname);
+    return true;
+  },
   stop,
   reset,
   retry,

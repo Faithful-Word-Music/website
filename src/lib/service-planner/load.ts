@@ -24,6 +24,7 @@ import {
   type ServiceAvailability,
 } from "./intelligence";
 import {
+  insertsByWeek,
   isLocked,
   parseAnchor,
   plannerService,
@@ -90,7 +91,8 @@ export async function loadQueue(viewer: Viewer, ahead: number): Promise<QueueDat
 export interface WorkspaceData {
   now: number;
   service: PlannerService;
-  week: InsertWeek | null;
+  /** The week's inserts, in order: none, one, or two. */
+  inserts: InsertWeek[];
   locked: boolean;
   candidates: CandidateSong[];
   /** Recent past services, for the repeated-pairing check in the browser. */
@@ -108,7 +110,7 @@ export interface WorkspaceData {
 
 /**
  * One service as the planner knows it, with everything a song is chosen by:
- * the week's insert, every song that could be chosen, the history, and what
+ * the week's inserts, every song that could be chosen, the history, and what
  * else is planned. The workspace is built on it, and so is Generate with AI
  * (src/lib/ai/service-planner), which must reason from the same facts the
  * person planning sees.
@@ -116,7 +118,8 @@ export interface WorkspaceData {
 export interface ServiceContext {
   now: number;
   service: PlannerService;
-  week: InsertWeek | null;
+  /** The week's inserts, in order: none, one, or two. */
+  inserts: InsertWeek[];
   locked: boolean;
   candidates: CandidateSong[];
   /** Every service that has happened. */
@@ -149,8 +152,8 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
   );
   if (!occurrence) return null;
 
-  const week = weeks[0] ?? null;
-  const service = plannerService(occurrence, plan, week);
+  const inserts = weeks;
+  const service = plannerService(occurrence, plan, inserts);
 
   const [history, catalog, index, availability, capo] = await Promise.all([
     loadPast(),
@@ -177,7 +180,7 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
   return {
     now,
     service,
-    week,
+    inserts,
     locked: isLocked(service.startsAt, now),
     candidates,
     past,
@@ -192,7 +195,7 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
 export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<WorkspaceData | null> {
   const context = await loadServiceContext(viewer, anchor);
   if (!context) return null;
-  const { now, service, week, candidates, past, planned } = context;
+  const { now, service, inserts, candidates, past, planned } = context;
   const plan = service.plan;
 
   const events = plan ? await listPlanEvents(viewer.env, plan.id) : [];
@@ -207,7 +210,7 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
   return {
     now,
     service,
-    week,
+    inserts,
     locked: context.locked,
     candidates,
     recentPast: past.filter(
@@ -267,8 +270,9 @@ export async function namesFor(ids: ReadonlyArray<string | null>): Promise<Map<s
 
 export interface InsertsWeek {
   weekStart: string;
-  insert: InsertWeek | null;
-  /** The week's services that take its insert. */
+  /** The week's inserts, in order: none, one, or two. */
+  inserts: InsertWeek[];
+  /** The week's services that take its inserts. */
   services: PlannerService[];
 }
 
@@ -299,7 +303,9 @@ export async function loadInserts(viewer: Viewer, ahead: number): Promise<Insert
     getSheetMusicIndex(),
   ]);
   const services = plannerServices(range, plans, weeks);
-  const months = insertMonths(today, new Set(weeks.map((week) => week.weekStart)), planningLeadDays, ahead);
+  const byWeek = insertsByWeek(weeks);
+  // A week counts as planned once it has its insert; a second is always optional.
+  const months = insertMonths(today, new Set(byWeek.keys()), planningLeadDays, ahead);
 
   return {
     now,
@@ -307,7 +313,7 @@ export async function loadInserts(viewer: Viewer, ahead: number): Promise<Insert
       ...month,
       weeks: weekStarts.map((weekStart) => ({
         weekStart,
-        insert: weeks.find((week) => week.weekStart === weekStart) ?? null,
+        inserts: byWeek.get(weekStart) ?? [],
         services: services.filter(
           (service) => weekStartOf(service.date) === weekStart && takesWeekInsert(service.date, service.slot),
         ),
@@ -387,6 +393,7 @@ export async function loadExport(
       label: service.label,
       special: service.special,
       status: "archived",
+      // History, as it was recorded: older services never said which song was the insert.
       slots: service.songs.map((song) => ({ title: song.title, number: song.number, key: song.key, insert: song.insert === true })),
     });
   }

@@ -6,14 +6,15 @@ import { toChurchIso } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { ServiceSlot } from "@/types/song-list";
 
-import type {
-  InsertMode,
-  InsertWeek,
-  PlanSlots,
-  PlanStatus,
-  ServiceKind,
-  SongChange,
-  StoredPlan,
+import {
+  planSong,
+  type InsertMode,
+  type InsertWeek,
+  type PlanSlots,
+  type PlanStatus,
+  type ServiceKind,
+  type SongChange,
+  type StoredPlan,
 } from "./model";
 
 /**
@@ -30,7 +31,13 @@ import type {
  *   service_plan_events    what happened to each service and what changed
  *                          (songs added, removed, moved, keys), for audit,
  *                          change history and future notifications
- *   insert_weeks           the insert chosen for each week
+ *   week_inserts           the inserts chosen for each week, in order: one row
+ *                          for the week's insert, a second for the optional
+ *                          second insert
+ *   insert_weeks           what week_inserts replaced, from when a week had
+ *                          exactly one insert. Its rows are copied across once
+ *                          per environment (copyWeekInserts) and it is then
+ *                          left alone: never read, never written, never dropped
  *   catalog_songs          songs added in the planner, so a song can exist
  *                          before it has ever been sung
  *
@@ -93,6 +100,30 @@ const SCHEMA = [
      updated_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (clerk_env, week_start)
    )`,
+  // A week's inserts, in order. A new table rather than a new key on
+  // insert_weeks: Local, Preview and Production share this database, and a
+  // deployment still running the older code writes insert_weeks by its old key.
+  `CREATE TABLE IF NOT EXISTS week_inserts (
+     ${ENV},
+     week_start   date        NOT NULL,
+     insert_index smallint    NOT NULL CHECK (insert_index IN (1, 2)),
+     title        text        NOT NULL,
+     number       text,
+     key          text,
+     title_key    text        NOT NULL,
+     updated_by   text,
+     updated_at   timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, week_start, insert_index)
+   )`,
+  // One-time data changes already applied in an environment. The accounts'
+  // schema creates the same table (src/lib/auth/schema.mjs); the planner must
+  // not depend on which of the two ran first.
+  `CREATE TABLE IF NOT EXISTS schema_fixups (
+     ${ENV},
+     key        text        NOT NULL,
+     applied_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, key)
+   )`,
   `CREATE TABLE IF NOT EXISTS catalog_songs (
      ${ENV},
      title_key   text        NOT NULL,
@@ -122,6 +153,41 @@ async function plannerSql() {
     for (const statement of SCHEMA) await sql.query(statement);
     schemaReady = true;
   }
+  return sql;
+}
+
+/** The environments whose one-insert weeks have been carried over, as far as this server knows. */
+const insertsCopied = new Set<ClerkEnv>();
+
+/**
+ * Carries an environment's weekly inserts over from insert_weeks, each as its
+ * week's first insert - once, the first time that environment's planner reads
+ * or writes an insert with this code. One statement, so it either claims the
+ * fix-up and copies every row or does neither; a second server doing the same
+ * at the same moment finds the claim taken and copies nothing.
+ *
+ * It runs per environment, not for the whole table, so Production's rows move
+ * only when Production's own deployment has this code: until then the older
+ * code there keeps reading and writing insert_weeks, and nothing it saves in
+ * the meantime is missed.
+ */
+async function copyWeekInserts(env: ClerkEnv) {
+  const sql = await plannerSql();
+  if (insertsCopied.has(env)) return sql;
+  await sql.query(
+    `WITH claimed AS (
+       INSERT INTO schema_fixups (clerk_env, key) VALUES ($1, '2026-10-week-inserts')
+       ON CONFLICT (clerk_env, key) DO NOTHING
+       RETURNING 1
+     )
+     INSERT INTO week_inserts (clerk_env, week_start, insert_index, title, number, key, title_key, updated_by, updated_at)
+     SELECT clerk_env, week_start, 1, title, number, key, title_key, updated_by, updated_at
+       FROM insert_weeks
+      WHERE clerk_env = $1 AND EXISTS (SELECT 1 FROM claimed)
+     ON CONFLICT (clerk_env, week_start, insert_index) DO NOTHING`,
+    [env],
+  );
+  insertsCopied.add(env);
   return sql;
 }
 
@@ -166,13 +232,13 @@ function readSlots(value: PlanSlots | string): PlanSlots {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
     if (!item || typeof item !== "object" || typeof (item as { title?: unknown }).title !== "string") return null;
-    const song = item as { title: string; number?: unknown; key?: unknown; insert?: unknown };
-    return {
+    const song = item as { title: string; number?: unknown; key?: unknown };
+    // Whether it is an insert is read off the song, never taken from what was stored with it.
+    return planSong({
       title: song.title,
       number: typeof song.number === "string" && song.number !== "" ? song.number : null,
       key: typeof song.key === "string" && song.key !== "" ? song.key : null,
-      insert: song.insert === true,
-    };
+    });
   });
 }
 
@@ -476,35 +542,63 @@ export async function scheduledServices(
 // Inserts
 // ---------------------------------------------------------------------------
 
+/** Every insert of the weeks starting from `from` to `to`: week by week, each week's in order. */
 export async function listInsertWeeks(env: ClerkEnv, from: string, to: string): Promise<InsertWeek[]> {
-  const sql = await plannerSql();
+  const sql = await copyWeekInserts(env);
   const rows = (await sql.query(
-    `SELECT to_char(week_start, 'YYYY-MM-DD') AS week_start, title, number, key FROM insert_weeks
-      WHERE clerk_env = $1 AND week_start BETWEEN $2::date AND $3::date ORDER BY week_start`,
+    `SELECT to_char(week_start, 'YYYY-MM-DD') AS week_start, insert_index, title, number, key FROM week_inserts
+      WHERE clerk_env = $1 AND week_start BETWEEN $2::date AND $3::date ORDER BY week_start, insert_index`,
     [env, from, to],
-  )) as Array<{ week_start: string; title: string; number: string | null; key: string | null }>;
-  return rows.map((row) => ({ weekStart: row.week_start, title: row.title, number: row.number, key: row.key }));
+  )) as Array<{ week_start: string; insert_index: number; title: string; number: string | null; key: string | null }>;
+  return rows.map((row) => ({
+    weekStart: row.week_start,
+    index: row.insert_index === 2 ? 2 : 1,
+    title: row.title,
+    number: row.number,
+    key: row.key,
+  }));
 }
 
-/** Sets (or, with null, clears) a week's insert. */
-export async function setInsertWeek(
+/**
+ * Sets a week's inserts to exactly these, in the order given (none clears the
+ * week). One statement: the rows no longer wanted go and the rest are written
+ * together, so a week is never left half changed.
+ */
+export async function setWeekInserts(
   env: ClerkEnv,
   weekStart: string,
-  song: { title: string; number: string | null; key: string | null } | null,
+  inserts: ReadonlyArray<{ title: string; number: string | null; key: string | null }>,
   actor: string,
 ): Promise<void> {
-  const sql = await plannerSql();
-  if (!song) {
-    await sql.query(`DELETE FROM insert_weeks WHERE clerk_env = $1 AND week_start = $2::date`, [env, weekStart]);
-    return;
-  }
+  const sql = await copyWeekInserts(env);
   await sql.query(
-    `INSERT INTO insert_weeks (clerk_env, week_start, title, number, key, title_key, updated_by)
-     VALUES ($1, $2::date, $3, $4, $5, $6, $7)
-     ON CONFLICT (clerk_env, week_start)
+    `WITH wanted AS (
+       SELECT * FROM jsonb_to_recordset($3::jsonb)
+         AS item(insert_index smallint, title text, number text, key text, title_key text)
+     ), removed AS (
+       DELETE FROM week_inserts
+        WHERE clerk_env = $1 AND week_start = $2::date
+          AND insert_index NOT IN (SELECT insert_index FROM wanted)
+     )
+     INSERT INTO week_inserts (clerk_env, week_start, insert_index, title, number, key, title_key, updated_by)
+     SELECT $1, $2::date, insert_index, title, number, key, title_key, $4 FROM wanted
+     ON CONFLICT (clerk_env, week_start, insert_index)
      DO UPDATE SET title = EXCLUDED.title, number = EXCLUDED.number, key = EXCLUDED.key,
                    title_key = EXCLUDED.title_key, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-    [env, weekStart, song.title, song.number, song.key, songKey(song.title), actor],
+    [
+      env,
+      weekStart,
+      JSON.stringify(
+        inserts.map((song, order) => ({
+          insert_index: order + 1,
+          title: song.title,
+          number: song.number,
+          key: song.key,
+          title_key: songKey(song.title),
+        })),
+      ),
+      actor,
+    ],
   );
 }
 

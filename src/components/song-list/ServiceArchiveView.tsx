@@ -17,7 +17,7 @@ import {
   type ServiceTypeFilter,
 } from "@/lib/service-archive";
 import { serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
-import { isInsert } from "@/lib/service-planner/model";
+import { recordedInsert } from "@/lib/service-planner/model";
 import { formatChurchTime } from "@/lib/service-time";
 import { listKeys } from "@/lib/song-list";
 
@@ -149,7 +149,7 @@ function ServiceSummary({ service, highlight }: { service: ArchivedService; high
               <span className={hit ? "font-medium text-ink" : "text-ink"}>
                 <SongLink title={song.title} />
               </span>
-              {isInsert(song) ? <span className="text-[0.65rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span> : null}
+              {recordedInsert(song) ? <span className="text-[0.65rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span> : null}
               <span className="ml-auto shrink-0 text-muted">{song.key ?? ""}</span>
             </li>
           );

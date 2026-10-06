@@ -114,8 +114,17 @@ export async function answerConductor(input: {
   // The philosophy's section titles and the memories that apply: the same layer the planner asks.
   const standing = await assembleAiContext(viewer, "assistant", { query: input.question });
 
+  const canPlan = viewer.can("manage_service_plans");
+  const page = normalizePageContext(input.context);
+  // The planner's unsaved work is for those who plan: anyone else is told the page, never a plan.
+  const context = page && !canPlan && page.plan ? { ...page, plan: undefined } : page;
+
   const conversationId = conversation.id;
-  const turn: ConductorTurnState = { conversationId, proposed: [] };
+  const turn: ConductorTurnState = {
+    conversationId,
+    proposed: [],
+    ...(context?.service && context.plan ? { screen: { anchor: context.service, plan: context.plan } } : {}),
+  };
   let settle: () => void = () => {};
   const finished = new Promise<void>((resolve) => {
     settle = resolve;
@@ -127,8 +136,8 @@ export async function answerConductor(input: {
     action: "answer",
     instructions: conductorInstructions({
       now: Date.now(),
-      context: normalizePageContext(input.context),
-      canPlan: viewer.can("manage_service_plans"),
+      context,
+      canPlan,
       philosophyOutline: standing.philosophy.ok ? philosophyOutline(standing.philosophy.philosophy) : null,
       abilities: {
         personalMemory: canUsePersonalMemory(viewer),

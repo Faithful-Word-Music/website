@@ -4,7 +4,7 @@ import { aiContent } from "@/content/ai";
 import { servicePlannerContent } from "@/content/service-planner";
 import type { AiErrorCode } from "@/lib/ai/errors";
 import { anchorSchema, MAX_PLACES, songSchema } from "@/lib/service-planner/forms";
-import type { PlanSlots } from "@/lib/service-planner/model";
+import { planSong, type PlanSlots } from "@/lib/service-planner/model";
 
 /**
  * What the Service Planner's workspace sends to POST /api/service-planner/ai,
@@ -23,10 +23,26 @@ export const planAiRequestSchema = z
   .object({
     /** generate: the whole service. replace: a few suggestions for one place. */
     mode: z.enum(["generate", "replace"]),
+    /**
+     * generate only - how the whole service is planned:
+     *
+     *   improve  the songs in unlocked places stay unless another would clearly
+     *            serve better; changing nothing is a valid answer
+     *   fresh    every unlocked place is chosen from scratch around the locked
+     *            songs and the inserts; what stood there earns nothing by it
+     */
+    strategy: z
+      .enum(["improve", "fresh"])
+      .optional()
+      .transform((value) => value ?? "improve"),
     anchor: anchorSchema,
     /** The revision the editor started from; null for a service not stored yet. */
     revision: z.number().int().positive().nullable(),
-    slots: z.array(songSchema.nullable()).min(1).max(MAX_PLACES),
+    // Each song is made here from its title, number and key, as a saved one is: the browser does not say what is an insert.
+    slots: z
+      .array(songSchema.nullable().transform((song) => (song ? planSong(song) : null)))
+      .min(1)
+      .max(MAX_PLACES),
     /** Each place, locked or not (locks.ts). */
     locked: z.array(z.boolean()).max(MAX_PLACES),
     instruction: z

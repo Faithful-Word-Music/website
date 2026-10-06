@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { siteConfig } from "@/config/site";
 import type { AiErrorCode } from "@/lib/ai/errors";
 import { buildCandidates, candidateFacts } from "@/lib/service-planner/intelligence";
-import type { PlanSlots, PlanSong } from "@/lib/service-planner/model";
+import { isInsert, planSong, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
 import type { DatedService } from "@/types/song-list";
 
 import { buildBrief, buildShortlist, describeCandidate, NO_LIBRARY, SHORTLIST, type LibraryFindings, type PlanContext } from "./brief";
@@ -21,8 +21,9 @@ import { christmasEligible, serviceSeason } from "./season";
 import { applyPlan, applySuggestions } from "./validate";
 
 // ---------------------------------------------------------------------------
-// A small church: a few familiar hymns, two Psalms used as inserts, a Christmas
-// repertoire sung only in December, and songs nobody has sung yet.
+// A small church: a few familiar hymns, three Psalms (inserts: they have no
+// hymnal number), a Christmas repertoire sung only in December, and songs
+// nobody has sung yet.
 // ---------------------------------------------------------------------------
 
 const HYMNAL = siteConfig.sheetMusic.hymnalCollection;
@@ -37,6 +38,7 @@ const SONGS: Record<string, { number: string | null; key: string | null }> = {
   "Never Sung": { number: "60", key: "A" },
   "Psalm 23": { number: null, key: "F" },
   "Psalm 100": { number: null, key: "G" },
+  "Psalm 1": { number: null, key: "C" },
   "Joy to the World": { number: "400", key: "D" },
   "Silent Night": { number: "401", key: "Bb" },
   "Away in a Manger": { number: "402", key: "F" },
@@ -74,8 +76,10 @@ const candidates = buildCandidates({
   hymnalCollection: HYMNAL,
 });
 
-const song = (title: string, key: string | null = SONGS[title].key): PlanSong => ({ title, number: SONGS[title].number, key, insert: false });
-const insert = (title: string): PlanSong => ({ ...song(title), insert: true });
+// Made as the site makes them: a song is an insert because it has no hymnal number, not because anything says so.
+const song = (title: string, key: string | null = SONGS[title].key): PlanSong => planSong({ title, number: SONGS[title].number, key });
+/** A Psalm: an insert by being un-numbered. The name only says what the test means by it. */
+const insert = song;
 
 const STARTS = "2026-10-11T10:30:00-07:00";
 const context = (overrides: Partial<PlanContext> = {}): PlanContext => ({
@@ -92,9 +96,10 @@ const december = (overrides: Partial<PlanContext> = {}) =>
   context({ service: { date: "2026-12-06", slot: "AM", startsAt: "2026-12-06T10:30:00-08:00", label: null, special: false }, ...overrides });
 
 /** A request as the workspace sends it: locks at their defaults unless given. */
-function request(slots: PlanSlots, options: Partial<Pick<PlanAiRequest, "mode" | "instruction" | "target" | "revision">> & { locked?: boolean[] } = {}): PlanAiRequest {
+function request(slots: PlanSlots, options: Partial<Pick<PlanAiRequest, "mode" | "strategy" | "instruction" | "target" | "revision">> & { locked?: boolean[] } = {}): PlanAiRequest {
   return planAiRequestSchema.parse({
     mode: options.mode ?? "generate",
+    strategy: options.strategy,
     anchor: "2026-10-11-am",
     revision: options.revision === undefined ? 3 : options.revision,
     slots,
@@ -111,7 +116,10 @@ const brief = (slots: PlanSlots, options: Parameters<typeof request>[1] = {}, ct
   buildBrief(request(slots, options), ctx, library, HYMNAL);
 
 const place = (number: number, title: string) => ({ place: number, songId: id(title) });
-const plan = (places: Array<{ place: number; songId: string }>, differentInsert = false) => ({ places, differentInsert, summary: "Kept it familiar." });
+const plan = (places: Array<{ place: number; songId: string }>) => ({ places, summary: "Kept it familiar." });
+
+/** The service of a week with two inserts: third and fourth, the rest to plan. */
+const twoInserts = (): PlanSlots => [null, null, insert("Psalm 23"), insert("Psalm 100"), null];
 
 // ---------------------------------------------------------------------------
 
@@ -123,8 +131,17 @@ describe("AI locks", () => {
     expect(lockedPlaces(usual(), {})).toEqual([false, false, true, false, false]);
   });
 
-  it("treats a hymn from the hymnal in the insert's place as an ordinary song", () => {
+  it("treats a hymn from the hymnal in the insert's place as an ordinary song, whatever it is marked", () => {
     expect(isAiLocked({ ...song("Amazing Grace"), insert: true }, {})).toBe(false);
+    // And a Psalm is an insert though nothing marks it.
+    expect(isAiLocked({ ...song("Psalm 23"), insert: false }, {})).toBe(true);
+  });
+
+  it("locks both inserts of a week that has two, each unlocked by itself", () => {
+    expect(lockedPlaces(twoInserts(), {})).toEqual([false, false, true, true, false]);
+    const first = toggleAiLock(insert("Psalm 23"), {});
+    expect(lockedPlaces(twoInserts(), first)).toEqual([false, false, false, true, false]);
+    expect(lockedPlaces(twoInserts(), toggleAiLock(insert("Psalm 100"), first))).toEqual([false, false, false, false, false]);
   });
 
   it("turns a lock the other way, by song, so it follows the song when it moves", () => {
@@ -135,11 +152,12 @@ describe("AI locks", () => {
     expect(isAiLocked(song("At Calvary"), toggleAiLock(song("At Calvary"), locked))).toBe(false);
   });
 
-  it("keeps the person's locks after a generation and leaves what AI put in unlocked", () => {
-    const choices = toggleAiLock(song("At Calvary"), {});
+  it("keeps the person's locks after a generation and leaves the ordinary songs AI put in unlocked", () => {
+    const choices = toggleAiLock(insert("Psalm 100"), toggleAiLock(song("At Calvary"), {}));
     const after: PlanSlots = [song("Amazing Grace"), song("Victory in Jesus"), insert("Psalm 100"), song("At Calvary"), null];
     const next = locksAfterGeneration(choices, after, [0, 1, 2]);
-    expect(lockedPlaces(after, next)).toEqual([false, false, false, true, false]);
+    // The insert AI put in (asked for, in the insert's place) is locked again, as any insert starts.
+    expect(lockedPlaces(after, next)).toEqual([false, false, true, true, false]);
   });
 
   it("answers for every place that is not locked, and holds an unlocked insert when nothing was asked", () => {
@@ -148,6 +166,14 @@ describe("AI locks", () => {
     expect(openPlaces(slots, [false, false, false, false, false], true)).toEqual([0, 1, 3, 4]);
     expect(openPlaces(slots, [false, false, false, false, false], false)).toEqual([0, 1, 2, 3, 4]);
     expect(openPlaces(slots, [true, true, true, true, true], false)).toEqual([0, 1, 4]);
+  });
+
+  it("holds both inserts of a week with two until something is asked, and then only the ones unlocked", () => {
+    const slots = twoInserts();
+    const none = [false, false, false, false, false];
+    expect(openPlaces(slots, none, true)).toEqual([0, 1, 4]);
+    expect(openPlaces(slots, none, false)).toEqual([0, 1, 2, 3, 4]);
+    expect(openPlaces(slots, [false, false, true, false, false], false)).toEqual([0, 1, 3, 4]);
   });
 });
 
@@ -227,13 +253,16 @@ describe("the candidates", () => {
       songs: Array.from({ length: 200 }, (_, n) => ({ title: `Hymn ${n}`, number: String(n + 1), key: "C" })),
     })),
     planned: [],
-    catalog: Array.from({ length: 40 }, (_, n) => ({ title: `Unsung ${n}`, number: null, collection: null, defaultKey: null })),
+    catalog: [
+      ...Array.from({ length: 40 }, (_, n) => ({ title: `Unsung ${n}`, number: String(n + 1000), collection: null, defaultKey: null })),
+      ...Array.from({ length: 30 }, (_, n) => ({ title: `Psalm ${n + 1}`, number: null, collection: null, defaultKey: null })),
+    ],
     index: null,
     hymnalCollection: HYMNAL,
   });
 
   it("are a bounded shortlist, however large the library", () => {
-    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: null });
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: null, insertOpen: false });
     expect(list.length).toBeLessThanOrEqual(SHORTLIST.total);
     expect(list.length).toBeGreaterThan(40);
     expect(new Set(list.map((item) => item.id)).size).toBe(list.length);
@@ -241,24 +270,38 @@ describe("the candidates", () => {
 
   it("always include the songs that may be kept, and never a song that cannot be moved", () => {
     const kept = many.find((item) => item.id === "unsung 7")!;
-    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(["hymn 0"]), keepable: [kept], thematic: [], christmasOnly: null });
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(["hymn 0"]), keepable: [kept], thematic: [], christmasOnly: null, insertOpen: false });
     expect(list[0]).toBe(kept);
     expect(list.some((item) => item.id === "hymn 0")).toBe(false);
   });
 
   it("take songs found by meaning, but only a few that have never been sung", () => {
     const thematic = many.filter((item) => item.playCount === 0).map((item) => item.id);
-    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic, christmasOnly: null });
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic, christmasOnly: null, insertOpen: false });
     expect(list.filter((item) => item.playCount === 0)).toHaveLength(SHORTLIST.neverSung);
   });
 
+  it("never include an insert for an ordinary place, however near its meaning", () => {
+    const psalms = many.filter(isInsert).map((item) => item.id);
+    expect(psalms).toHaveLength(30);
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: psalms, christmasOnly: null, insertOpen: false });
+    expect(list.some(isInsert)).toBe(false);
+  });
+
+  it("offer a few inserts, and only a few, when an insert's own place is open", () => {
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: ["psalm 9"], christmasOnly: null, insertOpen: true });
+    expect(list.filter(isInsert)).toHaveLength(SHORTLIST.inserts);
+    // The one nearest what was asked for comes first among them.
+    expect(list.find(isInsert)?.id).toBe("psalm 9");
+  });
+
   it("leave Christmas songs out of an ordinary service, and offer nothing else in the Christmas season", () => {
-    const ordinary = buildShortlist({ candidates, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: null });
+    const ordinary = buildShortlist({ candidates, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: null, insertOpen: false });
     expect(ordinary.some((item) => item.id === id("Joy to the World"))).toBe(false);
     expect(ordinary.some((item) => item.id === id("Amazing Grace"))).toBe(true);
 
     const eligible = christmasEligible({ candidates, past, nativity: new Set() });
-    const season = buildShortlist({ candidates, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: eligible });
+    const season = buildShortlist({ candidates, startsAt: STARTS, fixed: new Set(), keepable: [], thematic: [], christmasOnly: eligible, insertOpen: false });
     expect(season.map((item) => item.id).sort()).toEqual([id("Joy to the World"), id("Silent Night")]);
   });
 
@@ -293,8 +336,37 @@ describe("the brief", () => {
     expect(brief(usual(), { locked: unlocked }).open).toEqual([0, 1, 3, 4]);
     const asked = brief(usual(), { locked: unlocked, instruction: "Skip the insert for this service." });
     expect(asked.open).toEqual([0, 1, 2, 3, 4]);
-    expect(asked.insertPlace).toBe(2);
+    expect(asked.insertPlaces).toEqual([2]);
     expect(asked.offered.has(id("Psalm 23"))).toBe(true);
+    // Held or locked, there is no place an insert could go.
+    expect(brief(usual()).insertPlaces).toEqual([]);
+    expect(brief(usual(), { locked: unlocked }).insertPlaces).toEqual([]);
+  });
+
+  it("offers no insert at all while the inserts are locked or held, and marks the ones it offers when one is open", () => {
+    const unlocked = [false, false, false, false, false];
+    const inserts = (made: ReturnType<typeof brief>) => [...made.offered].filter((item) => isInsert(made.songs.get(item)!)).sort();
+    expect(inserts(brief(usual()))).toEqual([]);
+    expect(inserts(brief(usual(), { locked: unlocked }))).toEqual([]);
+    expect(inserts(brief(twoInserts()))).toEqual([]);
+
+    const asked = brief(usual(), { locked: unlocked, instruction: "Use a different Psalm this week." });
+    expect(inserts(asked)).toEqual([id("Psalm 1"), id("Psalm 100"), id("Psalm 23")]);
+    expect(asked.candidates.filter((item) => item.insert).map((item) => item.id).sort()).toEqual(inserts(asked));
+    expect(asked.candidates.find((item) => item.id === id("Amazing Grace"))).not.toHaveProperty("insert");
+  });
+
+  it("plans around both inserts of a week with two", () => {
+    const made = brief(twoInserts());
+    expect(made.open).toEqual([0, 1, 4]);
+    expect(made.places.map((item) => item.state)).toEqual(["empty", "empty", "locked", "locked", "empty"]);
+    expect(made.places[2].song?.insert).toBe(true);
+    expect(made.places[3].song?.insert).toBe(true);
+    const none = [false, false, false, false, false];
+    expect(brief(twoInserts(), { locked: none }).open).toEqual([0, 1, 4]);
+    expect(brief(twoInserts(), { locked: none, instruction: "Only one insert tonight." }).insertPlaces).toEqual([2, 3]);
+    // One unlocked, one still locked: only the unlocked one's place can take an insert.
+    expect(brief(twoInserts(), { locked: [false, false, true, false, false], instruction: "Only one insert tonight." }).insertPlaces).toEqual([3]);
   });
 
   it("never offers a song in a place that cannot change, and always one that may be kept", () => {
@@ -311,7 +383,7 @@ describe("the brief", () => {
   });
 
   it("can keep a song the catalog does not know", () => {
-    const slots: PlanSlots = [{ title: "A Brand New Song", number: null, key: "E", insert: false }, null];
+    const slots: PlanSlots = [planSong({ title: "A Brand New Song", number: "999", key: "E" }), null];
     const made = brief(slots);
     expect(made.offered.has("a brand new song")).toBe(true);
     const applied = applyPlan(made, plan([{ place: 1, songId: "a brand new song" }, place(2, "Amazing Grace")]));
@@ -339,6 +411,81 @@ describe("the brief", () => {
   it("says when the records begin and whether lyrics were to hand", () => {
     expect(brief(usual()).recordsBegin).toBe("2025-12-07");
     expect(brief(usual()).lyricsIndexed).toBe(false);
+  });
+
+  describe("improving a plan, and generating a new one", () => {
+    // An opener nobody has sung, the insert, a familiar song fourth, and two places still to fill.
+    const drafted = (): PlanSlots => [song("Never Sung"), null, insert("Psalm 23"), song("At Calvary"), null];
+
+    it("improves by default: the songs in open places are shown, and may always be kept", () => {
+      const made = brief(drafted());
+      expect(made.strategy).toBe("improve");
+      expect(made.open).toEqual([0, 1, 3, 4]);
+      expect(made.places[0]).toEqual({ place: 1, state: "open", song: { id: "never sung", title: "Never Sung", number: "60" } });
+      expect(made.places[3].state).toBe("open");
+      // Kept on offer because it is there, though nothing else would have put it on the list.
+      expect(made.offered.has(id("Never Sung"))).toBe(true);
+    });
+
+    it("starts every unlocked ordinary place again for a new plan: what stood there is not shown and earns nothing by it", () => {
+      const made = brief(drafted(), { strategy: "fresh" });
+      expect(made.strategy).toBe("fresh");
+      expect(made.open).toEqual([0, 1, 3, 4]);
+      expect(made.places).toEqual([
+        { place: 1, state: "empty" },
+        { place: 2, state: "empty" },
+        { place: 3, state: "locked", song: { id: "psalm 23", title: "Psalm 23", number: null, insert: true } },
+        { place: 4, state: "empty" },
+        { place: 5, state: "empty" },
+      ]);
+      // No longer offered merely for being there...
+      expect(made.offered.has(id("Never Sung"))).toBe(false);
+      // ...but not banned either: a familiar song is on the list on its own merits, and can be chosen again.
+      expect(made.offered.has(id("At Calvary"))).toBe(true);
+      const prompt = generatePrompt(made);
+      expect(prompt).not.toContain("Never Sung");
+    });
+
+    it("keeps locked songs and the inserts exactly where they are in a new plan", () => {
+      const slots: PlanSlots = [song("Holy, Holy, Holy", "D"), song("Amazing Grace"), insert("Psalm 23"), song("At Calvary"), null];
+      const made = brief(slots, { strategy: "fresh", locked: [true, false, true, false, false] });
+      expect(made.open).toEqual([1, 3, 4]);
+      expect(made.places[0]).toMatchObject({ state: "locked", song: { title: "Holy, Holy, Holy" } });
+      expect(made.places[2]).toMatchObject({ state: "locked", song: { title: "Psalm 23", insert: true } });
+      const applied = applyPlan(made, plan([place(2, "Victory in Jesus"), place(4, "Blessed Assurance"), place(5, "At Calvary")]));
+      expect(applied.ok && applied.slots[0]).toBe(made.slots[0]);
+      expect(applied.ok && applied.slots[2]).toBe(made.slots[2]);
+      expect(applied.ok && applied.changed).toEqual([1, 3, 4]);
+    });
+
+    it("lets a new plan choose a song again, which then keeps the key it had", () => {
+      const slots: PlanSlots = [song("At Calvary", "Db"), null];
+      const made = brief(slots, { strategy: "fresh" });
+      const applied = applyPlan(made, plan([place(1, "At Calvary"), place(2, "Amazing Grace")]));
+      expect(applied.ok && applied.slots[0]).toBe(made.slots[0]);
+      expect(applied.ok && applied.changed).toEqual([1]);
+    });
+
+    it("plans a new service around two inserts: three places, and never a third insert", () => {
+      const slots: PlanSlots = [song("Amazing Grace"), song("At Calvary"), insert("Psalm 23"), insert("Psalm 100"), song("Blessed Assurance")];
+      const made = brief(slots, { strategy: "fresh" });
+      expect(made.open).toEqual([0, 1, 4]);
+      expect(made.places.map((item) => item.state)).toEqual(["empty", "empty", "locked", "locked", "empty"]);
+      expect([...made.offered].some((item) => isInsert(made.songs.get(item)!))).toBe(false);
+    });
+
+    it("leaves an unlocked insert shown and held in a new plan, as in any other", () => {
+      const none = [false, false, false, false, false];
+      const held = brief(drafted(), { strategy: "fresh", locked: none });
+      expect(held.open).toEqual([0, 1, 3, 4]);
+      const asked = brief(drafted(), { strategy: "fresh", locked: none, instruction: "A stronger opener." });
+      expect(asked.places[2]).toEqual({ place: 3, state: "open", song: { id: "psalm 23", title: "Psalm 23", number: null, insert: true } });
+      expect(asked.offered.has(id("Psalm 23"))).toBe(true);
+    });
+
+    it("is only ever improve for a suggestion", () => {
+      expect(brief(drafted(), { mode: "replace", target: 0, strategy: "fresh" }).strategy).toBe("improve");
+    });
   });
 });
 
@@ -371,8 +518,29 @@ describe("what the model is told", () => {
     expect(rules).toContain("A lock outranks DIRECTION");
   });
 
-  it("says keeping an unlocked song is a real choice", () => {
-    expect(plannerInstructions("")).toContain("You do not have to. Keeping it is a real choice");
+  it("says keeping an unlocked song is a real choice when improving, and only then", () => {
+    const improve = generatePrompt(brief(usual()));
+    expect(improve).toContain("MODE\nImprove the plan as it stands.");
+    expect(improve).toContain("keeping it is a real choice");
+    expect(improve).toContain("Changing nothing at all is a valid answer.");
+
+    const fresh = generatePrompt(brief(usual(), { strategy: "fresh" }));
+    expect(fresh).toContain("MODE\nA new plan.");
+    expect(fresh).not.toContain("real choice");
+    expect(fresh).toContain("nothing is owed to it");
+
+    // The standing rules are the same text for both, so a provider can cache them: the difference travels with the request.
+    expect(plannerInstructions("")).not.toContain("real choice");
+    expect(plannerInstructions("")).toContain("How readily is said under MODE");
+  });
+
+  it("says the inserts are decided ahead, that there may be two, and that none may be added", () => {
+    const rules = plannerInstructions("");
+    expect(rules).toContain("A week has one, and sometimes two.");
+    expect(rules).toContain("Being unlocked is not such a request.");
+    expect(rules).toContain("An insert is a song with no hymnal number.");
+    expect(rules).toContain("Never put one in any other place, whatever DIRECTION says");
+    expect(rules).toContain("do not add one");
   });
 
   it("gives the service, the season's dates, the week, the places to answer for and the instruction", () => {
@@ -404,6 +572,8 @@ describe("what the model is told", () => {
     expect(schema.safeParse(plan([place(1, "Amazing Grace")])).success).toBe(true);
     expect(schema.safeParse(plan([{ place: 1, songId: "a song that does not exist" }])).success).toBe(false);
     expect(schema.safeParse({ places: "Amazing Grace" }).success).toBe(false);
+    // The model no longer says what is an insert: there is nothing in the answer for it to say it with.
+    expect(Object.keys(schema.shape).sort()).toEqual(["places", "summary"]);
   });
 
   it("sends back what was wrong for the second try", () => {
@@ -507,8 +677,8 @@ describe("holding the answer to the rules", () => {
   describe("the insert", () => {
     const unlocked = [false, false, false, false, false];
     const skip = "Skip the insert for this service and use a regular hymn in this position.";
-    const answer = (third: string, differentInsert = false) =>
-      plan([place(1, "Amazing Grace"), place(2, "Victory in Jesus"), place(3, third), place(4, "At Calvary"), place(5, "Blessed Assurance")], differentInsert);
+    const answer = (third: string, first = "Amazing Grace") =>
+      plan([place(1, first), place(2, "Victory in Jesus"), place(3, third), place(4, "At Calvary"), place(5, "Blessed Assurance")]);
 
     it("stays, unlocked or not, when nothing was asked: its place is not even open", () => {
       const made = brief(usual(), { locked: unlocked });
@@ -531,18 +701,71 @@ describe("holding the answer to the rules", () => {
       expect(applied.ok && applied.slots.some((item) => item?.insert)).toBe(false);
     });
 
-    it("is never replaced by a hymnal hymn marked as an insert, whatever the model says", () => {
-      const applied = applyPlan(brief(usual(), { locked: unlocked, instruction: skip }), answer("Holy, Holy, Holy", true));
-      expect(applied.ok && applied.slots[2]?.insert).toBe(false);
+    it("can be a different insert for this one service when asked for: an insert because it is one, not because anyone says so", () => {
+      const made = brief(usual(), { locked: unlocked, instruction: "Use Psalm 100 as the insert for this service only." });
+      const applied = applyPlan(made, answer("Psalm 100"));
+      expect(applied.ok && applied.slots[2]).toEqual({ title: "Psalm 100", number: null, key: "G", insert: true });
+      expect(applied.ok && applied.slots.filter((item) => item && isInsert(item))).toHaveLength(1);
     });
 
-    it("can be a different insert for this one service only when asked for", () => {
-      const made = brief(usual(), { locked: unlocked, instruction: "Use Psalm 100 as the insert for this service only." });
-      const applied = applyPlan(made, answer("Psalm 100", true));
-      expect(applied.ok && applied.slots[2]).toEqual({ title: "Psalm 100", number: null, key: "G", insert: true });
-      // Without the model saying so, another Psalm in its place is an ordinary song.
-      const plain = applyPlan(made, answer("Psalm 100"));
-      expect(plain.ok && plain.slots[2]?.insert).toBe(false);
+    it("cannot be joined by another insert: one in an ordinary place is refused, whatever was asked", () => {
+      const made = brief(usual(), { locked: unlocked, instruction: "Open with a Psalm as well." });
+      expect(made.offered.has(id("Psalm 100"))).toBe(true);
+      expect(applyPlan(made, answer("Psalm 23", "Psalm 100"))).toEqual({
+        ok: false,
+        problems: [
+          '"psalm 100" (place 1) is an insert, and place 1 is not an insert\'s place.',
+          "The service may have at most 1 insert among the places you answer for.",
+        ],
+      });
+    });
+
+    it("may be moved, but not moved and replaced: there is still only one", () => {
+      const made = brief(usual(), { locked: unlocked, instruction: "Sing the Psalm first tonight." });
+      const moved = applyPlan(made, answer("Holy, Holy, Holy", "Psalm 23"));
+      expect(moved.ok && moved.slots[0]).toBe(made.slots[2]);
+      expect(moved.ok && moved.slots.filter((item) => item && isInsert(item))).toHaveLength(1);
+      // Moved to the front AND another put where it stood: two inserts where there was one.
+      expect(applyPlan(made, answer("Psalm 100", "Psalm 23"))).toEqual({
+        ok: false,
+        problems: ["The service may have at most 1 insert among the places you answer for."],
+      });
+    });
+
+    it("is not AI's to add when it is locked or held, even if the model could somehow name one", () => {
+      const held = brief(usual());
+      expect(held.offered.has(id("Psalm 100"))).toBe(false);
+      // As if it had been offered: the rule is checked on its own, not left to the list.
+      const psalm = candidates.find((item) => item.id === id("Psalm 100"))!;
+      const offered = { ...held, offered: new Set([...held.offered, psalm.id]), songs: new Map([...held.songs, [psalm.id, psalm]]) };
+      const applied = applyPlan(offered, plan([place(1, "Psalm 100"), place(2, "Victory in Jesus"), place(4, "At Calvary"), place(5, "Blessed Assurance")]));
+      expect(applied).toEqual({
+        ok: false,
+        problems: [
+          '"psalm 100" (place 1) is an insert, and place 1 is not an insert\'s place.',
+          "This service's inserts are not yours to change, and no other insert may be added.",
+        ],
+      });
+    });
+
+    it("stays two when a week has two: either may be replaced on request, and a third is refused", () => {
+      const none = [false, false, false, false, false];
+      const made = brief(twoInserts(), { locked: none, instruction: "Use Psalm 1 in place of Psalm 100 tonight." });
+      const places = (first: string, fourth: string) =>
+        plan([place(1, first), place(2, "Victory in Jesus"), place(3, "Psalm 23"), place(4, fourth), place(5, "Blessed Assurance")]);
+
+      const replaced = applyPlan(made, places("Amazing Grace", "Psalm 1"));
+      expect(replaced.ok && replaced.slots.map((item) => item?.title)).toEqual(["Amazing Grace", "Victory in Jesus", "Psalm 23", "Psalm 1", "Blessed Assurance"]);
+      expect(replaced.ok && replaced.slots[2]).toBe(made.slots[2]);
+      expect(replaced.ok && replaced.slots[3]?.insert).toBe(true);
+
+      const third = applyPlan(made, places("Psalm 1", "Psalm 100"));
+      expect(third.ok).toBe(false);
+      expect(!third.ok && third.problems).toContain("The service may have at most 2 inserts among the places you answer for.");
+
+      // Going down to one is allowed when asked: a hymn where the second stood.
+      const one = applyPlan(made, places("Amazing Grace", "At Calvary"));
+      expect(one.ok && one.slots.filter((item) => item && isInsert(item))).toHaveLength(1);
     });
 
     it("works wherever the insert sits", () => {
@@ -623,6 +846,32 @@ describe("holding the answer to the rules", () => {
         ],
       });
       expect(applied.ok && applied.suggestions.map((item) => item.title)).toEqual(["Victory in Jesus", "Blessed Assurance", "Holy, Holy, Holy"]);
+    });
+
+    it("never include an insert for an ordinary place", () => {
+      const ordinary = made();
+      expect([...ordinary.offered].some((item) => isInsert(ordinary.songs.get(item)!))).toBe(false);
+      expect(replacePrompt(ordinary)).toContain("do not suggest a candidate marked insert");
+      // As if one had been offered: it is dropped, and the others stand.
+      const psalm = candidates.find((item) => item.id === id("Psalm 100"))!;
+      const offered = { ...ordinary, offered: new Set([...ordinary.offered, psalm.id]), songs: new Map([...ordinary.songs, [psalm.id, psalm]]) };
+      const applied = applySuggestions(offered, { suggestions: [suggestion("Psalm 100"), suggestion("Victory in Jesus")] });
+      expect(applied.ok && applied.suggestions.map((item) => item.title)).toEqual(["Victory in Jesus"]);
+      expect(applySuggestions(offered, { suggestions: [suggestion("Psalm 100")] })).toEqual({
+        ok: false,
+        problems: ['"psalm 100" is an insert, and this is not an insert\'s place.'],
+      });
+    });
+
+    it("may include inserts for an insert's own place, once it is unlocked", () => {
+      const slots: PlanSlots = [song("Amazing Grace"), song("At Calvary"), insert("Psalm 23")];
+      const forInsert = brief(slots, { mode: "replace", target: 2, locked: [false, false, false] });
+      expect(forInsert.insertPlaces).toEqual([2]);
+      expect(forInsert.offered.has(id("Psalm 100"))).toBe(true);
+      expect(forInsert.offered.has(id("Psalm 23"))).toBe(false);
+      expect(replacePrompt(forInsert)).toContain("candidates marked insert may be suggested");
+      const applied = applySuggestions(forInsert, { suggestions: [suggestion("Psalm 100"), suggestion("Victory in Jesus")] });
+      expect(applied.ok && applied.suggestions.map((item) => item.title)).toEqual(["Psalm 100", "Victory in Jesus"]);
     });
 
     it("are refused when none can be used", () => {
@@ -920,7 +1169,19 @@ describe("the request and its failures", () => {
   it("accepts the editor's songs, locks and an optional instruction", () => {
     const parsed = planAiRequestSchema.parse(body);
     expect(parsed.instruction).toBe("");
+    // Improving is what a request means unless it says otherwise.
+    expect(parsed.strategy).toBe("improve");
+    expect(planAiRequestSchema.parse({ ...body, strategy: "fresh" }).strategy).toBe("fresh");
+    expect(planAiRequestSchema.safeParse({ ...body, strategy: "rewrite" }).success).toBe(false);
     expect(planAiRequestSchema.parse({ ...body, instruction: "  Keep it familiar.  " }).instruction).toBe("Keep it familiar.");
+  });
+
+  it("does not take the browser's word for what is an insert", () => {
+    const marked = { title: "Amazing Grace", number: "330", key: "G", insert: true };
+    const unmarked = { title: "Psalm 23", number: null, key: "F", insert: false };
+    const bare = { title: "Psalm 100", number: null, key: "G" };
+    const parsed = planAiRequestSchema.parse({ ...body, slots: [marked, unmarked, bare], locked: [false, false, false] });
+    expect(parsed.slots.map((item) => item?.insert)).toEqual([false, true, true]);
   });
 
   it("refuses what is not a request", () => {

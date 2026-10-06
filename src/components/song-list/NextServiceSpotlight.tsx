@@ -146,12 +146,12 @@ export function NextServiceSpotlight({
                   </span>
                 </li>
               ) : null}
-              {featured.plannedInsert ? (
-                <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+              {featured.plannedInserts?.map((song) => (
+                <li key={song.title} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
                   <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
-                  <PlannedInsert song={featured.plannedInsert} className="min-w-0 flex-1" />
+                  <PlannedInsert song={song} className="min-w-0 flex-1" />
                 </li>
-              ) : null}
+              ))}
             </ol>
             <ServicePacketSlot
               serviceId={featured.id}

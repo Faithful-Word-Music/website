@@ -2,7 +2,10 @@ import { feedbackContent } from "@/content/feedback";
 import type { PlanAiProblem, PlanAiRequest, PlanAiResponse, PlanAiSuccess } from "@/lib/ai/service-planner/protocol";
 
 /** What the workspace sends: the request as typed, before the server's defaults. */
-export type PlanAiBody = Omit<PlanAiRequest, "instruction"> & { instruction?: string };
+export type PlanAiBody = Omit<PlanAiRequest, "instruction" | "strategy"> & {
+  instruction?: string;
+  strategy?: PlanAiRequest["strategy"];
+};
 
 export type PlanAiOutcome<M extends PlanAiSuccess["mode"]> =
   | Extract<PlanAiSuccess, { mode: M }>

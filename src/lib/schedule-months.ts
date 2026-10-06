@@ -6,14 +6,15 @@
  * Only PUBLISHED services ever reach here with songs. A regular service still
  * being planned shows as a placeholder ("Songs not posted yet") so a month
  * never looks shorter than it is - its draft songs are never included. The
- * one thing it may carry is the week's insert, once that is planned.
+ * one thing it may carry is the week's inserts, once they are planned.
  */
 
 import { songListContent } from "@/content/song-list";
 import { churchDate, monthRange, occurrenceKey, type Occurrence } from "@/lib/availability/occurrences";
 import {
   emptyPositions,
-  insertSong,
+  insertsByWeek,
+  insertSongs,
   slotSongs,
   takesWeekInsert,
   weekStartOf,
@@ -84,23 +85,22 @@ export function visibleMonths(published: readonly StoredPlan[], now: number): st
 }
 
 /**
- * The insert already planned for a service not published yet: its week's
- * insert (/service-planner/inserts), when the service takes the week's insert
- * and its draft - if it has one - still follows the week. Only the insert
- * mode of a draft is read, never its songs.
+ * The inserts already planned for a service not published yet: its week's
+ * (/service-planner/inserts), in order, when the service takes the week's
+ * inserts and its draft - if it has one - still follows the week. Only the
+ * insert mode of a draft is read, never its songs.
  */
 export function plannedInserts(
   weeks: readonly InsertWeek[],
   drafts: ReadonlyArray<Pick<StoredPlan, "date" | "slot" | "insertMode">>,
-): (date: string, slot: ServiceSlot) => Song | null {
-  const byWeek = new Map(weeks.map((week) => [week.weekStart, week] as const));
+): (date: string, slot: ServiceSlot) => Song[] {
+  const byWeek = insertsByWeek(weeks);
   const ownInsert = new Set(
     drafts.filter((draft) => draft.insertMode !== "week").map((draft) => occurrenceKey(draft.date, draft.slot)),
   );
   return (date, slot) => {
-    if (!takesWeekInsert(date, slot) || ownInsert.has(occurrenceKey(date, slot))) return null;
-    const week = byWeek.get(weekStartOf(date));
-    return week ? insertSong(week) : null;
+    if (!takesWeekInsert(date, slot) || ownInsert.has(occurrenceKey(date, slot))) return [];
+    return insertSongs(byWeek.get(weekStartOf(date)) ?? []);
   };
 }
 
@@ -110,13 +110,13 @@ export function plannedInserts(
  * @param published      every published service (any date)
  * @param expected       the services held in the visible months: regular ones,
  *                       with cancelled ones already left out (serviceOccurrences)
- * @param plannedInsert  the insert planned for a service not published yet (plannedInserts)
+ * @param plannedInsert  the inserts planned for a service not published yet (plannedInserts)
  */
 export function buildScheduleMonths(input: {
   published: readonly StoredPlan[];
   expected: (range: { from: string; to: string }) => readonly Occurrence[];
   now: number;
-  plannedInsert?: (date: string, slot: ServiceSlot) => Song | null;
+  plannedInsert?: (date: string, slot: ServiceSlot) => Song[];
 }): SongListMonth[] {
   const { published, expected, now, plannedInsert } = input;
   const currentYear = Number(churchDate(now).slice(0, 4));
@@ -130,7 +130,7 @@ export function buildScheduleMonths(input: {
       .filter((occ) => occ.kind === "regular" && Date.parse(occ.startsAt) > now)
       .filter((occ) => !publishedKeys.has(occurrenceKey(occ.date, occ.slot)))
       .map((occ) => {
-        const insert = plannedInsert?.(occ.date, occ.slot) ?? null;
+        const inserts = plannedInsert?.(occ.date, occ.slot) ?? [];
         return {
           id: serviceAnchor(occ.date, occ.slot),
           dateLabel: dateLabelFor(occ.date),
@@ -141,7 +141,7 @@ export function buildScheduleMonths(input: {
           songs: [],
           pendingSongs: 0,
           placeholder: true,
-          ...(insert ? { plannedInsert: insert } : {}),
+          ...(inserts.length > 0 ? { plannedInserts: inserts } : {}),
         };
       });
 

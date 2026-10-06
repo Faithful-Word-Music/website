@@ -4,6 +4,7 @@ import {
   checkSongForService,
   findSongs,
   listServices,
+  planCheck,
   resolveSong,
   serviceName,
   SERVICES_LISTED,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/ai/conductor/facts";
 import { CONDUCTOR_LIMITS } from "@/lib/ai/conductor/limits";
 import { addDays } from "@/lib/availability/occurrences";
+import type { WorkspaceData } from "@/lib/service-planner/load";
 import { startsAtFor } from "@/lib/service-time";
 import type { DatedService, ServiceSlot, Song } from "@/types/song-list";
 
@@ -266,6 +268,46 @@ describe("checkSongForService", () => {
 
   it("is clear when a song is far enough back", () => {
     expect(checkSongForService(data(), "Psalm 23", "2026-11-01", "AM")).toMatchObject({ sungWithinRecentWindow: false, daysBetween: 38 });
+  });
+});
+
+describe("planCheck", () => {
+  // A service stored with every place empty: all that is known of it without the screen.
+  const workspace = {
+    service: {
+      anchor: "2026-10-11-pm",
+      date: "2026-10-11",
+      slot: "PM",
+      kind: "regular",
+      label: null,
+      startsAt: startsAtFor("2026-10-11", "PM"),
+      status: "draft",
+      insertMode: "week",
+      slots: [null, null, null],
+    },
+    candidates: [],
+    recentPast: PAST,
+    planned: [],
+    sheetMusicChecked: false,
+    availability: null,
+  } as unknown as WorkspaceData;
+  const hymn = { title: "Holy, Holy, Holy", number: "1", key: "Eb", insert: false };
+
+  it("checks the saved plan, and says so", () => {
+    const result = planCheck(workspace);
+    expect(result.places).toEqual([{ place: 1, empty: true }, { place: 2, empty: true }, { place: 3, empty: true }]);
+    expect(result.basis).toContain("The saved plan");
+  });
+
+  it("checks the plan on the person's screen when it is theirs, saved or not", () => {
+    const result = planCheck(workspace, { slots: [hymn, hymn, null], unsaved: true });
+    expect(result.places.slice(0, 2)).toEqual([
+      { place: 1, title: "Holy, Holy, Holy", number: "1", key: "Eb" },
+      { place: 2, title: "Holy, Holy, Holy", number: "1", key: "Eb" },
+    ]);
+    expect(result.whatThePlannerNotices.map((signal) => signal.kind)).toContain("duplicate");
+    expect(result.basis).toContain("NOT been saved");
+    expect(planCheck(workspace, { slots: [null, null, null], unsaved: false }).basis).toContain("which is the saved plan");
   });
 });
 

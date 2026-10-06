@@ -5,7 +5,7 @@
  * (src/lib/song-history.ts). Pure - unit tested.
  */
 
-import { isInsert } from "@/lib/service-planner/model";
+import { recordedInsert } from "@/lib/service-planner/model";
 import { serviceAnchor } from "@/lib/site-search";
 import { keyMatches, matchesSong } from "@/lib/song-list";
 import { weeklyService } from "@/lib/song-stats";
@@ -76,7 +76,7 @@ export function filterArchive(services: readonly ArchivedService[], filter: Arch
       (song) =>
         (!wantsSong || matchesSong({ title: song.title, number: song.number, keys: [song.key] }, { query: filter.song, key: "" })) &&
         (!wantsKey || (song.key !== null && keyMatches(song.key, filter.key))) &&
-        (!filter.insertOnly || isInsert(song)),
+        (!filter.insertOnly || recordedInsert(song)),
     );
   });
 }

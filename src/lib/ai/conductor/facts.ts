@@ -18,6 +18,8 @@ import { buildSongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap } from "@/lib/year-recap";
 import type { DatedService, ServiceSlot, Song } from "@/types/song-list";
 
+import type { ConductorScreenPlan } from "./context";
+
 /**
  * The facts Conductor's tools hand the model: the site's own history, plans
  * and statistics, cut down to small, bounded answers. Every figure here comes
@@ -589,14 +591,18 @@ const SIGNAL_MEANING: Record<PlanningSignal["kind"], string> = {
 
 /**
  * What the Service Planner already notices about a stored service - the same
- * signals its workspace shows (serviceSignals), from the SAVED plan. Changes
- * a planner has made but not saved are not here.
+ * signals its workspace shows (serviceSignals), from the SAVED plan.
+ *
+ * `screen` is the same service as the person asking has it in the planner's
+ * editor (context.ts): given, the places checked are those, so the answer is
+ * what their own screen shows beside them, saved or not.
  */
-export function planCheck(workspace: WorkspaceData) {
+export function planCheck(workspace: WorkspaceData, screen?: ConductorScreenPlan) {
   const { service } = workspace;
+  const slots = screen?.slots ?? service.slots;
   const candidates = new Map(workspace.candidates.map((candidate) => [candidate.id, candidate]));
   const signals = serviceSignals({
-    service: { startsAt: service.startsAt, date: service.date, slots: service.slots },
+    service: { startsAt: service.startsAt, date: service.date, slots },
     past: workspace.recentPast,
     planned: workspace.planned,
     sheetMusic: workspace.sheetMusicChecked ? candidateSheetMusicCheck(candidates) : null,
@@ -605,7 +611,7 @@ export function planCheck(workspace: WorkspaceData) {
   return {
     found: true as const,
     service: { date: service.date, slot: service.slot, service: serviceName(service), status: service.status },
-    places: service.slots.map((song, index) =>
+    places: slots.map((song, index) =>
       song
         ? { place: index + 1, title: song.title, number: song.number, key: song.key, ...(song.insert ? { insert: true } : {}) }
         : { place: index + 1, empty: true },
@@ -618,6 +624,10 @@ export function planCheck(workspace: WorkspaceData) {
           musiciansAway: workspace.availability.away.map((person) => person.name),
         }
       : {}),
-    basis: "The saved plan. Unsaved changes on the planner's screen are not included.",
+    basis: !screen
+      ? "The saved plan. Unsaved changes on the planner's screen are not included."
+      : screen.unsaved
+        ? "The plan as it stands on the person's screen in the planner. It has NOT been saved: say so."
+        : "The plan as it stands on the person's screen in the planner, which is the saved plan.",
   };
 }

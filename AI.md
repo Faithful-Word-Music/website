@@ -13,7 +13,7 @@ The internal AI system of the Faithful Word Music website: where it stands, how 
 | **5** | **AI-assisted planning:** **Generate with AI** and **Suggest with AI** in the Service Planner, per-song AI locks, structured output in the shared layer | **Complete** (2026-10-05) |
 | **6** | **Persistence, memory and a configurable philosophy:** Conductor's conversations saved, Personal and Global memory saved only on a person's say-so, the planning philosophy edited on the site with a history, one shared context layer | **Complete** (2026-10-05) |
 
-**Phase 6 completes the initial Faithful Word Music AI project.** Nothing further is planned as part of it; anything more is a new phase, added on purpose. The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
+**Phase 6 completes the initial Faithful Word Music AI project.** Nothing further is planned as part of it; anything more is a new phase, added on purpose. A **refinement pass** followed on 2026-10-06, with no new phase: Generate with AI gained a second way to plan (a new plan, beside improving the one there), AI can no longer give a service an insert it did not have, a week may have two inserts, and Conductor can be asked from the site search. Each is described in its place below. The songs' **chords** (in the Chords files, as their own elements beside the lyrics) could be read into the same index if a later feature needs harmony.
 
 **Not built, on purpose:** anything about the music itself (notes, rhythm, harmony, chords, transposition, reading a PDF), anything that lets AI **save or publish** a service plan (it proposes songs to the editor and nothing more), anything that lets AI save a memory or change the philosophy **by itself** (it proposes; a person approves), notifications, model routing, scheduled indexing jobs.
 
@@ -93,13 +93,13 @@ texts with no vector from the current model → embedAiValues() → library_embe
 | `src/lib/ai/conductor/data.ts` | `loadConductorData()`: one read of history, plans and catalog per question (server-only) |
 | `src/lib/ai/conductor/facts.ts` | Domain data → small, bounded tool results (pure) |
 | `src/lib/ai/conductor/instructions.ts` | What Conductor is told: the grounding rule, its limits, the calendar (pure) |
-| `src/lib/ai/conductor/context.ts` | Page context: from a path, validated, described (pure) |
+| `src/lib/ai/conductor/context.ts` | Page context: from a path, plus the planner's service as on screen; validated, described (pure) |
 | `src/lib/ai/conductor/limits.ts` | Every bound, `trimConversation()`, `clampToolResult()` (pure) |
 | `src/lib/ai/conductor/protocol.ts` | The request body's schema (pure) |
 | `src/lib/ai/conductor/session.ts` | The conversation's reducer and how it is stored (pure) |
 | `src/lib/ai/conductor/drawer.ts` | The panel's width: default, bounds, clamping, storage (pure) |
 | `src/lib/ai/conductor/markdown.ts` | The little Markdown answers use, parsed to data (pure) |
-| `src/components/conductor/` | `conductor-store.ts`, `ConductorChat`, `ConductorDock` (launcher, drawer, sheet), `ConductorWorkspace` (the page), `ConductorMarkdown`, `ConductorMark` |
+| `src/components/conductor/` | `conductor-store.ts`, `planner-draft.ts` (the planner's service as on screen), `ConductorChat`, `ConductorDock` (launcher, drawer, sheet), `ConductorWorkspace` (the page), `ConductorMarkdown`, `ConductorMark` |
 | `src/content/conductor.ts` | Every word of Conductor's interface |
 | `src/content/ai.ts` | Failure wording by code, and Admin → AI |
 
@@ -135,7 +135,7 @@ All in `src/lib/ai/conductor/tools.ts`. Each is one question the site can alread
 | `songs_not_sung_recently` | Songs gone quiet and not planned | `buildSongRecords`, `christmasSongs` |
 | `get_year_summary` | A year in song | `buildYearRecap` |
 | `check_song_for_service` | Would this song be repeated too soon there, or is it planned nearby | `buildCandidates`, `candidateFacts`, `servicePlanner.recentDays` |
-| `check_service_plan` | What the Service Planner itself notices about a **saved** plan, and who is expected | `loadWorkspace`, `serviceSignals` (exactly as the workspace computes them) |
+| `check_service_plan` | What the Service Planner itself notices about a plan, and who is expected: the **saved** plan, or the plan **on screen** for the service open in the planner (its `basis` says which) | `loadWorkspace`, `serviceSignals` (exactly as the workspace computes them) |
 
 **The lyric tools** (Phase 3), over the library index:
 
@@ -223,7 +223,7 @@ How the Music Director plans a song service, made available to the AI: the aim o
 
 ### One document
 
-**Since Phase 6 the philosophy lives in the database** and is edited under Admin → AI → Planning philosophy (see Phase 6 below). `src/content/music-planning-philosophy.md` is only the seed: the first version an environment gets, and the fallback for a deployment with no database. Editing the file changes nothing at runtime once an environment has been seeded. The parsing rules below are unchanged.
+**Since Phase 6 the philosophy lives in the database** and is edited under Admin → AI → Planning Philosophy (see Phase 6 below). `src/content/music-planning-philosophy.md` is only the seed: the first version an environment gets, and the fallback for a deployment with no database. Editing the file changes nothing at runtime once an environment has been seeded. The parsing rules below are unchanged.
 
 ```
 src/content/music-planning-philosophy.md
@@ -261,7 +261,7 @@ For "would this song work here?" Conductor calls it alongside the existing tools
 - treat the Service Planner's 14-day "sung recently" notice (`siteConfig.servicePlanner.recentDays`) as the planner's, not the Director's policy;
 - treat times sung as evidence of familiarity, never of being loved, and `timesSung: 0` as unsung in these records, not new to the congregation;
 - not read tempo, energy, style or difficulty out of lyrics, and say when musical character is not known;
-- treat the week's insert and its place as fixed.
+- treat the week's inserts (one, sometimes two) and their places as fixed.
 
 ### Cost
 
@@ -276,7 +276,7 @@ Measured on 2026-10-05: a direct question about one section, about 8,700 tokens 
 
 ### Editing the philosophy
 
-- Edit it under **Admin → AI → Planning philosophy** (needs `manage_planning_philosophy`), or ask Conductor to propose a change and press Apply. No deploy. The editor refuses a document the AI could not read.
+- Edit it under **Admin → AI → Planning Philosophy** (needs `manage_planning_philosophy`), or ask Conductor to propose a change and press Apply. No deploy. The editor refuses a document the AI could not read.
 - Keep each topic under its own `## ` heading, with a title that says what it is about: the titles are how sections are asked for.
 - Do not give two sections the same heading.
 - State a hard rule as one ("must", "this is a hard rule"). Anything not written as required is treated as a preference.
@@ -289,13 +289,27 @@ Whole: `philosophy.markdown` goes into the generator's instructions word for wor
 
 ## AI-assisted planning
 
-**Generate with AI** plans or revises the songs of the service open in the Service Planner. **Suggest with AI** (the `replace_song` feature) offers up to three songs for one place. Both work on the editor's **current, unsaved** songs and hand songs back to the editor. Neither saves, publishes, touches another service or changes the week's insert: the Director reviews, edits, and presses Save or Publish as always.
+**Generate with AI** plans or revises the songs of the service open in the Service Planner. **Suggest with AI** (the `replace_song` feature) offers up to three songs for one place. Both work on the editor's **current, unsaved** songs and hand songs back to the editor. Neither saves, publishes, touches another service or changes the week's inserts: the Director reviews, edits, and presses Save or Publish as always.
+
+### Two ways to plan a whole service
+
+Generate with AI asks one of two ways, chosen in its dialog (`strategy` in the request; `improve` when left out):
+
+| | **Improve current plan** (`improve`) | **Generate a new plan** (`fresh`) |
+|---|---|---|
+| Locked songs | stay exactly where they are | stay exactly where they are |
+| The week's inserts | protected (see **Inserts** below) | protected, the same way |
+| An unlocked ordinary song | shown to the model; always among the candidates; kept unless another would clearly serve better | **not shown** to the model (its place reads `empty`) and **not** put among the candidates for being there |
+| May it be chosen again? | yes, by keeping it | yes, if the shortlist holds it on its own merits; it then keeps the key it had |
+| Changing nothing | a valid answer | not expected: every unlocked place is planned afresh |
+
+It is one feature, one request and one set of rules. The difference is what the model is shown of the open places (`buildBrief()`) and one paragraph of the prompt, `MODE` (`prompt.ts`). The standing rules (`RULES`) are the same text for both, so a provider's prompt cache still applies; "keeping it is a real choice" lives in the `improve` paragraph and nowhere else. The philosophy, memory, lyrics, history, the week and the seasonal rules are used the same either way. The dialog offers the choice only when it would make a difference: when an unlocked place holds an ordinary song. Suggest with AI is unchanged and is always `improve`.
 
 ### The flow
 
 ```
 Workspace (browser)     the songs as they stand · which are locked · an optional instruction
-        │  POST { mode, anchor, revision, slots, locked[], instruction?, target? }
+        │  POST { mode, strategy?, anchor, revision, slots, locked[], instruction?, target? }
         ▼
 src/app/api/service-planner/ai/route.ts     manage_service_plans AND use_ai · zod body · writes nothing
         ▼
@@ -329,19 +343,37 @@ src/lib/ai/service-planner/plan.ts          planWithAi(): the rules, in order
 
 Each song in the editor has a lock button (only for someone holding `use_ai`).
 
-- **The insert starts locked; every other song starts unlocked.** An empty place has nothing to lock.
-- **Locked: AI will keep this song here.** Its place is not sent as one to answer for, its song is not among the candidates, and it is copied back as the very object that was sent: song, place, key, insert mark. An answer that names a locked place is refused.
-- **Unlocked: AI may change this song**, and need not. The model is told that keeping it is a real choice, and a kept song is returned exactly as it was, with its key.
+- **An insert starts locked - each one, in a week with two; every other song starts unlocked.** An empty place has nothing to lock. Each insert is unlocked by itself.
+- **Locked: AI will keep this song here.** Its place is not sent as one to answer for, its song is not among the candidates, and it is copied back as the very object that was sent: song, place and key. An answer that names a locked place is refused.
+- **Unlocked: AI may change this song.** When improving, it need not: the model is told that keeping it is a real choice, and a kept song is returned exactly as it was, with its key. For a new plan, see above.
 - **A lock outranks the instruction.** "Replace the opener" with the opener locked leaves the opener.
-- Locks live in the editor only (`LockChoices`, by `songKey`, so a lock follows a song that is moved). They are never saved and do not make the service "unsaved". After a generation the person's locks stand and every song AI put in is unlocked.
-- **Everything locked** is refused before anything is read or asked. So is an unlocked insert with every other song locked and no instruction.
+- Locks live in the editor only (`LockChoices`, by `songKey`, so a lock follows a song that is moved). They are never saved and do not make the service "unsaved". After a generation the person's locks stand, every ordinary song AI put in is unlocked, and an insert AI put in (only ever where one stood, on request) is locked like any other.
+- **Everything locked** is refused before anything is read or asked. So are unlocked inserts with every other song locked and no instruction.
 
-### The insert
+### Inserts
+
+**What an insert is.** A song with no hymnal number (`isInsert()` in `src/lib/service-planner/model.ts`). That is the whole rule, and it is read off the song every time: nothing marks a place as "the insert's", and nobody - not the browser, not the model - says which songs are inserts. A service's inserts are its un-numbered songs. A week has one, and may be given a second on the Inserts page; a service that follows its week has them third and fourth.
+
+**AI cannot give a service an insert it did not have.** This is a rule of the application, held three ways:
+
+1. **Candidates** (`buildShortlist()`): a song with no hymnal number is never a candidate for an ordinary place. The pool every ordinary place is planned from is numbered songs only, however near an insert's meaning is to what was asked.
+2. **Instructions** (`RULES`, "THE WEEK'S INSERTS"): the inserts are decided before the service is planned; one is never put in any other place and none is added, whatever DIRECTION says.
+3. **Validation** (`applyPlan()`), which does not depend on the other two: an insert is accepted only in a place that held one when the request was made, or as an insert already in the service being moved, and there may be no more of them than there were such places. Anything else refuses the whole answer (one retry, then "could not be used"). With every insert locked or held, that is any insert at all.
+
+So with one insert the service ends with at most one, and with two, at most two. There is never a third.
+
+**Each insert, of one or two:**
 
 - **Locked** (the default): it and its place cannot change.
-- **Unlocked, no instruction:** it is still held where it is, **by code** (`openPlaces(…, holdInsert)`): nothing has asked for the service to go without it. The dialog says so.
-- **Unlocked, with an instruction:** the model may keep it, replace it, or move it, and is told to keep it unless the instruction plainly asks otherwise. A song put in its place is **`insert: false`**. It is marked as a different insert for this one service only when the model says the instruction asked for exactly that, an instruction was given, and the song has no hymnal number.
-- Either way only this service's local songs change. On save, the planner's existing rule makes the service's insert "custom"; the week's insert and the week's other services are untouched.
+- **Unlocked, no instruction:** it is still held where it is, **by code** (`openPlaces(…, holdInserts)`): being unlocked is not a request to change it. The dialog says so.
+- **Unlocked, with an instruction:** its place is open, and only now are a few other inserts offered (`SHORTLIST.inserts`, 12: nearest what was asked for, then most sung), each marked `insert` among the candidates and good for that place alone. The model may keep it, move it, replace it with another insert, or put an ordinary song there if the instruction asks for the service to go without it. It is told to keep it unless the instruction plainly asks otherwise.
+- **What goes there is whatever the song is.** An un-numbered song put where an insert stood is an insert; a hymn put there is an ordinary song. The answer has no field for saying which (`differentInsert` is gone).
+- **A lock outranks the instruction**, here as everywhere: "use a different Psalm" with the insert locked leaves it.
+- Either way only this service's local songs change. On save, the planner's own rule makes the service "custom"; the week's inserts and the week's other services are untouched.
+
+**Suggest with AI** follows the same rule: for an ordinary place no insert is offered, and one in the answer is dropped; for an insert's own place, once it is unlocked, inserts may be suggested (the hint to unlock still stands in for the button while it is locked).
+
+The Director is not held to any of this. By hand, any song can go in any place: a hymn where the insert stood, or a second un-numbered song. The picker only stops *suggesting* other inserts, with nothing typed, once the service has its own.
 
 ### Precedence
 
@@ -351,9 +383,10 @@ Told to the model in this order, and enforced in code where code can: (1) the re
 
 The model never sees the whole library. `buildShortlist()` takes at most **110** songs:
 
-1. the songs in open places (so keeping one is always possible);
-2. up to 36 found **by meaning**: near the insert and the locked songs (`similarSongs`, no Gateway call), near the instruction and near the season's subject (`searchByTheme`, one embedding call each), of which at most 6 never sung here;
-3. the 40 most sung, then 24 familiar songs not sung for the longest, then 10 sung once or twice.
+1. the songs in open places that may stay (so keeping one is always possible) - when improving; for a new plan only an open insert, as the ordinary songs there earn nothing by standing;
+2. up to 12 other inserts, **only when an insert's own place is open**, for that place;
+3. up to 36 found **by meaning**: near the inserts and the locked songs (`similarSongs`, no Gateway call), near the instruction and near the season's subject (`searchByTheme`, one embedding call each), of which at most 6 never sung here;
+4. the 40 most sung, then 24 familiar songs not sung for the longest, then 10 sung once or twice.
 
 Each carries facts from the planner's own `candidateFacts()`: times sung, last sung, days before this service, times in the year before, where else it is planned, which of the week's services it is in, and the first 150 characters of its lyrics. Never a key. Songs in places the model cannot change are not offered (they could not be used twice), and Christmas songs are not offered outside the season, as in the song picker. These numbers bound a prompt; they are not planning policy.
 
@@ -361,7 +394,7 @@ The same week's other services (sung, planned, draft) are listed with their song
 
 ### Grounding
 
-- The answer's schema (`generateSchema()`) holds each `songId` to an enum of the ids offered, and `validate.ts` checks again: a place not asked about, a place left out, an id not offered, a song twice (counting locked songs), a non-Christmas song in the Christmas season. Any of these refuses the whole answer.
+- The answer's schema (`generateSchema()`) holds each `songId` to an enum of the ids offered, and `validate.ts` checks again: a place not asked about, a place left out, an id not offered, a song twice (counting locked songs), an insert the service did not have, a non-Christmas song in the Christmas season. Any of these refuses the whole answer.
 - **One retry.** A refused answer goes back once with what was wrong (`withCorrections()`); a second failure is "AI's answer could not be used, so nothing was changed." A provider failure (budget, key, timeout) is not retried.
 - **Keys are the site's.** A kept or moved song keeps its key; a new one gets `candidateFacts().suggestedKey`. The model is never shown a key and never returns one.
 - The model's only free text is a two or three sentence summary (and a sentence per suggestion), shown above the songs and never stored. It is told it knows nothing of tempo, style, difficulty or harmony, that times sung is familiarity and not affection, and that `timesSung: 0` means "not in these records".
@@ -369,7 +402,7 @@ The same week's other services (sung, planned, draft) are listed with their song
 
 ### Seasons
 
-- **Christmas is enforced.** For a service in the site's Christmas season (`inChristmasSeason`), a song AI puts in must be **established** as a Christmas song: never sung outside the season, **and** either sung in it (the records) or with indexed lyrics containing one of a few unmistakable words (`NATIVITY_WORDS`: christmas, bethlehem, manger, noel, nowell, magi, shepherds). Only those are candidates, the answer is checked again, and an unlocked ordinary song may not stay. Two exceptions, both the person's own choice: a **locked** song, and the week's insert kept in its place. With too few such songs for the places to fill, the request is refused with its own message and no AI call.
+- **Christmas is enforced.** For a service in the site's Christmas season (`inChristmasSeason`), a song AI puts in must be **established** as a Christmas song: never sung outside the season, **and** either sung in it (the records) or with indexed lyrics containing one of a few unmistakable words (`NATIVITY_WORDS`: christmas, bethlehem, manger, noel, nowell, magi, shepherds). Only those are candidates, the answer is checked again, and an unlocked ordinary song may not stay. Two exceptions, both the person's own choice: a **locked** song, and one of the week's inserts kept in its own place. With too few such songs for the places to fill, the request is refused with its own message and no AI call.
 - **Thanksgiving and Easter are preferences.** `serviceSeason()` says which a service falls in (the Sunday to Thursday of Thanksgiving week, the week before Easter, Easter Sunday), the model is told with the dates, and songs near the season's subject are searched for (`SEASON_SEARCH`) so they are among the candidates. Nothing is refused.
 - Manual editing is unchanged: a person can still put any song anywhere.
 
@@ -383,7 +416,7 @@ The same week's other services (sung, planned, draft) are listed with their song
 
 ### The interface
 
-- **Generate with AI** is at the foot of the Songs card. Its dialog says how many songs stay and how many places may change, takes **Additional instructions (optional)**, and on success closes: a notice above the songs gives AI's summary with **Undo** (the songs and locks as they were) and **Dismiss**. A failure is shown in the dialog and the editor is untouched. Closing the dialog aborts the request. The instruction is kept in the open editor for the next generation and nowhere else.
+- **Generate with AI** is at the foot of the Songs card. Its dialog asks **What should AI do?** (Improve current plan / Generate a new plan, when there is an unlocked ordinary song for them to differ about), says how many songs stay and how many places may change or will be chosen afresh, takes **Additional instructions (optional)**, and on success closes: a notice above the songs gives AI's summary with **Undo** (the songs and locks as they were) and **Dismiss**. A failure is shown in the dialog and the editor is untouched. Closing the dialog aborts the request. The instruction and the way chosen are kept in the open editor for the next generation and nowhere else.
 - **Suggest with AI** is in the song picker ("Change song" or an empty place), not another button on the row: a phone row has no room for one. A suggestion is chosen like any other song, through the picker's own `choose()`. It is replaced by a hint to unlock when the song is locked.
 - Words: `servicePlannerContent.ai` in `src/content/service-planner.ts`.
 
@@ -464,7 +497,7 @@ refreshConversationSummary()         once 6+ messages have dropped out of the wo
 - **Runtime source:** the latest row of `planning_philosophy_revisions` for the environment. Each row is the whole document. Nothing is updated or deleted.
 - **Seeding:** the first time an environment is asked for its philosophy and has none, `currentPhilosophyRevision()` copies `src/content/music-planning-philosophy.md` in as a `seed` revision (a partial unique index makes that happen once). Every route that can ask is listed in `next.config.ts` `outputFileTracingIncludes`; **a new one must be listed too**.
 - **One way to change it:** `savePhilosophy()` / `restorePhilosophy()` in `planning/service.ts`. Needs `manage_planning_philosophy`; the new document must pass `parsePlanningPhilosophy`; it is applied only on top of the revision it was made from (`baseRevisionId`), otherwise "conflict"; an unchanged document is refused.
-- **Admin → AI → Planning philosophy** (`/admin/ai/philosophy`): each `## ` section its own card (read as Markdown, edited in place, added, removed, reordered), one **Save changes** making one revision with an optional note. Read-only without the permission.
+- **Admin → AI → Planning Philosophy** (`/admin/ai/philosophy`): each `## ` section its own card (read as Markdown, edited in place, added, removed, reordered), one **Save changes** making one revision with an optional note. Read-only without the permission.
 - **AI-assisted editing:** `propose_philosophy_change({ section, newText, explanation })`, offered only with `manage_planning_philosophy`. The card shows what changes (a word diff, condensed to the text around the change), the proposed text and the current text, with **Apply / Cancel**. Apply calls `savePhilosophy` with `source: 'ai'`; a proposal made against a revision no longer in force is refused and stays pending. One section per proposal; it cannot add or remove a section.
 - **History:** who, when, how (`seed`, `manual`, `ai`, `restore`), which sections, the note. View any version, compare it with the one in force, restore it. A restore is a new revision.
 - **Checking a change:** the page offers a question to ask Conductor ("explain how you would approach this Sunday morning"). It reads the live philosophy and changes no plan. There is no separate preview feature.
@@ -528,6 +561,7 @@ Supporting that in code: earlier turns go back to the model as **text only** (ne
 ## Permissions
 
 - `use_ai` is checked in `route.ts` (401 signed out, 403 without it) and again in `streamAiText()`.
+- The site search offers Conductor (the page, "Ask Conductor", and Admin's AI pages) only to someone holding `use_ai`, from the one list that decides what the search offers each person (`src/lib/site-search.ts`). That too is a convenience; the route is the protection.
 - **Drafts need `manage_service_plans` as well.** `data.ts` reads the planner's drafts only for someone who holds it; `check_service_plan` refuses without it. `use_ai` alone knows exactly what the public song list shows.
 - The page (`/conductor`), the navigation entry and the floating button all follow `use_ai`. Hiding them is a convenience; the route is the protection.
 - `/conductor` and `/api/conductor` are in the proxy's matcher (`src/proxy.ts`).
@@ -558,6 +592,8 @@ Both render `ConductorChat` over the same store, so they cannot differ.
 - **Phones and tablets (below 1024px): a sheet over the page.** A modal `<dialog>` (the site's `useModalDialog`) that rises to 93% of the height, with the page visible above it. It follows the visual viewport, so with the keyboard up it is the space above the keyboard. Close with the button, Escape, a tap outside, or by pulling the handle down; it slides away from wherever it is. The page beneath is never unmounted, scrolled or navigated.
 - **Open full Conductor** ("Full page") goes to `/conductor` with the conversation intact.
 
+**From the site search.** With something typed in the palette (Ctrl/⌘ K), someone holding `use_ai` is offered **Ask Conductor: "…"** as its last entry. Choosing it calls the shared store's `ask()` with what was typed and the page it was typed on (so its page context is that page's), closes the palette, and asks the dock to open its panel (`requestConductorOpen()`, `src/lib/ai/conductor/open.ts`: an event on `window`, which the dock answers only where its own button would be). The question goes into the conversation that is open, through `/api/conductor`, exactly as if it had been typed in the panel: there is no second implementation, and nothing about streaming, conversations, memory, tools or permissions lives in the search. If Conductor is still answering, the palette says so and stays open. On the Conductor page itself the answer simply appears there.
+
 ## The conversation
 
 - **Saved on the server** since Phase 6 (see below). `conductor-store.ts` is the browser's one view of it, shared by the page, the panel and the sheet. The store owns the request, so an answer keeps streaming when the panel closes or the page changes.
@@ -568,7 +604,15 @@ Both render `ConductorChat` over the same store, so they cannot differ.
 
 So "this service" and "this song" mean something, each question carries a small typed context worked out from the page's **address** (`pageContextFor`): the area of the site and, where the path has one, a service anchor (`2026-10-18-pm`), a song slug or a year. The server discards anything that is not shaped like one (`normalizePageContext`) and describes it to the model in one line. An identifier only ever becomes the input of a read-only tool, which applies the person's own permissions.
 
-It is deliberately not the page's content: nothing is scraped from the DOM, and a planner's **unsaved** changes are not known (`check_service_plan` says so). `ConductorPageContext` is where richer planner state would be added later.
+It is deliberately not the page's content: nothing is scraped from the DOM. The one exception is said by the page itself.
+
+**The planner's service, as it stands on screen.** The Service Planner's workspace tells Conductor its places, saved or not (`usePlannerDraft`, `components/conductor/planner-draft.ts`), and the store sends them as `context.plan` with any question asked over that service's page: from the panel, the phone sheet, a retry or the site search. So "what do you think of this plan?" is about the songs the Director is looking at, even when the stored service is still empty.
+
+- The server rebuilds every song from its title, number and key (`normalizePageContext`, the same `songSchema` and `planSong` a save uses); a plan that is not one is dropped and the rest of the page kept.
+- Only for someone holding `manage_service_plans` (`conductor.ts`); anyone else is told the page and never a plan.
+- The places are listed at the end of the instructions with whether they are unsaved, and `check_service_plan` for that service checks them, so its notices match the workspace's.
+- Other tools still know that service as last saved; Conductor is told the screen is what the person means.
+- It is the screen as it was when the question was asked. Nothing is saved by asking, and Conductor still cannot change a plan. Unsaved changes to any other service, or in another tab, are not known.
 
 ## Limits
 
@@ -655,7 +699,7 @@ Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into
 - **The index is refreshed by hand.** New or changed sheet music is not searchable until someone presses Refresh. Admin → AI shows how many songs are out of date.
 - **No music.** Notes, rhythm, harmony and chords are not read.
 - **A file that matches no row of the Songs tab is not indexed.** Of 546 Standard MuseScore files in Drive at the first refresh, 488 were a song's source; the rest were not looked into.
-- **Conductor knows saved plans only.** Unsaved changes in the planner are not known to it (Generate with AI does work from them).
+- **Conductor knows unsaved changes only for the service open behind it.** Every other service is known as last saved (see "Page context").
 - **History begins October 2025**, so "usual" and "never" are only as good as the records. Most of the hymnal has never been sung in them, and a search by theme returns such songs unless asked for songs sung before.
 - **Cost pending:** a request shows "Cost pending" until every one of its calls has a cost; the backfill fills them in when Admin → AI is next opened.
 - **The hourly cap counts rows in `ai_usage`**, so it is per environment, like the usage figures.
@@ -675,7 +719,9 @@ Neither `generateAiText()` nor `streamAiText()` throws. A failure is sorted into
 - **A plan is chosen from about 110 candidates**, not the whole library. A song outside them cannot be chosen by AI in that request; a different instruction, or the picker, reaches it.
 - **Familiarity is times sung.** There is no data on what the congregation knows or loves, or on tempo, mood or style, so the model's sense of an "opener" or a "closer" comes from titles, the first lines of the lyrics and the history.
 - **The week is what is stored.** The week's other services are known as they were last saved; unsaved changes open in another tab are not.
-- **Different insert for one service** rests on the model saying the instruction asked for it; otherwise a song in the insert's place is an ordinary song, and can be marked by hand.
+- **"No hymnal number" is the whole test for an insert.** A song from another book that the church's hymnal does not number counts as one, for AI as everywhere else: AI will not put it in an ordinary place. It can always be chosen by hand.
+- **A new plan is new only as far as the candidates go.** The shortlist is built the same way each time, so familiar songs recur among the candidates; what changes is that the songs already there get no place on it for being there.
+- **Whether the Director's instruction really asked for an insert to change is the model's reading.** Code guarantees the rest: nothing without an instruction, nothing past a lock, never an insert added.
 - **An embedding that fails** while the candidates are gathered marks the request as failed in the usage log even though the plan was made without it.
 - **Not verified live in Phase 5:** a service in the Christmas season, Thanksgiving week or Easter week (covered by tests; no such date was generated against the real library), someone holding only one of the two permissions (the tests and the route's check), a model answer that breaks a rule (the tests), a phone itself (checked at 375px wide in a frame) and the deployed site.
 - **Not verified live in Phase 4:** the deployed site (the document was confirmed in the route's build trace, and the questions were asked on the local server), whether the provider's prompt cache is being hit (Admin → AI shows total tokens, not cached ones), and the new example question at phone width.
@@ -695,6 +741,6 @@ For Phase 3:
 
 Nothing for Phase 4: no key, table or setting.
 
-For Phase 6: no key, package or setting. The five tables are created on first use, and each environment's philosophy is seeded from the repository's document the first time it is asked for. The Music Director role receives the three new permissions once, automatically; **give them to any custom role that should have them** (Admin → Roles). To change the philosophy from now on, use Admin → AI → Planning philosophy, not the Markdown file.
+For Phase 6: no key, package or setting. The five tables are created on first use, and each environment's philosophy is seeded from the repository's document the first time it is asked for. The Music Director role receives the three new permissions once, automatically; **give them to any custom role that should have them** (Admin → Roles). To change the philosophy from now on, use Admin → AI → Planning Philosophy, not the Markdown file.
 
 Nothing for Phase 5 either: no key, table, setting or package. It uses `AI_MODEL` (which must support structured output, as the default does) and the library index as it stands; refresh the index if sheet music has been added since.

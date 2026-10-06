@@ -17,7 +17,7 @@ import { latestPhilosophyRevision, philosophyStoreConfigured, seedPhilosophyRevi
  *
  * WHERE IT LIVES. The database: the latest row of
  * planning_philosophy_revisions (store.ts) is the philosophy in force, edited
- * under Admin -> AI -> Planning philosophy with no deploy.
+ * under Admin -> AI -> Planning Philosophy with no deploy.
  *
  * The document in the repository (PHILOSOPHY_PATH) is only where that begins:
  * the first time an environment is asked for its philosophy and has none, the

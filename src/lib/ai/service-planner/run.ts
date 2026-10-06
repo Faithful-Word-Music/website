@@ -51,7 +51,7 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
   }
   for (const plan of loaded.plans.filter((plan) => inWeek(plan) && plan.status !== "cancelled")) {
     const songs = slotSongs(plan.slots);
-    // A service with nothing but the week's insert says nothing the insert does not.
+    // A service with nothing but the week's inserts says nothing they do not.
     if (!songs.some((song) => !isInsert(song))) continue;
     week.set(`${plan.date}|${plan.slot}`, {
       date: plan.date,
@@ -77,7 +77,7 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
 
 /**
  * What the library index adds to a request: how each song's lyrics begin,
- * songs found by meaning (near the insert and the locked songs, near what was
+ * songs found by meaning (near the inserts and the locked songs, near what was
  * asked for, near the season's subject), and in the Christmas season which
  * songs' lyrics name the Nativity.
  *
@@ -106,7 +106,7 @@ async function library(viewer: Viewer, request: PlanAiRequest, context: PlanCont
       }
     };
 
-    // The songs a plan is built around: the one asked about and its neighbours, or the insert and the locked songs.
+    // The songs a plan is built around: the one asked about and its neighbours, or the inserts and the locked songs.
     const around =
       request.mode === "replace"
         ? [request.target ?? 0, (request.target ?? 0) - 1, (request.target ?? 0) + 1]

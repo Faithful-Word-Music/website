@@ -135,6 +135,52 @@ describe("page context", () => {
     expect(describePageContext({ area: "other" })).toBeNull();
     expect(describePageContext(null)).toBeNull();
   });
+
+  const planner = { area: "service-planner", service: "2026-10-11-pm" } as const;
+  const onScreen = [
+    { title: "Amazing Grace", number: "244", key: "G" },
+    null,
+    // What the browser says is an insert is not believed: the number decides.
+    { title: "Psalm 120", number: null, key: null, insert: false },
+  ];
+
+  it("carries the planner's service as it stands on screen, saved or not", () => {
+    expect(normalizePageContext({ ...planner, plan: { slots: onScreen, unsaved: true } })).toEqual({
+      ...planner,
+      plan: {
+        slots: [
+          { title: "Amazing Grace", number: "244", key: "G", insert: false },
+          null,
+          { title: "Psalm 120", number: null, key: null, insert: true },
+        ],
+        unsaved: true,
+      },
+    });
+  });
+
+  it("drops a plan that is not one, or is no service's, and keeps the page", () => {
+    expect(normalizePageContext({ ...planner, plan: { slots: [{ title: "" }], unsaved: true } })).toEqual(planner);
+    expect(normalizePageContext({ ...planner, plan: { slots: onScreen } })).toEqual(planner);
+    expect(normalizePageContext({ ...planner, plan: "everything" })).toEqual(planner);
+    expect(normalizePageContext({ ...planner, plan: { slots: Array.from({ length: 21 }, () => null), unsaved: false } })).toEqual(planner);
+    expect(normalizePageContext({ area: "service-planner", plan: { slots: onScreen, unsaved: true } })).toEqual({ area: "service-planner" });
+  });
+
+  it("lists the places on screen and says when they are not saved", () => {
+    const plan = normalizePageContext({ ...planner, plan: { slots: onScreen, unsaved: true } })!;
+    const unsaved = describePageContext(plan)!;
+    expect(unsaved).toContain('1. "Amazing Grace" (hymn "244"), key "G"');
+    expect(unsaved).toContain("2. (empty)");
+    expect(unsaved).toContain('3. "Psalm 120" (insert)');
+    expect(unsaved).toContain("NOT been saved");
+    expect(unsaved).not.toContain("nothing typed there that has not been saved");
+
+    const saved = describePageContext({ ...plan, plan: { ...plan.plan!, unsaved: false } })!;
+    expect(saved).toContain("nothing unsaved");
+    expect(saved).not.toContain("NOT been saved");
+    // Without a plan, nothing of the page's contents is claimed.
+    expect(describePageContext(planner)).toContain("nothing typed there that has not been saved");
+  });
 });
 
 describe("parseConductorRequest", () => {
@@ -464,7 +510,7 @@ describe("Conductor's instructions", () => {
     expect(text).toContain(`${siteConfig.servicePlanner.recentDays}-day "sung recently" notice is the Service Planner's, not the Director's policy`);
     expect(text).toContain("never that it is loved");
     expect(text).toContain("Lyrics do not tell you tempo, energy, style or difficulty");
-    expect(text).toContain("insert and its place are fixed");
+    expect(text).toContain("inserts (one, sometimes two) and their places are fixed");
     expect(text).toContain("Its sections: Purpose; The Opener.");
   });
 

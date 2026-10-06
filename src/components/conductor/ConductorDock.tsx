@@ -32,6 +32,7 @@ import {
   parseStoredWidth,
   widthFromPointer,
 } from "@/lib/ai/conductor/drawer";
+import { OPEN_CONDUCTOR_EVENT } from "@/lib/ai/conductor/open";
 import { isActivePath } from "@/lib/navigation";
 
 const copy = conductorContent;
@@ -543,6 +544,9 @@ function Launcher({ onOpen }: { onOpen: () => void }) {
  * the same view of it (ConductorChat); only the frame differs. On the
  * Conductor page itself it is not shown at all.
  *
+ * It can also be asked to open, by the site search when someone chooses
+ * "Ask Conductor" there (OPEN_CONDUCTOR_EVENT, src/lib/ai/conductor/open.ts).
+ *
  * Showing the button is a convenience. /api/conductor checks use_ai itself.
  */
 export function ConductorDock() {
@@ -558,6 +562,16 @@ export function ConductorDock() {
 
   // Arriving at the Conductor page (by "Open full Conductor", or any other way) puts the panel away.
   if (open && (hidden || !allowed)) setOpen(false);
+
+  // Asked to open from elsewhere (the site search's "Ask Conductor"): the same panel the button opens.
+  // Only where the button itself would be - the Conductor page already is the conversation.
+  const offered = allowed && !hidden;
+  useEffect(() => {
+    if (!offered) return;
+    const onAsked = () => setOpen(true);
+    window.addEventListener(OPEN_CONDUCTOR_EVENT, onAsked);
+    return () => window.removeEventListener(OPEN_CONDUCTOR_EVENT, onAsked);
+  }, [offered]);
 
   const close = useCallback(() => {
     refocus.current = true;

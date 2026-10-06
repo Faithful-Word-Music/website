@@ -13,39 +13,19 @@ import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import { siteConfig } from "@/config/site";
 import type { SongSuggestion } from "@/lib/ai/service-planner/protocol";
-import { inChristmasSeason } from "@/lib/church-calendar";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
+import { pickerResults } from "@/lib/service-planner/picker";
 import { formatAgo, formatShortDate } from "@/lib/service-time";
-import { songKey } from "@/lib/song-list";
 
 import { SparkleIcon } from "./AiGenerate";
 import type { PlanAiOutcome } from "./ai-request";
 
 const copy = servicePlannerContent;
-const LIMIT = 60;
 
 export interface ChosenSong {
   title: string;
   number: string | null;
   key: string | null;
-}
-
-/** How well a song matches what was typed: lower is better, null is no match. */
-export function matchRank(candidate: Pick<CandidateSong, "title" | "number" | "id">, query: string): number | null {
-  const typed = query.trim().toLowerCase();
-  if (typed === "") return 0;
-  const number = typed.replace(/^(#|no\.?)\s*/, "");
-  if (/^\d+[a-z]?$/.test(number) && candidate.number) {
-    const own = candidate.number.toLowerCase();
-    if (own === number) return 0;
-    if (own.startsWith(number)) return 1;
-  }
-  const key = songKey(typed);
-  if (key === "") return null;
-  if (candidate.id === key) return 1;
-  if (candidate.id.startsWith(key)) return 2;
-  if (candidate.id.includes(key)) return 3;
-  return null;
 }
 
 /**
@@ -55,7 +35,10 @@ export function matchRank(candidate: Pick<CandidateSong, "title" | "number" | "i
  * from the service being planned. A song not found can be added on the spot.
  *
  * With nothing typed, it lists familiar songs not sung for the longest, as
- * a starting point.
+ * a starting point. Which songs are listed, typed for or not, is
+ * pickerResults() (src/lib/service-planner/picker.ts): in a service that has
+ * its insert already the starting list leaves other inserts out, and on the
+ * Inserts page only inserts are listed at all.
  *
  * Follows the ARIA combobox pattern, as the site search does: arrows move
  * through the results and Enter picks the highlighted one. Typing highlights
@@ -70,6 +53,8 @@ export function SongPicker({
   onChoose,
   onClose,
   ai,
+  only,
+  hideInsertSuggestions = false,
 }: {
   candidates: CandidateSong[];
   serviceStartsAt: string;
@@ -77,6 +62,10 @@ export function SongPicker({
   title: string;
   onChoose: (song: ChosenSong) => void;
   onClose: () => void;
+  /** The Inserts page: only songs that can be an insert are listed. */
+  only?: "inserts";
+  /** A service that has its insert already: the starting list leaves inserts out. Typing still finds them. */
+  hideInsertSuggestions?: boolean;
   /** Suggest with AI, where the picker is choosing for a place in a service and the person may use AI. */
   ai?: SuggestWithAi;
 }) {
@@ -92,23 +81,14 @@ export function SongPicker({
     if (!adding && window.matchMedia("(pointer: fine)").matches) searchRef.current?.focus({ preventScroll: true });
   }, [adding]);
 
-  const results = useMemo(() => {
-    if (query.trim() === "") {
-      // Familiar songs, longest unsung first - Christmas songs only in their season.
-      const season = inChristmasSeason(serviceStartsAt.slice(0, 10));
-      return candidates
-        .filter((candidate) => candidate.playCount >= 3 && (season || !candidate.christmas))
-        .map((candidate) => ({ candidate, facts: candidateFacts(candidate, serviceStartsAt) }))
-        .sort((a, b) => (a.facts.lastSung ?? "").localeCompare(b.facts.lastSung ?? ""))
-        .slice(0, LIMIT);
-    }
-    return candidates
-      .map((candidate) => ({ candidate, rank: matchRank(candidate, query) }))
-      .filter((item): item is { candidate: CandidateSong; rank: number } => item.rank !== null)
-      .sort((a, b) => a.rank - b.rank || b.candidate.playCount - a.candidate.playCount || a.candidate.id.localeCompare(b.candidate.id))
-      .slice(0, LIMIT)
-      .map(({ candidate }) => ({ candidate, facts: candidateFacts(candidate, serviceStartsAt) }));
-  }, [candidates, query, serviceStartsAt]);
+  const results = useMemo(
+    () =>
+      pickerResults(candidates, query, { serviceStartsAt, only, hideInsertSuggestions }).map((candidate) => ({
+        candidate,
+        facts: candidateFacts(candidate, serviceStartsAt),
+      })),
+    [candidates, query, serviceStartsAt, only, hideInsertSuggestions],
+  );
 
   const activeIndex = Math.min(active, results.length - 1);
   const optionId = (i: number) => `${listId}-${i}`;

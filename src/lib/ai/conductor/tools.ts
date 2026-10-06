@@ -20,6 +20,7 @@ import { loadPlanningPhilosophy } from "../planning/load";
 import { PHILOSOPHY_MAX_CHARS, PHILOSOPHY_TOPICS_MAX, planningGuidance, selectSections } from "../planning/philosophy";
 import { checkPhilosophy, replaceSection } from "../planning/revisions";
 import { emitAiStreamData } from "../service";
+import type { ConductorScreenPlan } from "./context";
 import { ACTION_EVENT, ACTIONS_PER_ANSWER, type ConductorAction, type ConductorActionKind, type ConductorActionPayloads } from "./actions";
 import { loadConductorData } from "./data";
 import {
@@ -139,6 +140,12 @@ const UNAVAILABLE = { unavailable: true, note: "This could not be read from the 
 export interface ConductorTurnState {
   conversationId: string;
   proposed: ConductorAction[];
+  /**
+   * The service open in the planner behind Conductor, as it stands on the
+   * person's screen (context.ts) - already checked, and only ever set for
+   * someone who manages service plans. check_service_plan checks it.
+   */
+  screen?: { anchor: string; plan: ConductorScreenPlan };
 }
 
 /** What a propose tool answers once its card is up. The model is told, in so many words, that nothing has happened. */
@@ -150,7 +157,7 @@ const AWAITING = {
 const NOT_ALLOWED = (what: string) => ({ notAllowed: true, note: `This person is not allowed to ${what}. Tell them so plainly; nothing was proposed.` });
 
 export function conductorTools(viewer: Viewer, turn?: ConductorTurnState): ToolSet {
-  return { ...readingTools(viewer), ...(turn ? proposingTools(viewer, turn) : {}) };
+  return { ...readingTools(viewer, turn?.screen), ...(turn ? proposingTools(viewer, turn) : {}) };
 }
 
 /**
@@ -304,7 +311,7 @@ function proposingTools(viewer: Viewer, turn: ConductorTurnState): ToolSet {
   return { ...memoryTools, ...philosophyTools };
 }
 
-function readingTools(viewer: Viewer) {
+function readingTools(viewer: Viewer, screen?: ConductorTurnState["screen"]) {
   // One read of the site's data for the whole question, however many tools it takes.
   let loading: Promise<ConductorData> | null = null;
   const data = () => (loading ??= loadConductorData(viewer));
@@ -551,7 +558,7 @@ function readingTools(viewer: Viewer) {
 
     check_service_plan: tool({
       description:
-        "What the Service Planner itself notices about one saved service plan: songs repeated too soon, planned nearby, pairs sung together recently, Christmas songs out of season, sheet music gaps, keys that differ, places not filled - and which musicians are expected. Only for someone who manages service plans.",
+        "What the Service Planner itself notices about one service plan: songs repeated too soon, planned nearby, pairs sung together recently, Christmas songs out of season, sheet music gaps, keys that differ, places not filled - and which musicians are expected. It checks the saved plan; for the service the person has open in the planner it checks the plan as it stands on their screen, saved or not (its basis says which). Only for someone who manages service plans.",
       inputSchema: z.object({ date, slot }),
       execute: async (input) => {
         // The planner's own reads assume this permission; use_ai alone does not open a draft.
@@ -559,9 +566,10 @@ function readingTools(viewer: Viewer) {
           return { notAllowed: true, note: "This person does not manage service plans, so planner checks are not available to them." };
         }
         try {
-          const workspace = await loadWorkspace(viewer, serviceAnchor(input.date, input.slot));
+          const anchor = serviceAnchor(input.date, input.slot);
+          const workspace = await loadWorkspace(viewer, anchor);
           if (!workspace) return { found: false, note: "No service is held then." };
-          return clampToolResult(planCheck(workspace));
+          return clampToolResult(planCheck(workspace, screen?.anchor === anchor ? screen.plan : undefined));
         } catch (error) {
           console.error("[conductor] check_service_plan failed:", error instanceof Error ? error.message : "unknown error");
           return UNAVAILABLE;

@@ -106,26 +106,41 @@ describe("planToDated", () => {
 });
 
 describe("plannedInserts", () => {
-  const weeks = [{ weekStart: "2026-10-18", title: "Psalm 19:7-10", number: null, key: "Eb" }];
+  const weeks = [{ weekStart: "2026-10-18", index: 1 as const, title: "Psalm 19:7-10", number: null, key: "Eb" }];
+  const second = { weekStart: "2026-10-18", index: 2 as const, title: "Psalm 54", number: null, key: "E" };
 
   it("gives a service the week's insert", () => {
     const insertFor = plannedInserts(weeks, []);
-    expect(insertFor("2026-10-18", "AM")).toEqual({ title: "Psalm 19:7-10", number: null, key: "Eb", insert: true });
-    expect(insertFor("2026-10-21", "PM")).toMatchObject({ title: "Psalm 19:7-10" });
-    expect(insertFor("2026-10-25", "AM")).toBeNull(); // no insert planned that week
+    expect(insertFor("2026-10-18", "AM")).toEqual([{ title: "Psalm 19:7-10", number: null, key: "Eb", insert: true }]);
+    expect(insertFor("2026-10-21", "PM")).toMatchObject([{ title: "Psalm 19:7-10" }]);
+    expect(insertFor("2026-10-25", "AM")).toEqual([]); // no insert planned that week
+  });
+
+  it("gives it both of a week's inserts, in order, when the week has two", () => {
+    const insertFor = plannedInserts([second, ...weeks], []);
+    expect(insertFor("2026-10-18", "AM").map((item) => item.title)).toEqual(["Psalm 19:7-10", "Psalm 54"]);
+    expect(insertFor("2026-10-21", "PM").map((item) => item.title)).toEqual(["Psalm 19:7-10", "Psalm 54"]);
+    // A special service on another day takes neither.
+    expect(insertFor("2026-10-23", "PM")).toEqual([]);
   });
 
   it("leaves out a service whose draft has an insert of its own", () => {
     const insertFor = plannedInserts(weeks, [{ date: "2026-10-18", slot: "PM", insertMode: "custom" }]);
-    expect(insertFor("2026-10-18", "PM")).toBeNull();
-    expect(insertFor("2026-10-18", "AM")).not.toBeNull();
+    expect(insertFor("2026-10-18", "PM")).toEqual([]);
+    expect(insertFor("2026-10-18", "AM")).toHaveLength(1);
   });
 
   it("puts it on the song list's placeholders", () => {
     const [october] = buildScheduleMonths({ published: [], expected, now, plannedInsert: plannedInserts(weeks, []) });
     const sunday = october.services.find((item) => item.id === "2026-10-18-am")!;
     expect(sunday.placeholder).toBe(true);
-    expect(sunday.plannedInsert?.title).toBe("Psalm 19:7-10");
-    expect(october.services.find((item) => item.id === "2026-10-25-am")!.plannedInsert).toBeUndefined();
+    expect(sunday.plannedInserts?.map((item) => item.title)).toEqual(["Psalm 19:7-10"]);
+    expect(october.services.find((item) => item.id === "2026-10-25-am")!.plannedInserts).toBeUndefined();
+
+    const [two] = buildScheduleMonths({ published: [], expected, now, plannedInsert: plannedInserts([...weeks, second], []) });
+    expect(two.services.find((item) => item.id === "2026-10-18-am")!.plannedInserts?.map((item) => item.title)).toEqual([
+      "Psalm 19:7-10",
+      "Psalm 54",
+    ]);
   });
 });

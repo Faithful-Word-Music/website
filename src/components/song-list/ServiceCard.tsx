@@ -103,8 +103,12 @@ export function ServiceCard({
             {songListContent.states.notPosted}
           </p>
         </div>
-        {service.plannedInsert ? (
-          <PlannedInsert song={service.plannedInsert} className="border-t border-dashed border-staff pt-3" />
+        {service.plannedInserts?.length ? (
+          <div className="space-y-2 border-t border-dashed border-staff pt-3">
+            {service.plannedInserts.map((song) => (
+              <PlannedInsert key={song.title} song={song} />
+            ))}
+          </div>
         ) : null}
       </div>
     );

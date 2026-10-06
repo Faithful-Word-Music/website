@@ -37,9 +37,14 @@ WHAT DECIDES, MOST IMPORTANT FIRST
 THE PLACES
 
 - "empty": choose a song for it.
-- "open": it has a song that you MAY change. You do not have to. Keeping it is a real choice, and the right one whenever it already serves the service well: change it only when another candidate would clearly make the service better. To keep it, answer with its id for its place. A place marked mustChange cannot keep its song.
+- "open": it has a song that you MAY change. How readily is said under MODE. To keep it, answer with its id for its place. A place marked mustChange cannot keep its song.
 - A song in an open place may be moved to another open place by answering with its id there.
-- The place marked insert holds the week's insert, which is the same song in every service of the week. Keep it where it is, by answering with its id for its place, unless DIRECTION plainly asks for this service to go without it or to use a different one. Set differentInsert to true only when DIRECTION plainly asks for a different insert for this one service and you have put one in the insert's place; otherwise false.
+
+THE WEEK'S INSERTS
+
+- A place marked insert holds one of the week's inserts: a song chosen ahead for the whole week and sung in every service of it. A week has one, and sometimes two. They are decided before this service is planned; plan around them.
+- An insert in a locked place is not yours at all. One in an open place stays where it is, by answering with its id for its place, unless DIRECTION plainly asks for this service to go without it or to use a different one. Being unlocked is not such a request.
+- An insert is a song with no hymnal number. The candidates marked insert are exactly those songs, and they are there only for a place marked insert. Never put one in any other place, whatever DIRECTION says, and never give the service more inserts than it has: do not add one. When DIRECTION asks for the service to go without an insert, put an ordinary candidate in its place.
 
 WHAT YOU KNOW
 
@@ -104,10 +109,23 @@ function facts(brief: PlanBrief, memory: MemoryContext): string[] {
   ];
 }
 
+/**
+ * The two ways a whole service is planned, as the model is told them. The
+ * place rules in RULES are the same for both; this is the only thing that
+ * differs, so it travels with the request and the rules stay one cached text.
+ */
+const MODES = {
+  improve:
+    "Improve the plan as it stands. The song in an open place is a real candidate for it: keeping it is a real choice, and the right one whenever it already serves the service well. Change a place only when another candidate would clearly make the service better. Changing nothing at all is a valid answer.",
+  fresh:
+    "A new plan. Build this service afresh around the locked songs and the week's inserts. Every empty place is yours to choose from CANDIDATES on its merits, by the philosophy. You are not told what stood in these places before, and nothing is owed to it.",
+} as const;
+
 /** The request to plan the whole service. */
 export function generatePrompt(brief: PlanBrief, memory: MemoryContext = NO_MEMORY): string {
   return [
     ...facts(brief, memory),
+    block("MODE", MODES[brief.strategy]),
     block(
       "DIRECTION",
       brief.instruction === ""
@@ -131,7 +149,11 @@ export function replacePrompt(brief: PlanBrief, memory: MemoryContext = NO_MEMOR
       "DIRECTION",
       `The Director is choosing a song for place ${brief.target} only${
         place?.song ? `, in place of "${place.song.title}"` : ", which is empty"
-      }. Every other place stays as it stands, locked or not. Suggest ${SUGGESTIONS} different candidates that would serve the service well there, the best first, each with one plain sentence saying why in terms of the facts given and the philosophy. Do not suggest a song already in the service.`,
+      }. Every other place stays as it stands, locked or not. Suggest ${SUGGESTIONS} different candidates that would serve the service well there, the best first, each with one plain sentence saying why in terms of the facts given and the philosophy. Do not suggest a song already in the service.${
+        brief.insertPlaces.length > 0
+          ? " This place holds one of the week's inserts, so candidates marked insert may be suggested for it."
+          : " This is not an insert's place: do not suggest a candidate marked insert."
+      }`,
     ),
   ].join("\n\n");
 }
@@ -148,7 +170,6 @@ const songId = (ids: readonly string[]) => (ids.length > 0 ? z.enum(ids as [stri
 export function generateSchema(ids: readonly string[]) {
   return z.object({
     places: z.array(z.object({ place: z.number(), songId: songId(ids) })),
-    differentInsert: z.boolean(),
     summary: z.string(),
   });
 }

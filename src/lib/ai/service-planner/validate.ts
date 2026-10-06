@@ -1,5 +1,5 @@
 import { candidateFacts } from "@/lib/service-planner/intelligence";
-import type { PlanSlots, PlanSong } from "@/lib/service-planner/model";
+import { isInsert, planSong, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
 import { songKey } from "@/lib/song-list";
 
 import type { PlanBrief } from "./brief";
@@ -12,9 +12,10 @@ import type { SongSuggestion } from "./protocol";
  *
  * The model only ever says WHICH song goes WHERE, by id. Everything else in
  * the plan that goes back to the editor is the site's: the title and number
- * from the catalog, the key from the planner's own logic, the insert mark by
- * the rules below. So nothing the model writes reaches a service plan as
- * text, and an id that was not offered has nothing to become.
+ * from the catalog, the key from the planner's own logic. Whether a song is
+ * an insert is not said by anyone - it is the song having no hymnal number
+ * (planSong). So nothing the model writes reaches a service plan as text, and
+ * an id that was not offered has nothing to become.
  *
  * An answer is refused whole when it:
  *
@@ -22,8 +23,12 @@ import type { SongSuggestion } from "./protocol";
  *     out one it was;
  *   - names a song that was not among the candidates;
  *   - puts a song in the service twice, counting the songs it could not move;
+ *   - gives the service an insert it did not have: an insert anywhere but in
+ *     a place that held one, or more inserts than there were such places.
+ *     (An insert already there may be moved.) With every insert locked or
+ *     held, that is any insert at all;
  *   - in the Christmas season, puts in a song not established as a Christmas
- *     song (the week's insert kept in its own place is the one exception).
+ *     song (an insert kept in its own place is the one exception).
  *
  * Each problem is said in words the model can act on, for the one second try
  * (plan.ts).
@@ -34,9 +39,9 @@ export type AppliedPlan =
   | { ok: false; problems: string[] };
 
 /** The key a song newly put into this service takes: the planner's own suggestion, never the model's. */
-function newSong(brief: PlanBrief, id: string, insert: boolean): PlanSong {
+function newSong(brief: PlanBrief, id: string): PlanSong {
   const song = brief.songs.get(id)!;
-  return { title: song.title, number: song.number, key: candidateFacts(song, brief.startsAt).suggestedKey, insert };
+  return planSong({ title: song.title, number: song.number, key: candidateFacts(song, brief.startsAt).suggestedKey });
 }
 
 export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan {
@@ -76,14 +81,32 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
     const song = brief.slots[index];
     if (song && !standing.has(songKey(song.title))) standing.set(songKey(song.title), { song, index });
   }
-  const insert = brief.insertPlace >= 0 ? brief.slots[brief.insertPlace] : null;
-  const insertId = insert ? songKey(insert.title) : null;
-  const insertKeptInPlace = insertId !== null && chosen.get(brief.insertPlace) === insertId;
-  const insertStillUsed = insertId !== null && [...chosen.values()].includes(insertId);
+  // No insert the service did not have. One may go only where an insert stood - or be an insert that was
+  // already here, moved - and there may be no more of them than there were places for.
+  const insertPlaces = new Set(brief.insertPlaces);
+  let inserts = 0;
+  for (const [index, id] of chosen) {
+    if (!isInsert(brief.songs.get(id)!)) continue;
+    inserts += 1;
+    if (!insertPlaces.has(index) && !standing.has(id)) {
+      problems.push(`"${id}" (place ${index + 1}) is an insert, and place ${index + 1} is not an insert's place.`);
+    }
+  }
+  if (inserts > insertPlaces.size) {
+    problems.push(
+      insertPlaces.size === 0
+        ? "This service's inserts are not yours to change, and no other insert may be added."
+        : `The service may have at most ${insertPlaces.size} insert${insertPlaces.size === 1 ? "" : "s"} among the places you answer for.`,
+    );
+  }
+
+  /** An insert the answer left in its own place. */
+  const keptInPlace = (index: number, id: string) =>
+    insertPlaces.has(index) && songKey(brief.slots[index]!.title) === id;
 
   if (brief.christmasOnly) {
     for (const [index, id] of chosen) {
-      const exempt = insertKeptInPlace && index === brief.insertPlace;
+      const exempt = keptInPlace(index, id);
       if (!exempt && !brief.christmasOnly.has(id)) {
         problems.push(`"${id}" (place ${index + 1}) is not established as a Christmas song, and this service is in the Christmas season.`);
       }
@@ -96,19 +119,9 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
   for (const [index, id] of chosen) {
     const before = brief.slots[index];
     const kept = standing.get(id);
-    if (kept) {
-      slots[index] = kept.song;
-    } else {
-      // A different insert for this one service: only where the insert stood, only when asked for
-      // in so many words (an instruction was given), and never a hymn from the hymnal.
-      const asInsert =
-        index === brief.insertPlace &&
-        answer.differentInsert === true &&
-        brief.instruction !== "" &&
-        !insertStillUsed &&
-        brief.songs.get(id)!.number === null;
-      slots[index] = newSong(brief, id, asInsert);
-    }
+    // A song put where an insert stood is an insert if it has no hymnal number, and an ordinary song if
+    // it has one: nothing here decides which.
+    slots[index] = kept ? kept.song : newSong(brief, id);
     if (!before || songKey(before.title) !== id) changed.push(index);
   }
   return { ok: true, slots, changed: changed.sort((a, b) => a - b) };
@@ -121,19 +134,22 @@ const REASON_CHARS = 240;
 
 /**
  * The suggestions for one place that can be offered: each a candidate, not in
- * the service already, not given twice and, in the Christmas season, a
- * Christmas song. One that fails is dropped; an answer with none left is
- * refused.
+ * the service already, not given twice, an insert only when the place asked
+ * about holds one and, in the Christmas season, a Christmas song. One that
+ * fails is dropped; an answer with none left is refused.
  */
 export function applySuggestions(brief: PlanBrief, answer: SuggestedSongs): AppliedSuggestions {
   const inService = new Set(brief.slots.flatMap((song) => (song ? [songKey(song.title)] : [])));
   const problems: string[] = [];
   const seen = new Set<string>();
   const suggestions: SongSuggestion[] = [];
+  /** The place asked about holds an insert: only then may one be suggested for it. */
+  const forInsert = brief.insertPlaces.length > 0;
 
   for (const { songId, reason } of answer.suggestions) {
     if (inService.has(songId)) problems.push(`"${songId}" is already in the service.`);
     else if (!brief.offered.has(songId)) problems.push(`"${songId}" is not the id of a candidate.`);
+    else if (!forInsert && isInsert(brief.songs.get(songId)!)) problems.push(`"${songId}" is an insert, and this is not an insert's place.`);
     else if (brief.christmasOnly && !brief.christmasOnly.has(songId)) problems.push(`"${songId}" is not established as a Christmas song.`);
     else if (!seen.has(songId) && suggestions.length < SUGGESTIONS) {
       seen.add(songId);

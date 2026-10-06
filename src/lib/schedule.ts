@@ -60,6 +60,7 @@ export const getSchedule = cache(async (): Promise<SongListResult> => {
     const fromWeek = weekStartOf(monthRange(churchDate(now).slice(0, 7)).from);
     // Cancelled services are read too: they take regular services off the list.
     // Drafts are read only for their insert mode (plannedInserts) - their songs never leave here.
+    // The weeks' inserts come as one row each, a week with a second insert as two.
     const [rows, weeks] = await Promise.all([
       listPlans(env, { statuses: ["published", "cancelled", "draft"] }),
       listInsertWeeks(env, fromWeek, addDays(fromWeek, INSERT_HORIZON_DAYS)),

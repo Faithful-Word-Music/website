@@ -149,7 +149,7 @@ export const songListContent = {
     pendingSong: "To be announced",
     /** A service whose songs have not been published yet. */
     notPosted: "Songs not posted yet",
-    /** On a service not posted yet whose week's insert is already planned. */
+    /** On a service not posted yet whose week's insert is already planned (said once for each, in a week with two). */
     plannedInsert: "Planned insert:",
 
     fallbackNotice:

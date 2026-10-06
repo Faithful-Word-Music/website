@@ -8,6 +8,7 @@ import { siteConfig } from "@/config/site";
 import { occurrenceKey, serviceOccurrences } from "@/lib/availability/occurrences";
 
 import {
+  insertsByWeek,
   needsPlanning,
   plannerService,
   weekStartOf,
@@ -28,7 +29,8 @@ export interface PlannerQueue {
 /**
  * Every service from `from` to `to`, as the planner shows it: the regular
  * ones (stored or not), plus every stored special service - cancelled ones
- * included, so they can be brought back.
+ * included, so they can be brought back. `weeks` is every insert of the
+ * weeks in range: one row for a week's insert, another for its second.
  */
 export function plannerServices(
   range: { from: string; to: string },
@@ -43,13 +45,13 @@ export function plannerServices(
     plans.map((plan) => ({ date: plan.date, slot: plan.slot, label: plan.label, startsAt: plan.startsAt })),
   );
   const planByKey = new Map(plans.map((plan) => [occurrenceKey(plan.date, plan.slot), plan]));
-  const weekByStart = new Map(weeks.map((week) => [week.weekStart, week]));
+  const weekByStart = insertsByWeek(weeks);
 
   return occurrences.map((occurrence) =>
     plannerService(
       occurrence,
       planByKey.get(occurrenceKey(occurrence.date, occurrence.slot)) ?? null,
-      weekByStart.get(weekStartOf(occurrence.date)) ?? null,
+      weekByStart.get(weekStartOf(occurrence.date)) ?? [],
     ),
   );
 }

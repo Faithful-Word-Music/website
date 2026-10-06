@@ -39,7 +39,7 @@ const squeeze = (text: string) => text.replace(/\s+/g, " ").trim();
 const isChanged = (row: Row) => !row.saved || row.removed || row.saved.title !== row.title.trim() || squeeze(row.saved.text) !== squeeze(row.text);
 
 /**
- * Admin -> AI -> Planning philosophy: the document as its own sections, each
+ * Admin -> AI -> Planning Philosophy: the document as its own sections, each
  * read as it will be read by the AI and edited in place. Nothing is applied
  * until Save changes, which makes ONE new version of the whole document
  * (savePhilosophyAction) - on top of the version this editor was opened on,

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
+import { ConductorMark } from "@/components/conductor/ConductorMark";
+import { useConductor } from "@/components/conductor/conductor-store";
 import { toggleTheme, useTheme } from "@/components/layout/ThemeToggle";
 import { NoteMark } from "@/components/library/SongIndex";
 import { songLinkProps } from "@/components/song-list/SongLink";
@@ -12,6 +14,7 @@ import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { searchContent } from "@/content/search";
+import { requestConductorOpen } from "@/lib/ai/conductor/open";
 import {
   type SearchEntry,
   type SearchIndex,
@@ -19,12 +22,31 @@ import {
   searchSite,
 } from "@/lib/site-search";
 
+import { AvailabilityCommand } from "./AvailabilityCommand";
+
 /**
  * Site search: a palette opened from the header's magnifier, Ctrl/⌘ K or "/".
  *
  * Pages and actions are there at once. Songs, coming services and year recaps
  * come from /api/search, fetched the first time the palette is about to open
  * (hovering or focusing the button starts it) and kept for the visit.
+ *
+ * WHAT A PERSON IS OFFERED is not decided here. searchSite()
+ * (src/lib/site-search.ts) is given who is looking - useAccount().nav, the
+ * same permissions the header's links go by - and returns only the pages and
+ * commands they may use. This component shows what comes back and carries
+ * out what is chosen; it holds no permission check of its own.
+ *
+ * Two entries are commands rather than places to go:
+ *
+ *   Ask Conductor: "…"       sends what was typed to Conductor - the one
+ *                            shared conversation (conductor-store.ts), asked
+ *                            from this page - then closes and opens
+ *                            Conductor's own panel to show the answer.
+ *   Update my availability…  turns the palette into AvailabilityCommand.
+ *
+ * Neither does anything Conductor or the Availability page could not, and
+ * both end at routes that check permission themselves.
  *
  * Built on <dialog>: showModal() keeps focus inside and the rest of the page
  * inert, Escape closes it, and closing returns focus to where it was. The
@@ -157,6 +179,12 @@ function Palette({ onClose }: { onClose: () => void }) {
   const [active, setActive] = useState(0);
   const [index, setIndex] = useState<SearchIndex | null>(null);
   const [failed, setFailed] = useState(false);
+  /** The palette's own steps for a command, in place of the search: only "Update my availability…" has any. */
+  const [command, setCommand] = useState<"availability" | null>(null);
+  /** What Escape does while a command is showing (one step back); null while searching, when it closes. */
+  const commandEscape = useRef<(() => void) | null>(null);
+  /** Said above the results when something chosen could not be done. */
+  const [notice, setNotice] = useState<string | null>(null);
   const dark = useTheme() === "dark";
 
   useScrollLock(true);
@@ -194,8 +222,10 @@ function Palette({ onClose }: { onClose: () => void }) {
     if (pathname !== openedOn) onClose();
   }, [pathname, openedOn, onClose]);
 
-  const { isSignedIn } = useAccount();
-  const results = useMemo(() => searchSite(index, query, dark, isSignedIn), [index, query, dark, isSignedIn]);
+  const { nav, userId } = useAccount();
+  const results = useMemo(() => searchSite(index, query, dark, nav), [index, query, dark, nav]);
+  // The shared conversation, joined only by someone who may use it: the same store the panel and the page show.
+  const conductor = useConductor(nav.permissions.has("use_ai") ? userId : null);
   const moreSongsEntry: SearchEntry | null =
     results.moreSongs > 0
       ? {
@@ -229,6 +259,22 @@ function Palette({ onClose }: { onClose: () => void }) {
     if (entry.action === "toggle-theme") {
       toggleTheme();
       onClose();
+      return;
+    }
+    if (entry.action === "update-availability") {
+      setNotice(null);
+      setCommand("availability");
+      return;
+    }
+    if (entry.action === "ask-conductor") {
+      // Asked from this page, so "this service" and "this song" mean what they would in the panel.
+      if (!conductor.ask(query.trim(), pathname)) {
+        setNotice(searchContent.conductor.busy);
+        return;
+      }
+      onClose();
+      // The answer is read in Conductor's own panel. (On the Conductor page it is already in view.)
+      requestConductorOpen();
       return;
     }
     // Already on the song list: tell it which service to show, as the
@@ -283,12 +329,13 @@ function Palette({ onClose }: { onClose: () => void }) {
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
-          onClose();
+          // Inside a command, Escape goes back a step; from the search it closes.
+          (commandEscape.current ?? onClose)();
         }
       }}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        (commandEscape.current ?? onClose)();
       }}
       className={cn(
         "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-transparent p-4 sm:px-6 sm:pt-[12vh]",
@@ -296,107 +343,119 @@ function Palette({ onClose }: { onClose: () => void }) {
       )}
     >
       <div className="animate-enter mx-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift sm:max-h-[70vh]">
-        {/* Search row */}
-        <div className="flex items-center gap-3 border-b border-line px-4">
-          <span className="text-muted">
-            <Magnifier />
-          </span>
-          <input
-            autoFocus
-            type="text"
-            role="combobox"
-            aria-expanded={flat.length > 0}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-            aria-label={searchContent.dialogLabel}
-            placeholder={searchContent.placeholder}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-            }}
-            onKeyDown={onKeyDown}
-            autoComplete="off"
-            spellCheck={false}
-            // 16px on phones, so iOS does not zoom in on focus.
-            className="min-h-14 w-full min-w-0 bg-transparent text-base text-ink placeholder:text-muted focus:outline-none sm:text-[0.9375rem]"
-          />
-          <button
-            type="button"
-            onClick={onClose}
-            className="-mr-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink"
-          >
-            <span className="sr-only">{searchContent.closeLabel}</span>
-            {/* The header's closed-menu cross: two fine rules. */}
-            <span aria-hidden="true" className="relative block h-4 w-4">
-              <span className="absolute left-0 top-2 block h-px w-4 rotate-45 bg-current" />
-              <span className="absolute left-0 top-2 block h-px w-4 -rotate-45 bg-current" />
-            </span>
-          </button>
-        </div>
-
-        {/* Results */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
-          <p role="status" className="sr-only">
-            {typed ? countLabel : ""}
-          </p>
-
-          {typed && flat.length === 0 && index ? (
-            <div className="px-4 py-12 text-center">
-              <p className="font-display text-xl text-ink">{searchContent.noMatchTitle.replace("{query}", typed)}</p>
-              <p className="mt-2 text-sm text-muted">{searchContent.noMatchBody}</p>
+        {command === "availability" ? (
+          <AvailabilityCommand onExit={() => setCommand(null)} onClose={onClose} escapeRef={commandEscape} />
+        ) : (
+          <>
+            {/* Search row */}
+            <div className="flex items-center gap-3 border-b border-line px-4">
+              <span className="text-muted">
+                <Magnifier />
+              </span>
+              <input
+                autoFocus
+                type="text"
+                role="combobox"
+                aria-expanded={flat.length > 0}
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+                aria-label={searchContent.dialogLabel}
+                placeholder={searchContent.placeholder}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setActive(0);
+                  setNotice(null);
+                }}
+                onKeyDown={onKeyDown}
+                autoComplete="off"
+                spellCheck={false}
+                // 16px on phones, so iOS does not zoom in on focus.
+                className="min-h-14 w-full min-w-0 bg-transparent text-base text-ink placeholder:text-muted focus:outline-none sm:text-[0.9375rem]"
+              />
+              <button
+                type="button"
+                onClick={onClose}
+                className="-mr-2.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink"
+              >
+                <span className="sr-only">{searchContent.closeLabel}</span>
+                {/* The header's closed-menu cross: two fine rules. */}
+                <span aria-hidden="true" className="relative block h-4 w-4">
+                  <span className="absolute left-0 top-2 block h-px w-4 rotate-45 bg-current" />
+                  <span className="absolute left-0 top-2 block h-px w-4 -rotate-45 bg-current" />
+                </span>
+              </button>
             </div>
-          ) : null}
 
-          <div id={listId} role="listbox" aria-label={searchContent.dialogLabel}>
-            {groups.map((group) => (
-              <div key={group.group} role="group" aria-labelledby={`${idPrefix}-${group.group}`} className="pb-2">
-                <p
-                  id={`${idPrefix}-${group.group}`}
-                  className="px-3 pb-1 pt-2 font-display text-sm italic text-muted"
-                >
-                  {searchContent.groups[group.group]}
+            {/* Results */}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+              <p role="status" className="sr-only">
+                {typed ? countLabel : ""}
+              </p>
+              {notice ? (
+                <p role="alert" className="px-3 py-2 text-sm text-gold-dark">
+                  {notice}
                 </p>
-                {group.entries.map((entry) => {
-                  const i = positionOf.get(entry.id) ?? 0;
-                  return (
-                    <Option
-                      key={entry.id}
-                      id={optionId(i)}
-                      entry={entry}
-                      query={typed}
-                      selected={i === activeIndex}
-                      onHover={() => setActive(i)}
-                      onChoose={() => choose(entry)}
-                    />
-                  );
-                })}
+              ) : null}
+
+              {typed && flat.length === 0 && index ? (
+                <div className="px-4 py-12 text-center">
+                  <p className="font-display text-xl text-ink">{searchContent.noMatchTitle.replace("{query}", typed)}</p>
+                  <p className="mt-2 text-sm text-muted">{searchContent.noMatchBody}</p>
+                </div>
+              ) : null}
+
+              <div id={listId} role="listbox" aria-label={searchContent.dialogLabel}>
+                {groups.map((group) => (
+                  <div key={group.group} role="group" aria-labelledby={`${idPrefix}-${group.group}`} className="pb-2">
+                    <p
+                      id={`${idPrefix}-${group.group}`}
+                      className="px-3 pb-1 pt-2 font-display text-sm italic text-muted"
+                    >
+                      {searchContent.groups[group.group]}
+                    </p>
+                    {group.entries.map((entry) => {
+                      const i = positionOf.get(entry.id) ?? 0;
+                      return (
+                        <Option
+                          key={entry.id}
+                          id={optionId(i)}
+                          entry={entry}
+                          query={typed}
+                          selected={i === activeIndex}
+                          onHover={() => setActive(i)}
+                          onChoose={() => choose(entry)}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {!index && !failed && typed ? (
-            <p className="px-3 py-3 text-sm text-muted">{searchContent.loading}</p>
-          ) : null}
-          {failed ? <p className="px-3 py-3 text-sm text-muted">{searchContent.loadError}</p> : null}
-        </div>
+              {!index && !failed && typed ? (
+                <p className="px-3 py-3 text-sm text-muted">{searchContent.loading}</p>
+              ) : null}
+              {failed ? <p className="px-3 py-3 text-sm text-muted">{searchContent.loadError}</p> : null}
+            </div>
 
-        {/* Keyboard hints: for keyboards, so not on phones. */}
-        <div
-          aria-hidden="true"
-          className="hidden items-center gap-4 border-t border-line px-4 py-2.5 text-xs text-muted sm:flex"
-        >
-          <Hint keys={["↑", "↓"]} label={searchContent.hints.move} />
-          <Hint keys={["↵"]} label={searchContent.hints.open} />
-          <Hint keys={["Esc"]} label={searchContent.hints.close} />
-        </div>
+            {/* Keyboard hints: for keyboards, so not on phones. */}
+            <div
+              aria-hidden="true"
+              className="hidden items-center gap-4 border-t border-line px-4 py-2.5 text-xs text-muted sm:flex"
+            >
+              <Hint keys={["↑", "↓"]} label={searchContent.hints.move} />
+              <Hint keys={["↵"]} label={searchContent.hints.open} />
+              <Hint keys={["Esc"]} label={searchContent.hints.close} />
+            </div>
+          </>
+        )}
       </div>
     </dialog>
   );
 }
 
-/** One result. A link, so it can also be opened in a new tab; the theme switch is a button-like option. */
+/** One result. A link, so it can also be opened in a new tab; a command (the theme, availability, Conductor) is a button-like option. */
 function Option({
   id,
   entry,
@@ -497,6 +556,15 @@ function OptionBody({ entry, query }: { entry: SearchEntry; query: string }): Re
       <span className="min-w-0 flex-1">
         <span className="block text-sm text-ink">{entry.label}</span>
         {entry.detail ? <span className="mt-0.5 block truncate text-xs text-muted">{entry.detail}</span> : null}
+      </span>
+    );
+  }
+
+  if (entry.action === "ask-conductor") {
+    return (
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <ConductorMark size={16} className="shrink-0 text-gold" />
+        <span className="truncate text-sm text-ink">{entry.label}</span>
       </span>
     );
   }

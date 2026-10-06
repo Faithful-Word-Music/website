@@ -97,8 +97,8 @@ export interface ComingUpService {
   sheetMusicChecked: boolean;
   /** Every type the service can be printed in - only for someone who prints for others (serviceTypeOptions). */
   packetTypes: PacketTypeOption[];
-  /** Not posted yet, but its week's insert is planned: that song (plannedInserts). */
-  plannedInsert: Song | null;
+  /** Not posted yet, but its week's inserts are planned: those songs, in order (plannedInserts). */
+  plannedInserts: Song[];
 }
 
 /** One chosen song of a service, with the file of the person's first type it has - or null for none. */
@@ -282,7 +282,7 @@ export function buildComingUp(
       showLabels: sheetTypes.length > 1,
       sheetMusicChecked: sheetOptions !== null,
       packetTypes: options.anyType && index ? serviceTypeOptions(service, { index, viewer }) : [],
-      plannedInsert: service.plannedInsert ?? null,
+      plannedInserts: service.plannedInserts ?? [],
     };
   });
 }

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { AdminNav } from "@/components/admin/AdminNav";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { SectionNav } from "@/components/ui/SectionNav";
 import { servicePlannerContent } from "@/content/service-planner";
 
 const copy = servicePlannerContent;
@@ -18,8 +18,8 @@ export const PLANNER_TABS = [
 
 /**
  * The frame the planner's section pages share: the heading, the Plan ·
- * Inserts · Archive tabs, and - at the end of the tab bar, so it sits in one
- * place on every page - the way to the published song list.
+ * Inserts · Archive links (SectionNav), and - at the far end of that row, so
+ * it sits in one place on every page - the way to the published song list.
  */
 export function PlannerShell({ children, lead }: { children: ReactNode; lead?: string }) {
   return (
@@ -30,7 +30,7 @@ export function PlannerShell({ children, lead }: { children: ReactNode; lead?: s
         </SectionHeading>
 
         <div className="mt-10">
-          <AdminNav
+          <SectionNav
             items={PLANNER_TABS}
             label={copy.tabs.label}
             trailing={

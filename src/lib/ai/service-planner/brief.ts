@@ -1,7 +1,7 @@
 import { churchDate } from "@/lib/availability/occurrences";
 import { inChristmasSeason, seasonDates } from "@/lib/church-calendar";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
-import { isInsert, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
+import { isInsert, planSong, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
 import { dayOfWeek } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { DatedService, ServiceSlot } from "@/types/song-list";
@@ -27,7 +27,8 @@ import { christmasEligible, serviceSeason, type ServiceSeason } from "./season";
  * songs and most have never been sung here; sending all of them, with lyrics,
  * would be slow, costly and no better. buildShortlist() takes, in order:
  *
- *   1. the songs already in open places (so keeping one is always possible);
+ *   1. the songs already in open places that may stay (so keeping one is
+ *      always possible) - none, for the ordinary places of a fresh plan;
  *   2. songs found by meaning: near the insert and the locked songs, near
  *      what the instruction asks for, and near the season's subject;
  *   3. the songs sung most (the familiar backbone);
@@ -36,6 +37,13 @@ import { christmasEligible, serviceSeason, type ServiceSeason } from "./season";
  *
  * Those numbers bound a prompt. They are not planning policy: which of the
  * candidates to use is the philosophy's and the model's to decide.
+ *
+ * INSERTS ARE NOT CANDIDATES FOR AN ORDINARY PLACE. An insert is a song with
+ * no hymnal number (isInsert), chosen for its week on the Inserts page. None
+ * is ever offered for a place that does not hold one, so AI cannot give a
+ * service an insert it did not have. Only when an insert's own place is open
+ * - unlocked, and the Director's instruction given - are a few offered, for
+ * that place, each marked. validate.ts holds the answer to the same rule.
  */
 
 export const SHORTLIST = {
@@ -49,6 +57,8 @@ export const SHORTLIST = {
   lessFamiliar: 10,
   /** Sung at least this often counts, for picking candidates, as familiar. */
   familiarPlays: 3,
+  /** Other inserts offered for an insert's place, when one is open. */
+  inserts: 12,
 } as const;
 
 /** How much of a song's lyrics a candidate carries. */
@@ -115,6 +125,8 @@ export interface PlanCandidate {
   /** The services of this same week it is in. */
   inThisWeek?: string[];
   lyricsBegin?: string;
+  /** An insert (no hymnal number): only for a place marked insert. */
+  insert?: true;
 }
 
 export interface BriefPlace {
@@ -129,6 +141,8 @@ export interface BriefPlace {
 
 export interface PlanBrief {
   mode: "generate" | "replace";
+  /** generate: whether the songs in open places may stay on their merits (improve) or every open place starts again (fresh). */
+  strategy: "improve" | "fresh";
   service: { date: string; name: string; special: boolean };
   season: ServiceSeason | null;
   seasonDates: ReturnType<typeof seasonDates>;
@@ -153,8 +167,12 @@ export interface PlanBrief {
   startsAt: string;
   /** In the Christmas season: the ids that may be put in. Null at any other time. */
   christmasOnly: ReadonlySet<string> | null;
-  /** The open place holding the insert, from 0, or -1. */
-  insertPlace: number;
+  /**
+   * The open places that held an insert when the request was made, from 0:
+   * the only places an insert may be put. Empty when every insert is locked
+   * or held, which is the usual case.
+   */
+  insertPlaces: number[];
 }
 
 /** A song the editor holds that the catalog does not know: it can be kept, and nothing is known of it. */
@@ -188,11 +206,15 @@ export function buildShortlist(input: {
   keepable: readonly CandidateSong[];
   thematic: readonly string[];
   christmasOnly: ReadonlySet<string> | null;
+  /** An insert's own place is open: a few other inserts are offered, for that place. */
+  insertOpen: boolean;
 }): CandidateSong[] {
   const { candidates, startsAt, fixed, christmasOnly } = input;
   const allowed = (song: CandidateSong) =>
     !fixed.has(song.id) && (christmasOnly ? christmasOnly.has(song.id) : !song.christmas);
-  const pool = candidates.filter(allowed);
+  const everything = candidates.filter(allowed);
+  // Ordinary places are planned from songs of the hymnal only: an insert is never one of their candidates.
+  const pool = everything.filter((song) => !isInsert(song));
   const byId = new Map(pool.map((song) => [song.id, song]));
   const lastSung = (song: CandidateSong) => candidateFacts(song, startsAt).lastSung ?? "";
 
@@ -208,6 +230,19 @@ export function buildShortlist(input: {
   };
 
   take(input.keepable, input.keepable.length);
+
+  if (input.insertOpen) {
+    // For the insert's own place: those nearest what was asked for, then the most sung.
+    const inserts = everything.filter(isInsert);
+    const near = new Map(input.thematic.map((id, order) => [id, order]));
+    take(
+      inserts.sort(
+        (a, b) =>
+          (near.get(a.id) ?? Infinity) - (near.get(b.id) ?? Infinity) || b.playCount - a.playCount || a.id.localeCompare(b.id),
+      ),
+      SHORTLIST.inserts,
+    );
+  }
 
   if (christmasOnly) {
     // The Christmas repertoire is small: all of it, most sung first.
@@ -257,19 +292,21 @@ export function describeCandidate(
     ...(planned.length > 0 ? { alsoPlannedFor: planned } : {}),
     ...(inWeek.length > 0 ? { inThisWeek: inWeek } : {}),
     ...(opening ? { lyricsBegin: opening } : {}),
+    ...(isInsert(song) ? { insert: true as const } : {}),
   };
 }
 
 /** The brief for one request. */
 export function buildBrief(
-  request: Pick<PlanAiRequest, "mode" | "slots" | "locked" | "instruction" | "target">,
+  request: Pick<PlanAiRequest, "mode" | "slots" | "locked" | "instruction" | "target"> & Partial<Pick<PlanAiRequest, "strategy">>,
   context: PlanContext,
   library: LibraryFindings,
   hymnal: string,
 ): PlanBrief {
-  const slots: PlanSlots = request.slots.map((song) => (song ? { ...song } : null));
+  const slots: PlanSlots = request.slots.map((song) => (song ? planSong(song) : null));
   const { date, startsAt } = context.service;
   const instruction = request.instruction.trim();
+  const strategy = request.mode === "generate" ? (request.strategy ?? "improve") : "improve";
   const known = new Map(context.candidates.map((song) => [song.id, song]));
   const idOf = (song: PlanSong) => songKey(song.title);
 
@@ -281,13 +318,14 @@ export function buildBrief(
   const open =
     request.mode === "replace"
       ? [request.target ?? 0]
-      : // With nothing asked, an unlocked insert stays where it is.
+      : // With nothing asked, every unlocked insert stays where it is.
         openPlaces(slots, request.locked, instruction === "");
   const isOpen = new Set(open);
+  // Where an insert may go: a place the answer covers that holds one now.
+  const insertPlaces = open.filter((index) => slots[index] !== null && isInsert(slots[index]!));
 
   const fixed = new Set<string>();
   const keepable: CandidateSong[] = [];
-  let insertPlace = -1;
   const places: BriefPlace[] = slots.map((song, index) => {
     const place = index + 1;
     if (!song) return { place, state: "empty" };
@@ -302,8 +340,11 @@ export function buildBrief(
       fixed.add(named.id);
       return { place, state: "locked", song: named };
     }
-    if (isInsert(song)) insertPlace = index;
-    // In the Christmas season only the insert may stay without being known for a Christmas song.
+    // A fresh plan starts every ordinary open place again: the song there is not shown and is not owed a
+    // place among the candidates. (It is not banned either - the shortlist may hold it on its own merits.)
+    // An insert is the week's, not this plan's, so it is shown and can be kept whichever way the plan is made.
+    if (strategy === "fresh" && !isInsert(song)) return { place, state: "empty" };
+    // In the Christmas season only an insert may stay without being known for a Christmas song.
     const mayStay = !christmasOnly || christmasOnly.has(named.id) || isInsert(song);
     if (mayStay) keepable.push(known.get(named.id) ?? unknownSong(song));
     return { place, state: "open", song: named, ...(mayStay ? {} : { mustChange: true as const }) };
@@ -315,13 +356,15 @@ export function buildBrief(
     fixed,
     keepable,
     thematic: library.thematic,
-    // The insert kept in its own place is the one exception, and it is in `keepable`.
+    // An insert kept in its own place is the one exception, and it is in `keepable`.
     christmasOnly,
+    insertOpen: insertPlaces.length > 0,
   });
   const songs = new Map(shortlist.map((song) => [song.id, song]));
 
   return {
     mode: request.mode,
+    strategy,
     service: { date, name: serviceWords(context.service), special: context.service.special },
     season: serviceSeason(date),
     seasonDates: seasonDates(Number(date.slice(0, 4))),
@@ -341,7 +384,7 @@ export function buildBrief(
     songs,
     startsAt,
     christmasOnly,
-    insertPlace,
+    insertPlaces,
   };
 }
 
@@ -353,8 +396,13 @@ export function placesToFill(brief: PlanBrief): number {
   }).length;
 }
 
-/** How many offered songs are not already in the service. */
+/**
+ * How many offered songs could fill an ordinary place that needs one: not an
+ * insert, and not a song the model is shown as already in the service. (In a
+ * fresh plan the songs of the places being planned again are not shown, so
+ * one of them offered on its merits counts.)
+ */
 export function newSongsOffered(brief: PlanBrief): number {
-  const inService = new Set(brief.slots.flatMap((song) => (song ? [songKey(song.title)] : [])));
-  return [...brief.offered].filter((id) => !inService.has(id)).length;
+  const inService = new Set(brief.places.flatMap((place) => (place.song ? [place.song.id] : [])));
+  return [...brief.offered].filter((id) => !inService.has(id) && !isInsert(brief.songs.get(id)!)).length;
 }

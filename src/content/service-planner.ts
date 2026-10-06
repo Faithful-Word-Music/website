@@ -172,10 +172,27 @@ export const servicePlannerContent = {
     generate: "Generate with AI",
     title: "Generate with AI",
     lead: "AI suggests songs for this service from the planning philosophy, the song history and the lyrics. It changes only what is on this page: nothing is saved or published until you do it.",
+    /** The two ways to plan the whole service. Shown only when there is an unlocked song for them to differ about. */
+    strategy: {
+      label: "What should AI do?",
+      fresh: {
+        label: "Generate a new plan",
+        hint: "Every unlocked place is chosen from scratch, around your locked songs and the week's inserts.",
+      },
+      improve: {
+        label: "Improve current plan",
+        hint: "The songs already here stay unless another would clearly serve the service better.",
+      },
+    },
     kept: ["{count} locked song stays exactly as it is.", "{count} locked songs stay exactly as they are."],
     open: ["AI may fill or change {count} place.", "AI may fill or change {count} places."],
-    /** The insert is unlocked and nothing is typed in the instructions. */
-    insertHeld: "The insert is unlocked, but AI keeps it where it is unless your instructions ask for this service to go without it.",
+    /** Generate a new plan: the places it starts again from. */
+    openFresh: ["AI will choose {count} place afresh.", "AI will choose {count} places afresh."],
+    /** An insert is unlocked and nothing is typed in the instructions. One insert, then two. */
+    insertHeld: [
+      "The insert is unlocked, but AI keeps it where it is unless your instructions ask for this service to go without it.",
+      "The inserts are unlocked, but AI keeps them where they are unless your instructions ask otherwise.",
+    ],
     nothingOpen: "Every song is locked, so there is nothing for AI to change. Unlock a song, or add a place.",
     instructions: "Additional instructions (optional)",
     instructionsHint: "Anything particular about this service. Locked songs stay, whatever is written here.",
@@ -280,21 +297,43 @@ export const servicePlannerContent = {
 
   inserts: {
     title: "Inserts",
-    lead: "One Psalm or other song a week. It goes third in that week's Sunday morning, Sunday evening and Wednesday services, unless a service changes it.",
+    lead: "One Psalm or other song a week. It goes third in that week's Sunday morning, Sunday evening and Wednesday services, unless a service changes it. Any week can be given a second, which goes fourth.",
     weekOf: "Week of {date}",
     none: "No insert",
     choose: "Choose insert",
     change: "Change",
     clear: "Clear",
+    /** Under a week that has its insert and no second one. */
+    addSecond: "Add second insert",
+    /** Beside each of a week's two inserts. {number} is 1 or 2. */
+    numbered: "Insert {number}",
+    /** The song picker's title when choosing one of two. {number} is 1 or 2; {date} is the week's Sunday. */
+    pickerTitle: "Insert {number}, week of {date}",
+    /** Refused: an insert is a song without a hymnal number. */
+    numberedSong: "An insert is a song without a hymnal number. To put a hymn in the insert's place for one service, change that service's own plan.",
+    /** Refused: the week's other insert is this song already. */
+    twice: "That song is already this week's other insert.",
     key: "Key",
     /** Beside an insert saved in a key other than the song's own. {key} is the song's current key. */
     currentKey: "Current key: {key}",
     useCurrentKey: "Use it",
     services: "{count} services follow this week",
     custom: ["{count} changed it themselves", "{count} changed it themselves"],
-    outdated: ["{count} published service still shows an older insert.", "{count} published still show an older insert."],
-    updatePublished: "Update them",
-    updated: ["Updated {count} published service.", "Updated {count} published services."],
+    /** Published services still to come that show an older set: from before a change returned them to draft by itself. */
+    outdated: ["{count} published service still shows older inserts.", "{count} published still show older inserts."],
+    updatePublished: "Update and return to draft",
+    /** A published service still to come took the week's inserts and is a draft again. */
+    returned: [
+      "{count} published service was updated and returned to draft: publish it again when it is ready.",
+      "{count} published services were updated and returned to draft: publish them again when they are ready.",
+    ],
+    /** Under an insert that none of the week's services has among its songs. */
+    unused: "No service is singing this insert. Clear it, or put it back into the services below.",
+    /** Puts the week's inserts back into the services that changed theirs. {count} is how many inserts the week has. */
+    putBack: ["Put it back into those services", "Put both back into those services"],
+    restored: ["Put back into {count} draft service.", "Put back into {count} draft services."],
+    /** Every service that changed its inserts has already been held. */
+    nothingRestored: "No service could be changed: they have already been held.",
     /** When no unplanned or draft service needed it. */
     saved: "Insert saved.",
     savedUpdated: ["Insert saved and put into {count} draft service.", "Insert saved and put into {count} draft services."],

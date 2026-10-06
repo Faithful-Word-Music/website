@@ -5,11 +5,12 @@ import { useCallback, useEffect, useRef } from "react";
 import { ActionMessage } from "@/components/account/fields";
 import { Notice } from "@/components/account/Notices";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/components/ui/cn";
 import { Modal } from "@/components/ui/Modal";
 import { useAction } from "@/components/ui/use-action";
 import { servicePlannerContent } from "@/content/service-planner";
 import { openPlaces } from "@/lib/ai/service-planner/locks";
-import { AI_INSTRUCTION_MAX, type PlanAiSuccess } from "@/lib/ai/service-planner/protocol";
+import { AI_INSTRUCTION_MAX, type PlanAiRequest, type PlanAiSuccess } from "@/lib/ai/service-planner/protocol";
 import { plural } from "@/lib/plural";
 import { isInsert, type PlanSlots } from "@/lib/service-planner/model";
 
@@ -35,8 +36,15 @@ export type GeneratedPlan = Extract<PlanAiSuccess, { mode: "generate" }>;
  * now, saved or not. What comes back is handed to the workspace, which holds
  * it as unsaved changes; a failure is shown here and changes nothing.
  *
- * The instruction lives in the workspace, so it is still there the next time
- * this is opened. It is never stored anywhere else.
+ * There are two ways to ask, chosen here: "Improve current plan" keeps the
+ * songs in unlocked places unless another would clearly serve better, and
+ * "Generate a new plan" chooses every unlocked place again from scratch.
+ * Locked songs and the week's inserts stay either way. The choice is only
+ * offered when it would make a difference - when an unlocked place has an
+ * ordinary song in it.
+ *
+ * The instruction and the choice live in the workspace, so they are still
+ * there the next time this is opened. Neither is stored anywhere else.
  */
 export function AiGenerate({
   anchor,
@@ -45,6 +53,8 @@ export function AiGenerate({
   locked,
   instruction,
   onInstruction,
+  strategy,
+  onStrategy,
   onGenerated,
   onClose,
 }: {
@@ -54,6 +64,8 @@ export function AiGenerate({
   locked: boolean[];
   instruction: string;
   onInstruction: (value: string) => void;
+  strategy: PlanAiRequest["strategy"];
+  onStrategy: (value: PlanAiRequest["strategy"]) => void;
   onGenerated: (plan: GeneratedPlan) => void;
   onClose: () => void;
 }) {
@@ -64,19 +76,31 @@ export function AiGenerate({
   useEffect(() => stop, [stop]);
 
   const asked = instruction.trim();
-  const open = openPlaces(slots, locked, asked === "").length;
+  const openNow = openPlaces(slots, locked, asked === "");
+  const open = openNow.length;
   const kept = slots.filter((song, index) => song !== null && locked[index]).length;
-  const insertHeld = asked === "" && slots.some((song, index) => song !== null && isInsert(song) && !locked[index]);
+  /** Unlocked inserts with nothing asked: they are held where they are. */
+  const insertsHeld = asked === "" ? slots.filter((song, index) => song !== null && isInsert(song) && !locked[index]).length : 0;
+  // The two ways only differ over an ordinary song in an open place: without one, both simply fill what is empty.
+  const choice = openNow.some((index) => slots[index] !== null && !isInsert(slots[index]!));
+  const fresh = choice && strategy === "fresh";
 
   const generate = () => {
     const controller = new AbortController();
     request.current = controller;
-    void run(() => requestPlanAi({ mode: "generate", anchor, revision, slots, locked, instruction: asked }, controller.signal), {
-      refresh: false,
-      onOk: (outcome) => {
-        if (outcome.ok) onGenerated(outcome);
+    void run(
+      () =>
+        requestPlanAi(
+          { mode: "generate", strategy: fresh ? "fresh" : "improve", anchor, revision, slots, locked, instruction: asked },
+          controller.signal,
+        ),
+      {
+        refresh: false,
+        onOk: (outcome) => {
+          if (outcome.ok) onGenerated(outcome);
+        },
       },
-    });
+    );
   };
 
   return (
@@ -98,13 +122,46 @@ export function AiGenerate({
     >
       <p className="text-sm text-muted">{copy.lead}</p>
 
+      {choice ? (
+        <fieldset>
+          <legend className="mb-1.5 block text-sm font-medium text-ink">{copy.strategy.label}</legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {(["improve", "fresh"] as const).map((value) => (
+              <label
+                key={value}
+                className={cn(
+                  "flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
+                  strategy === value ? "border-gold bg-gold/5" : "border-line hover:border-muted/50",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="ai-strategy"
+                  value={value}
+                  checked={strategy === value}
+                  onChange={() => {
+                    clear();
+                    onStrategy(value);
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-[var(--color-ink)]"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-ink">{copy.strategy[value].label}</span>
+                  <span className="mt-0.5 block text-xs text-muted">{copy.strategy[value].hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+
       {open === 0 ? (
         <Notice tone="warning">{copy.nothingOpen}</Notice>
       ) : (
         <ul className="space-y-1.5 text-sm text-ink">
           {kept > 0 ? <li>{plural(copy.kept, kept)}</li> : null}
-          <li>{plural(copy.open, open)}</li>
-          {insertHeld ? <li className="text-muted">{copy.insertHeld}</li> : null}
+          <li>{plural(fresh ? copy.openFresh : copy.open, open)}</li>
+          {insertsHeld > 0 ? <li className="text-muted">{copy.insertHeld[insertsHeld === 1 ? 0 : 1]}</li> : null}
         </ul>
       )}
 

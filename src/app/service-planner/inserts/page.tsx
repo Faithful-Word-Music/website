@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * /service-planner/inserts - one insert per week, planned a month at a time
+ * /service-planner/inserts - the weekly inserts (one a week, or two), planned a month at a time
  * (src/lib/service-planner/inserts.ts decides which weeks show). Only for
  * manage_service_plans: the long-range plan is the Music Director's, and
  * reaches everyone else only inside published services.

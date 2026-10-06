@@ -8,6 +8,7 @@ import { deleteSpecialService, publishServices, saveService, setServiceStatus } 
 import { ActionMessage } from "@/components/account/fields";
 import { Notice } from "@/components/account/Notices";
 import { Pill } from "@/components/admin/StatusPill";
+import { usePlannerDraft } from "@/components/conductor/planner-draft";
 import { SongLink } from "@/components/song-list/SongLink";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -20,6 +21,7 @@ import { useUnsavedGuard } from "@/components/ui/use-unsaved-guard";
 import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import { isAiLocked, lockedPlaces, locksAfterGeneration, toggleAiLock, type LockChoices } from "@/lib/ai/service-planner/locks";
+import type { PlanAiRequest } from "@/lib/ai/service-planner/protocol";
 import type { ActionResult } from "@/lib/auth/session";
 import { plural } from "@/lib/plural";
 import { churchTimeOf, progressLabel, serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
@@ -30,7 +32,7 @@ import {
   type PlanningSignal,
   type ServiceAvailability,
 } from "@/lib/service-planner/intelligence";
-import { isInsert, type PlannerService, type PlanSlots } from "@/lib/service-planner/model";
+import { insertPlaces, isInsert, planSong, type PlannerService, type PlanSlots } from "@/lib/service-planner/model";
 import type { PlanEvent } from "@/lib/service-planner/store";
 import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time";
 import type { DatedService } from "@/types/song-list";
@@ -91,6 +93,8 @@ export function Workspace(props: WorkspaceProps) {
   const [locks, setLocks] = useState<LockChoices>({});
   const [generating, setGenerating] = useState(false);
   const [instruction, setInstruction] = useState("");
+  /** Improve the plan as it stands, or plan the unlocked places afresh: kept, like the instruction, for the next time. */
+  const [strategy, setStrategy] = useState<PlanAiRequest["strategy"]>("improve");
   const [aiResult, setAiResult] = useState<{
     summary: string;
     changed: number;
@@ -137,9 +141,9 @@ export function Workspace(props: WorkspaceProps) {
   };
   const choose = (index: number, song: ChosenSong) => {
     const next = [...slots];
-    // Replacing the insert keeps it the service's insert - unless a hymn from
-    // the hymnal takes its place, which is never an insert.
-    next[index] = { ...song, insert: (slots[index]?.insert ?? false) && song.number === null };
+    // Whether the song is an insert is the song's own doing (no hymnal number), wherever it is put:
+    // a hymn chosen for the place the insert stood in is an ordinary song there.
+    next[index] = planSong(song);
     update(next);
     setPicker(null);
   };
@@ -210,6 +214,8 @@ export function Workspace(props: WorkspaceProps) {
   const locking = pending || settled;
   // Leaving with changes not saved asks first, however the page is left.
   const guard = useUnsavedGuard(dirty && !settled);
+  // Conductor, asked over this page, is told the songs as they stand here - saved or not.
+  usePlannerDraft(service.anchor, slots, dirty && !settled);
 
   return (
     <>
@@ -627,6 +633,8 @@ export function Workspace(props: WorkspaceProps) {
           title={picker.replacing ? copy.picker.replaceTitle.replace("{title}", picker.replacing) : copy.picker.title}
           onChoose={(song) => choose(picker.index, song)}
           onClose={() => setPicker(null)}
+          // The service has its insert, and this place is not it: another is not offered in passing. Typing still finds one.
+          hideInsertSuggestions={insertPlaces(slots).some((index) => index !== picker.index)}
           ai={
             aiAvailable
               ? {
@@ -650,6 +658,8 @@ export function Workspace(props: WorkspaceProps) {
           locked={lockedNow}
           instruction={instruction}
           onInstruction={setInstruction}
+          strategy={strategy}
+          onStrategy={setStrategy}
           onGenerated={applyGenerated}
           onClose={() => setGenerating(false)}
         />

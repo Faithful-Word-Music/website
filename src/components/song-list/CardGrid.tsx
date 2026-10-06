@@ -23,7 +23,7 @@ export function CardGrid({
   const placements = placeCards(
     services.map((service) => ({
       full: !service.placeholder,
-      rows: service.placeholder ? (service.plannedInsert ? 1 : 0) : service.songs.length + service.pendingSongs,
+      rows: service.placeholder ? (service.plannedInserts?.length ?? 0) : service.songs.length + service.pendingSongs,
     })),
   );
 

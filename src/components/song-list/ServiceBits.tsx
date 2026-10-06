@@ -99,9 +99,10 @@ export function StatusPill({ status }: { status: "next" | "now" }) {
 }
 
 /**
- * A service not posted yet whose week's insert is already planned: that one
+ * A service not posted yet whose week's insert is already planned: that
  * song, labelled, so it can be learned ahead (src/lib/schedule-months.ts,
- * plannedInserts). Number, title and key read as on a posted service.
+ * plannedInserts). Number, title and key read as on a posted service. A week
+ * with a second insert shows one of these for each.
  */
 export function PlannedInsert({ song, className }: { song: Song; className?: string }) {
   return (
