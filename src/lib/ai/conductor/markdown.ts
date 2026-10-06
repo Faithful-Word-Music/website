@@ -1,9 +1,9 @@
 /**
  * Conductor's answers arrive as light Markdown. This reads the little of it
- * the answers use - paragraphs, headings, lists, tables, bold, italics and
- * code - into plain data for ConductorMarkdown to draw. There is no HTML in
- * or out: anything not recognised is shown as the text it is, and a link
- * keeps only its words.
+ * the answers use - paragraphs, headings, lists, quotes, tables, bold,
+ * italics and code - into plain data for ConductorMarkdown to draw. There is
+ * no HTML in or out: anything not recognised is shown as the text it is, and
+ * a link keeps only its words.
  *
  * Pure - unit tested.
  */
@@ -18,6 +18,7 @@ export type Block =
   | { type: "paragraph"; content: Inline[] }
   | { type: "heading"; level: 1 | 2 | 3; content: Inline[] }
   | { type: "list"; ordered: boolean; items: Inline[][] }
+  | { type: "quote"; content: Inline[] }
   | { type: "table"; head: Inline[][]; rows: Inline[][][] }
   | { type: "code"; text: string };
 
@@ -49,6 +50,8 @@ export function parseInline(text: string): Inline[] {
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const BULLET = /^\s*[-*•]\s+(.*)$/;
 const NUMBERED = /^\s*\d{1,3}[.)]\s+(.*)$/;
+// A ">" on its own or before a space: never ">=" or the like at the start of a line.
+const QUOTE = /^\s*>(?:\s+(.*))?$/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const TABLE_RULE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 const FENCE = /^\s*```/;
@@ -98,6 +101,13 @@ export function parseMarkdown(source: string): Block[] {
       continue;
     }
 
+    if (QUOTE.test(line)) {
+      const quoted: string[] = [];
+      while (index < lines.length && QUOTE.test(lines[index])) quoted.push((QUOTE.exec(lines[index++])?.[1] ?? "").trim());
+      blocks.push({ type: "quote", content: parseInline(quoted.filter(Boolean).join(" ")) });
+      continue;
+    }
+
     const ordered = NUMBERED.test(line);
     if (ordered || BULLET.test(line)) {
       const pattern = ordered ? NUMBERED : BULLET;
@@ -123,6 +133,7 @@ export function parseMarkdown(source: string): Block[] {
       !HEADING.test(lines[index]) &&
       !BULLET.test(lines[index]) &&
       !NUMBERED.test(lines[index]) &&
+      !QUOTE.test(lines[index]) &&
       !(TABLE_ROW.test(lines[index]) && TABLE_RULE.test(lines[index + 1] ?? ""))
     ) {
       paragraph.push(lines[index++].trim());

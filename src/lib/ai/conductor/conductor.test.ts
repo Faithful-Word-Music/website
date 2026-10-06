@@ -459,6 +459,15 @@ describe("answers as Markdown", () => {
     expect(blocks[4]).toMatchObject({ head: [[{ type: "text", text: "Song" }], [{ type: "text", text: "Key" }]], rows: [[[{ type: "text", text: "Psalm 23" }], [{ type: "text", text: "D" }]]] });
   });
 
+  it("reads a quote as one block, and leaves a comparison alone", () => {
+    expect(parseMarkdown("The principle is:\n> Favor **familiar** songs\n> while adding new ones.\n\nAfter.")).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "The principle is:" }] },
+      { type: "quote", content: [{ type: "text", text: "Favor " }, { type: "strong", text: "familiar" }, { type: "text", text: " songs while adding new ones." }] },
+      { type: "paragraph", content: [{ type: "text", text: "After." }] },
+    ]);
+    expect(parseMarkdown(">=3 verses")).toEqual([{ type: "paragraph", content: [{ type: "text", text: ">=3 verses" }] }]);
+  });
+
   it("copes with an answer still being written", () => {
     expect(parseMarkdown("**Bless")).toEqual([{ type: "paragraph", content: [{ type: "text", text: "**Bless" }] }]);
     expect(parseMarkdown("```\ncode")).toEqual([{ type: "code", text: "code" }]);

@@ -452,8 +452,6 @@ export const songListContent = {
     },
     /** {count} and {noun} are replaced at render time. */
     results: "{count} {noun}",
-    /** {count} is replaced at render time. */
-    showMore: "Show {count} more",
     /** {shown} and {total} are replaced at render time. */
     showing: "Showing {shown} of {total} songs",
     noResults: "No songs match your search.",
@@ -493,7 +491,8 @@ export const songListContent = {
     },
     results: "{count} services",
     resultsOne: "1 service",
-    showMore: "Show {count} more",
+    /** {shown} and {total} are replaced at render time. */
+    showing: "Showing {shown} of {total} services",
     noResults: "No services match.",
     insert: "Insert",
     special: "Special",

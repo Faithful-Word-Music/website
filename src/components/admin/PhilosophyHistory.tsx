@@ -10,6 +10,7 @@ import { ConductorMarkdown } from "@/components/conductor/ConductorMarkdown";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { LOG_PAGE, ShowMore, useShown } from "@/components/ui/ShowMore";
 import { Spinner } from "@/components/ui/StatusIcons";
 import { useAction } from "@/components/ui/use-action";
 import { aiContent } from "@/content/ai";
@@ -49,6 +50,8 @@ export function PhilosophyHistory({
   const [loaded, setLoaded] = useState<Record<number, Loaded>>({});
   const [confirming, setConfirming] = useState<number | null>(null);
   const { pending, result, run, stateOf } = useAction();
+  // The newest few (the one in force is first); the rest on request.
+  const { shown, more } = useShown(revisions.length, LOG_PAGE);
   const when = useMemo(() => new Map(revisions.map((revision) => [revision.id, revision.at])), [revisions]);
 
   async function show(id: number) {
@@ -68,7 +71,7 @@ export function PhilosophyHistory({
 
       <Card className="mt-5 overflow-hidden">
         <ol className="divide-y divide-line">
-          {revisions.map((revision) => {
+          {revisions.slice(0, shown).map((revision) => {
             const current = revision.id === currentId;
             const expanded = open === revision.id;
             const state = loaded[revision.id];
@@ -187,6 +190,7 @@ export function PhilosophyHistory({
           })}
         </ol>
       </Card>
+      <ShowMore shown={shown} total={revisions.length} step={LOG_PAGE.step} onMore={more} />
       <div className="mt-3">
         <ActionMessage result={result} />
       </div>

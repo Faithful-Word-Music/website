@@ -32,7 +32,7 @@ export const notificationsContent = {
     /** Read out before an unread notification's title. */
     unread: "Unread",
     important: "Important",
-    loadMore: "Load more",
+    loadMore: "Show older notifications",
     loading: "Loading…",
     unreadCount: ["{count} unread", "{count} unread"],
     allRead: "All read",

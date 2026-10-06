@@ -10,6 +10,7 @@ import { ArrowIcon, IconButton } from "@/components/admin/OptionListEditor";
 import { Pill } from "@/components/admin/StatusPill";
 import { ConductorMarkdown } from "@/components/conductor/ConductorMarkdown";
 import { copyText } from "@/components/song-list/share-actions";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -243,11 +244,10 @@ export function PhilosophyEditor({
             </Button>
           </div>
 
-          {/* The page's own bar of actions, like the planner's: Conductor's button moves up out of its way
-              (data-action-bar, globals.css) - and from lg, where that button drops back to the corner, the
-              bar stops short of it. */}
-          <div data-action-bar="" className="sticky bottom-4 z-10 mt-8 lg:mr-20">
-           <div className="rounded-card border border-line bg-surface px-4 py-3 shadow-lift sm:px-5">
+          {/* The page's own bar of actions, like the planner's - but only once there is something to save:
+              until then it is a card in the page, and nothing covers the document being read. From lg, where
+              the corner's buttons drop back beside it, the bar stops short of them. */}
+          <ActionBar stuck={dirty || pending || result !== null} className="mt-8 lg:pr-20">
             <Collapse open={dirty}>
               <div className="mb-4 max-w-xl">
                 <TextField
@@ -285,8 +285,7 @@ export function PhilosophyEditor({
                 <ActionMessage result={result} />
               </div>
             ) : null}
-           </div>
-          </div>
+          </ActionBar>
         </>
       ) : null}
 

@@ -6,8 +6,8 @@ import { KeySearch } from "@/components/song-list/KeySearch";
 import { PillSelect } from "@/components/song-list/PillSelect";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { useNow } from "@/components/song-list/use-now";
-import { buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ShowMore, useShown } from "@/components/ui/ShowMore";
 import { StatTile } from "@/components/ui/StatTile";
 import { cn } from "@/components/ui/cn";
 import { siteConfig } from "@/config/site";
@@ -56,13 +56,10 @@ export function ArchiveView({
   const [sort, setSort] = useState<ArchiveSortState>(DEFAULT_SORT);
   // Rows fade in only once the visitor starts searching or filtering.
   const [interacted, setInteracted] = useState(false);
-  // How many rows are on screen; "Show more" adds another page.
-  const [limit, setLimit] = useState(PAGE_SIZE);
-
   /** Any change to what is listed starts again from the top page. */
   function changed() {
     setInteracted(true);
-    setLimit(PAGE_SIZE);
+    reset();
   }
 
   function interact<T>(set: (value: T) => void) {
@@ -94,9 +91,9 @@ export function ArchiveView({
     );
   }
 
+  // How many rows are on screen; "Show more" adds another page.
+  const { shown: limit, more, reset } = useShown(rows.length, { initial: PAGE_SIZE, step: PAGE_SIZE });
   const shown = rows.slice(0, limit);
-  const remaining = rows.length - shown.length;
-  const nextPage = Math.min(PAGE_SIZE, remaining);
 
   const statusId = `${idPrefix}-status`;
   const resultsMessage = archive.results
@@ -216,28 +213,16 @@ export function ArchiveView({
         </Card>
       )}
 
-      {remaining > 0 ? (
-        <div className="mt-6 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setInteracted(true);
-              setLimit((current) => current + PAGE_SIZE);
-            }}
-            className={buttonClasses("secondary", "md", "px-6 shadow-card")}
-          >
-            {archive.showMore.replace("{count}", String(nextPage))}
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12">
-              <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-            </svg>
-          </button>
-          <p className="text-xs text-muted">
-            {archive.showing
-              .replace("{shown}", String(shown.length))
-              .replace("{total}", String(rows.length))}
-          </p>
-        </div>
-      ) : null}
+      <ShowMore
+        shown={limit}
+        total={rows.length}
+        step={PAGE_SIZE}
+        countLabel={archive.showing}
+        onMore={() => {
+          setInteracted(true);
+          more();
+        }}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { Notice } from "@/components/account/Notices";
 import { Pill } from "@/components/admin/StatusPill";
 import { usePlannerDraft } from "@/components/conductor/planner-draft";
 import { SongLink } from "@/components/song-list/SongLink";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -420,9 +421,7 @@ export function Workspace(props: WorkspaceProps) {
           </datalist>
 
           {editable ? (
-            // data-action-bar: Conductor's floating button moves up out of its way (globals.css).
-            <div data-action-bar="" className="sticky bottom-4 z-10 mt-6">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-card border border-line bg-surface px-4 py-3 shadow-lift sm:px-5">
+            <ActionBar className="mt-6" barClassName="flex flex-wrap items-center gap-x-4 gap-y-3">
                 {/* Its own line on a phone, so it is never squeezed behind the buttons. */}
                 <div className="min-w-0 basis-full text-sm sm:basis-auto sm:flex-1">
                   {result ? (
@@ -481,8 +480,7 @@ export function Workspace(props: WorkspaceProps) {
                     </>
                   )}
                 </div>
-              </div>
-            </div>
+            </ActionBar>
           ) : result ? (
             <div className="mt-6">
               <ActionMessage result={result} />

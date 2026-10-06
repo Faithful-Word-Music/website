@@ -726,32 +726,32 @@ html[data-conductor-resizing] body {
 }
 
 /* The button. Above the home indicator on a phone, and above a page's own
-   bar of actions (the planner's Save and Publish, marked data-action-bar) so
-   it never sits on a button. */
+   bar of actions while that is docked to the foot of the window (ActionBar,
+   which measures itself into --action-bar-clear) so it never sits on a
+   button. */
 .conductor-launcher {
   /* Clear of a phone's rounded corner (and 1.75rem in from the side, in ConductorDock). */
-  bottom: calc(1.75rem + env(safe-area-inset-bottom));
+  bottom: max(calc(1.75rem + env(safe-area-inset-bottom)), calc(var(--action-bar-clear, 0px) + 0.75rem));
 }
 
-:root:has([data-action-bar]) .conductor-launcher {
-  bottom: calc(9.75rem + env(safe-area-inset-bottom));
+/* How far the corner's buttons rise above their usual 2rem to clear that bar
+   by 0.75rem ("Back to top" reads it too, BackToTop.tsx). */
+:root {
+  --corner-lift: max(0px, calc(var(--action-bar-clear, 0px) - 1.25rem));
 }
 
 @media (width >= 40rem) {
   .conductor-launcher {
-    bottom: 2rem;
-  }
-
-  :root:has([data-action-bar]) .conductor-launcher {
-    bottom: 6rem;
+    bottom: calc(2rem + var(--corner-lift));
   }
 }
 
-/* From here the planner is two columns and its bar spans only the left one:
-   the corner is free again. */
+/* From here the planner is two columns and its bar spans only the left one,
+   and a bar the width of the page stops short of the corner (lg:pr-20): the
+   corner is free again. */
 @media (width >= 64rem) {
-  :root:has([data-action-bar]) .conductor-launcher {
-    bottom: 2rem;
+  :root {
+    --corner-lift: 0px;
   }
 }
 

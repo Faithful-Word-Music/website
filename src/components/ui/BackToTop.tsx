@@ -54,9 +54,10 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
         // vanished against the paper background.
         // Measured from the window's edge less Conductor's panel, when that is open beside the page (globals.css).
         // On a phone both floating buttons keep 1.75rem from the edges, clear of the screen's rounded corner.
-        "group fixed bottom-7 right-[calc(var(--conductor-inset)+1.75rem)] z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:bottom-8 sm:right-[calc(var(--conductor-inset)+2rem)] print:hidden",
+        // --corner-lift: above a page's own bar of actions, while that is docked to the foot of the window (globals.css).
+        "group fixed bottom-7 right-[calc(var(--conductor-inset)+1.75rem)] z-40 inline-flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-lift sm:bottom-[calc(2rem+var(--corner-lift))] sm:right-[calc(var(--conductor-inset)+2rem)] print:hidden",
         // Above Conductor's button, while that is showing in the same corner.
-        "conductor-launcher:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:conductor-launcher:bottom-[5.75rem]",
+        "conductor-launcher:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:conductor-launcher:bottom-[calc(5.75rem+var(--corner-lift))]",
         "transition-[opacity,transform,translate,scale,rotate,box-shadow,border-color,bottom] duration-300",
         "hover:-translate-y-0.5 hover:border-gold active:translate-y-0 active:scale-95",
         visible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0",
@@ -64,6 +65,8 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
         "[:root[data-share-bar]_&]:invisible",
         // ...and for Conductor's own page, where the box to type in does.
         "[:root[data-conductor-page]_&]:invisible",
+        // ...and, on a phone, for a page's own bar of actions while that is docked there (ActionBar.tsx).
+        "max-sm:[:root[data-action-bar]_&]:invisible",
         // ...and for the open mobile menu, which takes the whole screen (Header.tsx).
         "[:root[data-nav-menu]_&]:invisible",
       )}

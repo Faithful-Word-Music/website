@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { LOG_PAGE, ShowMore, useShown } from "@/components/ui/ShowMore";
 import { useNow } from "@/components/song-list/use-now";
 import { notificationsContent } from "@/content/notifications";
 import type { NotificationPage } from "@/lib/notifications/service";
@@ -22,8 +23,9 @@ import { NotificationsError, NotificationsLoading } from "./StatusLine";
 const copy = notificationsContent.list;
 
 /**
- * The Notifications page's list: everything loaded so far, "Load more" for
- * what is older, and "Mark all as read".
+ * The Notifications page's list: the newest few, more on request (first
+ * what is already loaded, then older pages from the server), and "Mark all
+ * as read".
  *
  * It shows the one shared store (notification-store.ts), so a notification
  * read here is read on the bell too. The server's first page (`initial`) is
@@ -55,6 +57,11 @@ export function NotificationHistory({
   const nextCursor = ready ? store.nextCursor : (initial?.nextCursor ?? null);
   const known = ready || initial !== null;
 
+  // The newest few, and never fewer than reach the last unread one the page opened
+  // with: "3 unread" must not be about rows that are folded away.
+  const [firstPage] = useState(() => Math.max(LOG_PAGE.initial, (initial?.items.findLastIndex((item) => item.readAt === null) ?? -1) + 1));
+  const { shown, remaining, more } = useShown(items.length, { initial: firstPage, step: LOG_PAGE.step });
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -69,7 +76,7 @@ export function NotificationHistory({
       <Card className="mt-4 overflow-hidden">
         {store.error ? <NotificationsError message={store.error} onRetry={() => void loadNotifications()} /> : null}
         {items.length > 0 ? (
-          <NotificationList items={items} now={now} />
+          <NotificationList items={items.slice(0, shown)} now={now} />
         ) : known ? (
           <NotificationsEmpty className="py-14" />
         ) : store.error ? null : (
@@ -77,19 +84,22 @@ export function NotificationHistory({
         )}
       </Card>
 
-      {nextCursor !== null ? (
-        <div className="mt-6 flex justify-center">
-          <Button
-            type="button"
-            variant="secondary"
-            state={store.loading ? "pending" : "idle"}
-            pendingLabel={copy.loading}
-            onClick={() => void loadMoreNotifications()}
-          >
-            {copy.loadMore}
-          </Button>
-        </div>
-      ) : null}
+      {remaining > 0 ? (
+        <ShowMore shown={shown} remaining={remaining} step={LOG_PAGE.step} onMore={more} />
+      ) : (
+        <ShowMore
+          shown={shown}
+          remaining={nextCursor !== null ? 1 : 0}
+          step={LOG_PAGE.step}
+          pending={store.loading}
+          label={copy.loadMore}
+          onMore={() => {
+            // Room for the page being fetched, so it shows as it arrives.
+            more();
+            void loadMoreNotifications();
+          }}
+        />
+      )}
     </div>
   );
 }

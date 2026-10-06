@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 
 import { Pill } from "@/components/admin/StatusPill";
 import { SongLink } from "@/components/song-list/SongLink";
-import { buttonClasses } from "@/components/ui/Button";
+import { ShowMore, useShown } from "@/components/ui/ShowMore";
 import { songListContent } from "@/content/song-list";
 import {
   archiveKeys,
@@ -34,12 +34,13 @@ const field =
  */
 export function ServiceArchiveView({ services }: { services: ArchivedService[] }) {
   const [filter, setFilter] = useState<ArchiveFilter>(NO_FILTER);
-  const [limit, setLimit] = useState(PAGE_SIZE);
   const keys = useMemo(() => listKeys(archiveKeys(services)), [services]);
   const matches = useMemo(() => filterArchive(services, filter), [services, filter]);
+  // Any change to what is listed starts again from the first page.
+  const { shown: limit, more, reset } = useShown(matches.length, { initial: PAGE_SIZE, step: PAGE_SIZE });
   const set = <K extends keyof ArchiveFilter>(name: K, value: ArchiveFilter[K]) => {
     setFilter((current) => ({ ...current, [name]: value }));
-    setLimit(PAGE_SIZE);
+    reset();
   };
   const filtering = JSON.stringify(filter) !== JSON.stringify(NO_FILTER);
 
@@ -91,7 +92,10 @@ export function ServiceArchiveView({ services }: { services: ArchivedService[] }
             {copy.filters.insertOnly}
           </label>
           {filtering ? (
-            <button type="button" onClick={() => setFilter(NO_FILTER)} className="text-sm text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold">
+            <button type="button" onClick={() => {
+                setFilter(NO_FILTER);
+                reset();
+              }} className="text-sm text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold">
               {copy.filters.clear}
             </button>
           ) : null}
@@ -113,13 +117,7 @@ export function ServiceArchiveView({ services }: { services: ArchivedService[] }
         </ul>
       )}
 
-      {matches.length > limit ? (
-        <div className="mt-8 text-center">
-          <button type="button" onClick={() => setLimit(limit + PAGE_SIZE)} className={buttonClasses("secondary")}>
-            {copy.showMore.replace("{count}", String(Math.min(PAGE_SIZE, matches.length - limit)))}
-          </button>
-        </div>
-      ) : null}
+      <ShowMore shown={limit} total={matches.length} step={PAGE_SIZE} countLabel={copy.showing} onMore={more} />
     </div>
   );
 }

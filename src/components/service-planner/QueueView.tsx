@@ -6,6 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 import { publishServices } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -117,9 +118,8 @@ export function QueueView({
       </section>
 
       {selected.length > 0 || result ? (
-        // data-action-bar: Conductor's floating button moves up out of its way (globals.css).
-        <div data-action-bar="" className="sticky bottom-4 z-10">
-          <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-lift">
+        // From lg the corner's buttons sit beside it, so it stops short of them.
+        <ActionBar className="lg:pr-20" barClassName="flex flex-wrap items-center gap-3">
             {selected.length > 0 ? (
               <>
                 <span className="text-sm text-ink">{copy.queue.selected.replace("{count}", String(selected.length))}</span>
@@ -142,8 +142,7 @@ export function QueueView({
               </>
             ) : null}
             <ActionMessage result={result} />
-          </div>
-        </div>
+        </ActionBar>
       ) : null}
     </div>
   );

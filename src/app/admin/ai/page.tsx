@@ -6,6 +6,7 @@ import { Pill } from "@/components/admin/StatusPill";
 import { Card } from "@/components/ui/Card";
 import { ExternalLink } from "@/components/ui/ExternalLink";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { MoreList } from "@/components/ui/ShowMore";
 import { StatTile } from "@/components/ui/StatTile";
 import { aiContent } from "@/content/ai";
 import { aiConfig } from "@/lib/ai/config";
@@ -278,9 +279,11 @@ function Usage({
       {recent.length === 0 ? (
         <p className="mt-4 text-muted">{content.recent.empty}</p>
       ) : (
-        <Card className="mt-4 overflow-hidden">
-          <ul className="divide-y divide-line">
-            {recent.map((item) => (
+        // The newest few; the rest on request.
+        <MoreList
+          cardClassName="mt-4 overflow-hidden"
+          className="divide-y divide-line"
+          rows={recent.map((item) => (
               <li key={item.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="text-ink">
@@ -315,9 +318,8 @@ function Usage({
                   )}
                 </div>
               </li>
-            ))}
-          </ul>
-        </Card>
+          ))}
+        />
       )}
 
       <p className="mt-6 text-sm text-muted">{content.environment}</p>

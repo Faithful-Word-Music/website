@@ -32,3 +32,10 @@ export const feedbackContent = {
   accountDeleted: "Account deleted.",
   roleDeleted: "Role deleted.",
 } as const;
+
+/** The end of a long list (src/components/ui/ShowMore.tsx). {count}, {shown} and {total} are replaced at render time. */
+export const listContent = {
+  showMore: "Show {count} more",
+  showing: "Showing {shown} of {total}",
+  loading: "Loading…",
+} as const;

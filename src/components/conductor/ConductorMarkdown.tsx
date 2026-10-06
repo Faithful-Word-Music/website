@@ -54,6 +54,12 @@ export const ConductorMarkdown = memo(function ConductorMarkdown({ text }: { tex
               </List>
             );
           }
+          case "quote":
+            return (
+              <blockquote key={index} className="border-l-2 border-gold pl-4 text-ink">
+                <Inlines content={block.content} />
+              </blockquote>
+            );
           case "table":
             return (
               // Scrolls on its own, so a wide table never widens the panel.
