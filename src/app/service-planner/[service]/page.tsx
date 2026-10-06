@@ -52,6 +52,7 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
             revision={plan?.revision ?? null}
             deletable={plan !== null && plan.kind === "special" && plan.published === null}
             locked={data.locked}
+            canUseAi={viewer.can("use_ai")}
             candidates={data.candidates}
             recentPast={data.recentPast}
             planned={data.planned}

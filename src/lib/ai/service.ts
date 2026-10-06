@@ -2,7 +2,8 @@ import "server-only";
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { embedMany, gateway, generateText, isStepCount, streamText, type ToolSet } from "ai";
+import { embedMany, gateway, generateText, isStepCount, Output, streamText, type ToolSet } from "ai";
+import type { ZodType } from "zod";
 
 import { aiContent } from "@/content/ai";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
@@ -44,9 +45,12 @@ import {
  * The key is read by the AI SDK from the environment; it never passes
  * through this code. See AI.md for the whole system.
  *
- * Three ways to ask, sharing all of the above:
+ * Four ways to ask, sharing all of the above:
  *
  *   generateAiText()  one prompt, one answer, returned whole
+ *   generateAiObject() one prompt, answered as data in a given shape (a zod
+ *                     schema) rather than prose - what the Service Planner's
+ *                     Generate with AI is built on
  *   streamAiText()    a conversation, optionally with tools the model may
  *                     call, answered as a stream of the site's own events
  *                     (src/lib/ai/stream.ts) - what Conductor uses
@@ -186,6 +190,123 @@ export async function generateAiText(request: AiTextRequest): Promise<AiTextResu
     });
     return failure(failed.code);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Structured answers
+// ---------------------------------------------------------------------------
+
+export interface AiObjectRequest<T> extends AiTextRequest {
+  /** The shape the answer must have. The model is held to it, and the answer is checked against it. */
+  schema: ZodType<T>;
+  /** Ends the request when the person stops it or leaves. */
+  abortSignal?: AbortSignal;
+}
+
+export type AiObjectResult<T> =
+  /** The answer, already checked against the schema. */
+  | { ok: true; object: T; model: string }
+  | { ok: false; code: AiErrorCode; message: string };
+
+/**
+ * Asks the model for data in a given shape instead of prose. An answer that
+ * does not fit the schema is a failure ("invalid-response"), never a guess at
+ * what was meant. Never throws.
+ *
+ * Asked for while another request is running (withAiOperation) it is one more
+ * call beneath THAT request's row and logs none of its own - so a plan that
+ * took an embedding, an answer and a second try is still one request. There a
+ * failure is only returned: whoever is running the request decides whether it
+ * failed as a whole (failAiOperation). Asked for by itself it is logged as its
+ * own request.
+ */
+export async function generateAiObject<T>(request: AiObjectRequest<T>): Promise<AiObjectResult<T>> {
+  const { viewer, feature } = request;
+  const refuse = (code: AiErrorCode): AiObjectResult<T> => ({ ok: false, code, message: aiContent.errors[code] });
+
+  if (!viewer.can("use_ai")) {
+    console.warn(`[ai] Refused ${feature} for ${viewer.userId}: no use_ai permission.`);
+    return refuse("forbidden");
+  }
+
+  const config = aiConfig();
+  const parent = operations.getStore() ?? null;
+  const entry = { env: viewer.env, feature, action: request.action ?? null, model: config.model, userId: viewer.userId };
+
+  if (!config.configured) {
+    console.error("[ai] AI is not configured: neither AI_GATEWAY_API_KEY nor a Vercel deployment token is set.");
+    if (!parent) {
+      await recordAiUsage({ ...entry, status: "error", errorCode: "not-configured", tokens: NO_TOKEN_USAGE, costUsd: null, durationMs: null });
+    }
+    return refuse("not-configured");
+  }
+
+  const started = performance.now();
+  try {
+    const result = await generateText({
+      model: config.model,
+      instructions: request.instructions,
+      prompt: request.prompt,
+      output: Output.object({ schema: request.schema }),
+      maxOutputTokens: request.maxOutputTokens,
+      reasoning: request.reasoning,
+      timeout: AI_TIMEOUT_MS,
+      maxRetries: 1,
+      abortSignal: request.abortSignal,
+      providerOptions: {
+        gateway: { user: viewer.userId, tags: [`feature:${feature}`, `env:${viewer.env}`] },
+      },
+    });
+    const model = result.response?.modelId || config.model;
+    const call: AiCallUsage = {
+      kind: "language",
+      model: config.model,
+      responseModel: model,
+      tokens: readTokenUsage(result.usage),
+      ...readGatewayMetadata(result.providerMetadata),
+    };
+
+    if (parent) parent.calls.push(call);
+    else {
+      await recordAiUsage({
+        ...entry,
+        responseModel: model,
+        status: "success",
+        ...sumCalls([call]),
+        durationMs: performance.now() - started,
+        finishReason: result.finishReason,
+        calls: [call],
+      });
+    }
+    return { ok: true, object: result.output as T, model };
+  } catch (error) {
+    const failed = classifyAiError(error);
+    console.error(`[ai] ${feature} failed (${failed.code}): ${failed.detail}`);
+    if (!parent) {
+      await recordAiUsage({
+        ...entry,
+        status: "error",
+        errorCode: failed.code,
+        errorDetail: failed.detail,
+        tokens: NO_TOKEN_USAGE,
+        costUsd: null,
+        durationMs: performance.now() - started,
+        generationId: failed.generationId,
+      });
+    }
+    return refuse(failed.code);
+  }
+}
+
+/**
+ * Says that the request in progress (withAiOperation) failed as a whole, and
+ * why - for work that only knows at the end, such as a plan the model answered
+ * but the site could not use. `detail` is logged, never shown: no prompt, no
+ * answer. Does nothing outside a request.
+ */
+export function failAiOperation(code: AiErrorCode, detail: string): void {
+  const operation = operations.getStore();
+  if (operation) operation.failed ??= { code, detail, generationId: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -543,10 +664,11 @@ export async function embedAiValues(request: AiEmbeddingRequest): Promise<AiEmbe
 }
 
 /**
- * Runs `work` as ONE logged request: every AI call it makes (embedAiValues)
- * is kept beneath a single row of ai_usage, written when it finishes. For
- * work that is only its calls - a batch of the library index. Work that makes
- * no call at all logs nothing, because nothing was asked of the Gateway.
+ * Runs `work` as ONE logged request: every AI call it makes (embedAiValues
+ * and generateAiObject) is kept beneath a single row of ai_usage, written when
+ * it finishes. For work that is only its calls - a batch of the library index,
+ * a generated service plan. Work that makes no call at all logs nothing,
+ * because nothing was asked of the Gateway.
  *
  * Whatever `work` returns, or throws, is passed straight on.
  */
@@ -559,11 +681,14 @@ export async function withAiOperation<T>(
   const started = performance.now();
   const log = async (failed: ReturnType<typeof classifyAiError> | null) => {
     if (operation.calls.length === 0 && !failed) return;
+    // A request that asked the model something is the model's; one that only embedded is the embedding model's.
+    const asked = operation.calls.find((call) => call.kind === "language") ?? operation.calls[0];
     await recordAiUsage({
       env: viewer.env,
       feature,
       action: request.action ?? null,
-      model: operation.calls[0]?.model ?? aiConfig().embeddingModel,
+      model: asked?.model ?? aiConfig().embeddingModel,
+      responseModel: asked?.responseModel ?? null,
       userId: viewer.userId,
       status: failed ? "error" : "success",
       errorCode: failed?.code ?? null,

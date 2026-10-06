@@ -74,6 +74,8 @@ export const config = {
     "/conductor/:path*",
     // Conductor's questions: answered only for a signed-in person holding use_ai.
     "/api/conductor",
+    // Generate with AI: only for a signed-in person holding manage_service_plans and use_ai.
+    "/api/service-planner/:path*",
     "/availability/:path*",
     "/profile/:path*",
     "/account/:path*",

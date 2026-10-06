@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
     // Conductor reads the Music Director's planning philosophy from disk
     // (src/lib/ai/planning/load.ts). Any other route that reads it is listed here too.
     "/api/conductor": ["./src/content/music-planning-philosophy.md"],
+    // Generate with AI puts the whole of it in its prompt (src/lib/ai/service-planner).
+    "/api/service-planner/ai": ["./src/content/music-planning-philosophy.md"],
   },
 
   /**

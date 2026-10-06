@@ -1,6 +1,7 @@
 import "server-only";
 
 import { aiConfig } from "@/lib/ai/config";
+import type { AiFeature } from "@/lib/ai/features";
 import { embedAiValues } from "@/lib/ai/service";
 import type { Viewer } from "@/lib/auth/session";
 
@@ -55,10 +56,16 @@ export type ThemeSearch =
 
 /**
  * Songs by what they are about. One call to the embedding model, which joins
- * the usage row of the Conductor question that asked (service.ts).
+ * the usage row of the request that asked (service.ts): a Conductor question
+ * unless `as` names another feature.
  */
-export async function searchByTheme(viewer: Viewer, query: string, signal?: AbortSignal): Promise<ThemeSearch> {
-  const embedded = await embedAiValues({ viewer, feature: "assistant", action: "answer", values: [query], abortSignal: signal });
+export async function searchByTheme(
+  viewer: Viewer,
+  query: string,
+  signal?: AbortSignal,
+  as: { feature: AiFeature; action: string } = { feature: "assistant", action: "answer" },
+): Promise<ThemeSearch> {
+  const embedded = await embedAiValues({ viewer, ...as, values: [query], abortSignal: signal });
   if (!embedded.ok || !embedded.embeddings[0]) return { ok: false, reason: "unavailable" };
 
   const { songs, sections } = await nearestTo(viewer.env, embedded.model, embedded.embeddings[0], NEAREST_ROWS);

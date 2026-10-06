@@ -32,6 +32,7 @@ import {
   weekStartOf,
   type InsertWeek,
   type PlannerService,
+  type StoredPlan,
 } from "./model";
 import { monthAfter, monthEnd, planningMonths } from "./planning-window";
 import { buildQueue, plannerServices, type PlannerQueue } from "./queue";
@@ -105,8 +106,31 @@ export interface WorkspaceData {
   updatedBy: string | null;
 }
 
-/** Everything the planning workspace needs for one service; null when no service is held then. */
-export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<WorkspaceData | null> {
+/**
+ * One service as the planner knows it, with everything a song is chosen by:
+ * the week's insert, every song that could be chosen, the history, and what
+ * else is planned. The workspace is built on it, and so is Generate with AI
+ * (src/lib/ai/service-planner), which must reason from the same facts the
+ * person planning sees.
+ */
+export interface ServiceContext {
+  now: number;
+  service: PlannerService;
+  week: InsertWeek | null;
+  locked: boolean;
+  candidates: CandidateSong[];
+  /** Every service that has happened. */
+  past: DatedService[];
+  /** The stored services around it, cancelled ones included. */
+  plans: StoredPlan[];
+  /** Other services still to come (drafts included). */
+  planned: Array<{ startsAt: string; songs: Array<{ title: string }> }>;
+  sheetMusicChecked: boolean;
+  availability: ServiceAvailability | null;
+}
+
+/** The service at `anchor` and what it is planned from; null when no service is held then. */
+export async function loadServiceContext(viewer: Viewer, anchor: string): Promise<ServiceContext | null> {
   const parsed = parseAnchor(anchor);
   if (!parsed) return null;
   const { date, slot } = parsed;
@@ -150,6 +174,27 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
     capo,
   });
 
+  return {
+    now,
+    service,
+    week,
+    locked: isLocked(service.startsAt, now),
+    candidates,
+    past,
+    plans,
+    planned,
+    sheetMusicChecked: index.ok,
+    availability: availability?.summary ?? null,
+  };
+}
+
+/** Everything the planning workspace needs for one service; null when no service is held then. */
+export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<WorkspaceData | null> {
+  const context = await loadServiceContext(viewer, anchor);
+  if (!context) return null;
+  const { now, service, week, candidates, past, planned } = context;
+  const plan = service.plan;
+
   const events = plan ? await listPlanEvents(viewer.env, plan.id) : [];
   const names = await namesFor([
     ...events.map((event) => event.actor),
@@ -163,14 +208,14 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
     now,
     service,
     week,
-    locked: isLocked(service.startsAt, now),
+    locked: context.locked,
     candidates,
     recentPast: past.filter(
       (item) => Date.parse(item.startsAt) < start && Date.parse(item.startsAt) > start - PAIR_LOOKBACK_DAYS * 86_400_000,
     ),
     planned,
-    sheetMusicChecked: index.ok,
-    availability: availability?.summary ?? null,
+    sheetMusicChecked: context.sheetMusicChecked,
+    availability: context.availability,
     events: events.map((event) => ({ ...event, actorName: event.actor ? (names.get(event.actor) ?? null) : null })),
     createdBy: plan?.created.by ? (names.get(plan.created.by) ?? null) : null,
     publishedBy: plan?.published?.by ? (names.get(plan.published.by) ?? null) : null,

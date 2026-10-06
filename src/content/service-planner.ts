@@ -163,6 +163,63 @@ export const servicePlannerContent = {
     created: "Song added.",
   },
 
+  /**
+   * Generate with AI and Suggest with AI (src/lib/ai/service-planner). AI only
+   * ever changes the songs on the page; saving and publishing stay with the
+   * person.
+   */
+  ai: {
+    generate: "Generate with AI",
+    title: "Generate with AI",
+    lead: "AI suggests songs for this service from the planning philosophy, the song history and the lyrics. It changes only what is on this page: nothing is saved or published until you do it.",
+    kept: ["{count} locked song stays exactly as it is.", "{count} locked songs stay exactly as they are."],
+    open: ["AI may fill or change {count} place.", "AI may fill or change {count} places."],
+    /** The insert is unlocked and nothing is typed in the instructions. */
+    insertHeld: "The insert is unlocked, but AI keeps it where it is unless your instructions ask for this service to go without it.",
+    nothingOpen: "Every song is locked, so there is nothing for AI to change. Unlock a song, or add a place.",
+    instructions: "Additional instructions (optional)",
+    instructionsHint: "Anything particular about this service. Locked songs stay, whatever is written here.",
+    instructionsPlaceholder: "e.g. Keep this service especially familiar.",
+    run: "Generate",
+    pending: "Planning…",
+    done: "Planned",
+    cancel: "Cancel",
+    /** After a generation, above the songs. */
+    applied: ["AI changed {count} place. Look it over, then save.", "AI changed {count} places. Look them over, then save."],
+    noChange: "AI would keep this service as it is.",
+    undo: "Undo",
+    dismiss: "Dismiss",
+    /** Added when the library's lyrics have not been indexed. */
+    noLyrics: "The lyrics are not indexed yet, so this was planned from the song history alone.",
+    lock: {
+      locked: "Locked - AI will keep this song here",
+      unlocked: "Unlocked - AI may change this song",
+    },
+    /** In the song picker. */
+    suggest: {
+      button: "Suggest with AI",
+      again: "Suggest again",
+      pending: "Thinking…",
+      done: "Suggested",
+      heading: "Suggested by AI",
+      lockedHint: "This song is locked. Unlock it to ask AI for suggestions.",
+    },
+    errors: {
+      signedOut: "Your session has ended. Please log in again.",
+      forbidden: "You do not have permission to plan with AI.",
+      invalid: "Something about that was not valid.",
+      cancelled: "This service is cancelled. Restore it first.",
+      targetLocked: "This song is locked. Unlock it to ask AI for suggestions.",
+      noPhilosophy: "The planning philosophy could not be read, so AI cannot plan just now.",
+      noCandidates: "There are not enough songs to choose from.",
+      christmasShort:
+        "This service is in the Christmas season, and the site cannot tell enough songs to be Christmas songs to fill it. Lock what you have chosen, or choose the rest by hand.",
+      hourly: "That is a lot of AI planning for one hour. Please try again a little later.",
+      unusable: "AI's answer could not be used, so nothing was changed. Please try again.",
+      unavailable: "The planner's data could not be read just now. Nothing was changed.",
+    },
+  },
+
   /** The side panel's checks. */
   checks: {
     title: "Checks",

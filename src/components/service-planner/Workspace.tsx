@@ -19,7 +19,9 @@ import { useFlip } from "@/components/ui/use-flip";
 import { useUnsavedGuard } from "@/components/ui/use-unsaved-guard";
 import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
+import { isAiLocked, lockedPlaces, locksAfterGeneration, toggleAiLock, type LockChoices } from "@/lib/ai/service-planner/locks";
 import type { ActionResult } from "@/lib/auth/session";
+import { plural } from "@/lib/plural";
 import { churchTimeOf, progressLabel, serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
 import {
   candidateSheetMusicCheck,
@@ -33,12 +35,18 @@ import type { PlanEvent } from "@/lib/service-planner/store";
 import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time";
 import type { DatedService } from "@/types/song-list";
 
+import { AiGenerate, SparkleIcon, type GeneratedPlan } from "./AiGenerate";
+import { requestPlanAi } from "./ai-request";
 import { Disclosure, Panel } from "./Panel";
 import { SongPicker, type ChosenSong } from "./SongPicker";
 
 const copy = servicePlannerContent;
 const ws = copy.workspace;
+const ai = copy.ai;
 const words = feedbackContent;
+
+/** A button that reads as a link, inside a notice. */
+const NOTICE_LINK = "font-medium text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark";
 
 /** The keys offered as you type; any other key ("C Dorian") can still be typed. */
 const KEYS = ["C", "Db", "D", "Eb", "E", "F", "F#", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -51,6 +59,8 @@ export interface WorkspaceProps {
   /** Stored, and never published - can be deleted outright (special services only). */
   deletable: boolean;
   locked: boolean;
+  /** Holds use_ai: Generate with AI, Suggest with AI and the songs' AI locks are shown. */
+  canUseAi: boolean;
   candidates: CandidateSong[];
   recentPast: DatedService[];
   planned: Array<{ startsAt: string; songs: Array<{ title: string }> }>;
@@ -75,6 +85,19 @@ export function Workspace(props: WorkspaceProps) {
   const [conflict, setConflict] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
   useFlip(listRef, slots);
+
+  // AI: which songs it must leave alone, what was last asked of it, and what it last did.
+  // None of it is part of the plan: it is never saved, and does not make the service "unsaved".
+  const [locks, setLocks] = useState<LockChoices>({});
+  const [generating, setGenerating] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [aiResult, setAiResult] = useState<{
+    summary: string;
+    changed: number;
+    lyricsUsed: boolean;
+    /** The songs and locks as they were, for Undo. */
+    before: { slots: PlanSlots; locks: LockChoices };
+  } | null>(null);
 
   const status = service.status;
   const editable = !locked && status !== "cancelled";
@@ -102,6 +125,8 @@ export function Workspace(props: WorkspaceProps) {
   const update = (next: PlanSlots) => {
     clear();
     setSlots(next);
+    // Edited by hand since: undoing AI's plan would now throw that edit away.
+    setAiResult(null);
   };
   const move = (index: number, by: -1 | 1) => {
     const target = index + by;
@@ -122,6 +147,27 @@ export function Workspace(props: WorkspaceProps) {
     const song = slots[index];
     if (!song) return;
     update(slots.map((item, at) => (at === index ? { ...song, key: key.trim() === "" ? null : key } : item)));
+  };
+
+  // --- AI ------------------------------------------------------------------
+
+  const aiAvailable = props.canUseAi && editable;
+  const lockedNow = useMemo(() => lockedPlaces(slots, locks), [slots, locks]);
+
+  /** AI's plan goes into the editor like any other edit: unsaved until it is saved. */
+  const applyGenerated = (plan: GeneratedPlan) => {
+    clear();
+    setAiResult({ summary: plan.summary, changed: plan.changed.length, lyricsUsed: plan.lyricsUsed, before: { slots, locks } });
+    setSlots(plan.slots);
+    setLocks(locksAfterGeneration(locks, plan.slots, plan.changed));
+    setGenerating(false);
+  };
+  const undoGenerated = () => {
+    if (!aiResult) return;
+    clear();
+    setSlots(aiResult.before.slots);
+    setLocks(aiResult.before.locks);
+    setAiResult(null);
   };
 
   // --- saving --------------------------------------------------------------
@@ -187,13 +233,25 @@ export function Workspace(props: WorkspaceProps) {
           {conflict ? (
             <Notice tone="warning" className="mb-6">
               {ws.conflict}{" "}
-              <button
-                type="button"
-                className="font-medium text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark"
-                onClick={() => router.refresh()}
-              >
+              <button type="button" className={NOTICE_LINK} onClick={() => router.refresh()}>
                 {ws.reload}
               </button>
+            </Notice>
+          ) : null}
+          {aiResult ? (
+            <Notice tone="success" title={aiResult.changed === 0 ? ai.noChange : plural(ai.applied, aiResult.changed)} className="mb-6">
+              {aiResult.summary ? <p>{aiResult.summary}</p> : null}
+              {aiResult.lyricsUsed ? null : <p className="mt-1">{ai.noLyrics}</p>}
+              <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+                {aiResult.changed > 0 ? (
+                  <button type="button" className={NOTICE_LINK} onClick={undoGenerated}>
+                    {ai.undo}
+                  </button>
+                ) : null}
+                <button type="button" className={NOTICE_LINK} onClick={() => setAiResult(null)}>
+                  {ai.dismiss}
+                </button>
+              </p>
             </Notice>
           ) : null}
 
@@ -212,12 +270,30 @@ export function Workspace(props: WorkspaceProps) {
                   // under its title, so the title keeps the width; from `sm`
                   // it is all one line.
                   className={cn(
-                    "relative grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2.5 sm:flex sm:gap-4 sm:px-5",
+                    "relative grid items-center gap-x-2 gap-y-1 px-3 py-2.5 sm:flex sm:gap-4 sm:px-5",
+                    // With AI, a column before the numbers holds each song's lock.
+                    aiAvailable ? "grid-cols-[2.25rem_1.5rem_minmax(0,1fr)_auto] sm:pl-3" : "grid-cols-[1.5rem_minmax(0,1fr)_auto]",
                     song && isInsert(song) && "bg-paper/40",
                   )}
                 >
                   {song && isInsert(song) ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
-                  <span className="tnum w-6 shrink-0 text-center text-sm text-muted">{index + 1}</span>
+                  {/* Before everything else in the row, apart from the buttons that edit: a lock says what AI may do, and changes nothing itself. */}
+                  {aiAvailable ? (
+                    song ? (
+                      <IconButton
+                        label={lockedNow[index] ? ai.lock.locked : ai.lock.unlocked}
+                        pressed={lockedNow[index]}
+                        onClick={() => setLocks((current) => toggleAiLock(song, current))}
+                      >
+                        <path d="M4 7.5h8v5.5H4z" />
+                        <path d={lockedNow[index] ? "M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2" : "M5.5 7.5V5.5a2.5 2.5 0 0 1 4.9-.7"} />
+                      </IconButton>
+                    ) : (
+                      // An empty place has nothing to lock; the numbers still line up.
+                      <span aria-hidden="true" className="size-9 shrink-0" />
+                    )
+                  ) : null}
+                  <span className={cn("tnum w-6 shrink-0 text-center text-sm text-muted", aiAvailable && "sm:-ml-2")}>{index + 1}</span>
 
                   {song ? (
                     <div className="min-w-0 flex-1 py-1">
@@ -243,8 +319,11 @@ export function Workspace(props: WorkspaceProps) {
                     >
                       {/* In the number column, so "Choose a song" lines up with the titles. */}
                       <span aria-hidden="true" className="flex w-9 shrink-0 justify-end">
-                        <span className="grid size-6 place-items-center rounded-full border border-dashed border-staff text-sm leading-none transition-colors group-hover:border-gold group-hover:text-gold-dark">
-                          +
+                        <span className="grid size-6 place-items-center rounded-full border border-dashed border-staff transition-colors group-hover:border-gold group-hover:text-gold-dark">
+                          {/* Drawn, not typed: a "+" character sits where its font puts it, never quite in the middle. */}
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+                            <path d="M5 1.5v7M1.5 5h7" />
+                          </svg>
                         </span>
                       </span>
                       {ws.chooseSong}
@@ -257,7 +336,8 @@ export function Workspace(props: WorkspaceProps) {
                     className={cn(
                       "flex items-center gap-2 sm:contents",
                       // Under the title, from where the title starts.
-                      song && "col-span-2 col-start-2 justify-between pl-[2.875rem]",
+                      // (With the lock's column a phone has no room for that: the key joins its buttons on the right, as one group.)
+                      song && (aiAvailable ? "col-span-3 col-start-2 justify-end" : "col-span-2 col-start-2 justify-between pl-[2.875rem]"),
                     )}
                   >
                     {song ? (
@@ -309,7 +389,7 @@ export function Workspace(props: WorkspaceProps) {
             </ol>
 
             {editable ? (
-              <div className="border-t border-line px-5 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line px-5 py-3 sm:px-6">
                 <button
                   type="button"
                   onClick={() => update([...slots, null])}
@@ -318,6 +398,12 @@ export function Workspace(props: WorkspaceProps) {
                 >
                   <span aria-hidden="true">+</span> {ws.addPlace}
                 </button>
+                {aiAvailable ? (
+                  <Button type="button" variant="secondary" className="min-h-9 px-4" disabled={locking} onClick={() => setGenerating(true)}>
+                    <SparkleIcon className="text-gold-dark" />
+                    {ai.generate}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </Card>
@@ -541,6 +627,31 @@ export function Workspace(props: WorkspaceProps) {
           title={picker.replacing ? copy.picker.replaceTitle.replace("{title}", picker.replacing) : copy.picker.title}
           onChoose={(song) => choose(picker.index, song)}
           onClose={() => setPicker(null)}
+          ai={
+            aiAvailable
+              ? {
+                  locked: isAiLocked(slots[picker.index] ?? null, locks),
+                  suggest: (signal) =>
+                    requestPlanAi(
+                      { mode: "replace", anchor: service.anchor, revision: props.revision, slots, locked: lockedNow, target: picker.index },
+                      signal,
+                    ),
+                }
+              : undefined
+          }
+        />
+      ) : null}
+
+      {generating ? (
+        <AiGenerate
+          anchor={service.anchor}
+          revision={props.revision}
+          slots={slots}
+          locked={lockedNow}
+          instruction={instruction}
+          onInstruction={setInstruction}
+          onGenerated={applyGenerated}
+          onClose={() => setGenerating(false)}
         />
       ) : null}
     </>
@@ -561,11 +672,14 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 function IconButton({
   label,
   disabled,
+  pressed,
   onClick,
   children,
 }: {
   label: string;
   disabled?: boolean;
+  /** For a button that is on or off (a lock): said to a screen reader, and shown in gold when on. */
+  pressed?: boolean;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -573,10 +687,14 @@ function IconButton({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={pressed}
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex size-9 items-center justify-center rounded-full text-muted transition-colors not-disabled:hover:bg-paper not-disabled:hover:text-ink disabled:opacity-25"
+      className={cn(
+        "inline-flex size-9 shrink-0 items-center justify-center rounded-full transition-colors not-disabled:hover:bg-paper not-disabled:hover:text-ink disabled:opacity-25",
+        pressed ? "text-gold-dark" : "text-muted",
+      )}
     >
       <svg
         aria-hidden="true"

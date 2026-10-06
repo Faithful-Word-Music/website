@@ -498,6 +498,35 @@ export async function getSongSections(env: ClerkEnv, songId: string): Promise<Ly
   )) as LyricSection[];
 }
 
+/**
+ * How each of the given songs begins: the first `chars` characters of its
+ * lyrics, on one line. Enough to tell what a song is about without sending
+ * the whole of it. Songs without indexed lyrics are left out.
+ */
+export async function listSongOpenings(env: ClerkEnv, songIds: readonly string[], chars: number): Promise<Map<string, string>> {
+  if (songIds.length === 0) return new Map();
+  const sql = await librarySql();
+  const rows = (await sql.query(
+    `SELECT song_id, left(regexp_replace(lyrics_text, '\\s+', ' ', 'g'), $3) AS opening
+       FROM library_songs
+      WHERE clerk_env = $1 AND status = 'indexed' AND lyrics_text IS NOT NULL AND song_id = ANY($2::text[])`,
+    [env, [...songIds], chars],
+  )) as Array<{ song_id: string; opening: string }>;
+  return new Map(rows.map((row) => [row.song_id, row.opening.trim()]));
+}
+
+/** The indexed songs whose lyrics contain any of these whole words (folded, as searchText writes them). */
+export async function songsWithAnyWord(env: ClerkEnv, words: readonly string[]): Promise<string[]> {
+  if (words.length === 0) return [];
+  const sql = await librarySql();
+  const rows = (await sql.query(
+    `SELECT song_id FROM library_songs
+      WHERE clerk_env = $1 AND status = 'indexed' AND string_to_array(search_text, ' ') && $2::text[]`,
+    [env, [...words]],
+  )) as Array<{ song_id: string }>;
+  return rows.map((row) => row.song_id);
+}
+
 /** A section found by a search, with the song it is in. */
 export interface SectionHit {
   song: LibrarySong;

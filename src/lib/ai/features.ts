@@ -3,9 +3,8 @@
  * the usage log (src/lib/ai/store.ts) keeps it - so cost can be told apart by
  * feature. A new feature adds its entry here before it makes a request.
  *
- * Only `connection_test` makes requests so far (Admin -> AI). The others are
- * the features planned for later phases, listed so their usage is reported
- * under one stable key from their first request. See AI.md.
+ * Each key is stable from a feature's first request, so its usage is always
+ * reported under one name. See AI.md.
  *
  * Pure - no server-only import - so pages, forms and tests can share it.
  */

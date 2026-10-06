@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { createSong } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
@@ -12,10 +12,14 @@ import { useAction } from "@/components/ui/use-action";
 import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
 import { siteConfig } from "@/config/site";
+import type { SongSuggestion } from "@/lib/ai/service-planner/protocol";
 import { inChristmasSeason } from "@/lib/church-calendar";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
 import { formatAgo, formatShortDate } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
+
+import { SparkleIcon } from "./AiGenerate";
+import type { PlanAiOutcome } from "./ai-request";
 
 const copy = servicePlannerContent;
 const LIMIT = 60;
@@ -65,6 +69,7 @@ export function SongPicker({
   title,
   onChoose,
   onClose,
+  ai,
 }: {
   candidates: CandidateSong[];
   serviceStartsAt: string;
@@ -72,6 +77,8 @@ export function SongPicker({
   title: string;
   onChoose: (song: ChosenSong) => void;
   onClose: () => void;
+  /** Suggest with AI, where the picker is choosing for a place in a service and the person may use AI. */
+  ai?: SuggestWithAi;
 }) {
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
@@ -177,6 +184,8 @@ export function SongPicker({
             />
           </div>
 
+          {ai ? <AiSuggestions ai={ai} serviceStartsAt={serviceStartsAt} onChoose={onChoose} /> : null}
+
           {results.length === 0 ? (
             <p className="mt-3 text-sm text-muted">{copy.picker.noResults.replace("{query}", query.trim())}</p>
           ) : (
@@ -246,6 +255,99 @@ export function SongPicker({
         </div>
       )}
     </Modal>
+  );
+}
+
+export interface SuggestWithAi {
+  /** The song in this place is AI-locked: nothing is suggested until it is unlocked. */
+  locked: boolean;
+  suggest: (signal: AbortSignal) => Promise<PlanAiOutcome<"replace">>;
+}
+
+/**
+ * Suggest with AI: a few songs for this place, chosen from the rest of the
+ * service as it stands, the planning philosophy and the history. A suggestion
+ * is picked like any other song in the list; nothing is put in until it is.
+ */
+function AiSuggestions({
+  ai,
+  serviceStartsAt,
+  onChoose,
+}: {
+  ai: SuggestWithAi;
+  serviceStartsAt: string;
+  onChoose: (song: ChosenSong) => void;
+}) {
+  const words = copy.ai.suggest;
+  const { result, run, stateOf } = useAction();
+  const [suggestions, setSuggestions] = useState<SongSuggestion[] | null>(null);
+  const request = useRef<AbortController | null>(null);
+  // Leaving the picker stops the request.
+  const stop = useCallback(() => request.current?.abort(), []);
+  useEffect(() => stop, [stop]);
+
+  if (ai.locked) return <p className="mt-1 text-xs text-muted">{words.lockedHint}</p>;
+
+  const suggest = () => {
+    const controller = new AbortController();
+    request.current = controller;
+    void run(() => ai.suggest(controller.signal), {
+      refresh: false,
+      onOk: (outcome) => {
+        if (outcome.ok) setSuggestions(outcome.suggestions);
+      },
+    });
+  };
+
+  return (
+    <div className="mt-1">
+      <Button
+        type="button"
+        variant="secondary"
+        className="min-h-9 w-full px-4"
+        state={stateOf()}
+        pendingLabel={words.pending}
+        doneLabel={words.done}
+        onClick={suggest}
+      >
+        <SparkleIcon className="text-gold-dark" />
+        {suggestions ? words.again : words.button}
+      </Button>
+      {result && !result.ok ? (
+        <div className="mt-2">
+          <ActionMessage result={result} />
+        </div>
+      ) : null}
+
+      {suggestions ? (
+        <section aria-label={words.heading} className="-mx-2 mt-3 border-b border-line pb-2">
+          <p className="px-3 text-xs font-semibold uppercase tracking-[0.14em] text-gold-dark">{words.heading}</p>
+          <ul className="mt-1">
+            {suggestions.map((song) => (
+              <li key={song.title}>
+                <button
+                  type="button"
+                  onClick={() => onChoose({ title: song.title, number: song.number, key: song.key })}
+                  className="flex w-full flex-col gap-1 rounded-lg px-3 py-3 text-left transition-colors hover:bg-gold/5"
+                >
+                  <span className="flex flex-wrap items-baseline gap-2">
+                    {song.number ? <span className="text-sm tabular-nums text-muted">{song.number}</span> : null}
+                    <span className="font-medium text-ink">{song.title}</span>
+                    {song.key ? <span className="text-sm text-muted">· {song.key}</span> : null}
+                  </span>
+                  {song.reason ? <span className="text-sm text-ink-soft">{song.reason}</span> : null}
+                  <span className="text-xs text-muted">
+                    {song.lastSung
+                      ? copy.picker.lastSung.replace("{ago}", formatAgo(Date.parse(song.lastSung), Date.parse(serviceStartsAt)))
+                      : copy.picker.neverSung}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
