@@ -281,8 +281,12 @@ export interface NotifyInput {
   except?: readonly string[];
   /** What it is about, for later grouping and look-up. Never used to decide access. */
   entity?: { type: string; id: string } | null;
-  /** Structured context kept with the event. Never sent to the browser. */
-  payload?: Record<string, unknown>;
+  /**
+   * Structured context kept with the event. Never sent to the browser. A
+   * function is given how many people were told, for an event whose record
+   * should say so (an announcement's send history).
+   */
+  payload?: Record<string, unknown> | ((told: { recipients: number }) => Record<string, unknown>);
   /**
    * What to show instead when this replaces an unread notification about the
    * same thing (an event that folds: catalog.ts) - "Several changes were
@@ -295,6 +299,56 @@ export interface NotifyInput {
 export type NotifyResult =
   | { ok: true; eventId: number; recipients: number }
   | { ok: false; problem: "invalid" | "unknown-category" };
+
+export interface PlannedRecipient {
+  userId: string;
+  /** Whether it shows in their bell and history. */
+  inApp: boolean;
+  push: boolean;
+}
+
+export type RecipientPlan =
+  | {
+      ok: true;
+      category: NotificationCategory;
+      /** Everyone in the audience, whether or not they are told. */
+      matched: string[];
+      /** Those told: at least one delivering channel is on for them. */
+      recipients: PlannedRecipient[];
+    }
+  | { ok: false; problem: "unknown-category" };
+
+/**
+ * Who a notification under this category would reach, and how: the audience
+ * as people, then each channel's effective setting for each of them. notify()
+ * decides by this and by nothing else, and so does anything that shows who
+ * WOULD be told before sending (the announcement composer's preview) - the
+ * two can never disagree about the rule.
+ */
+export async function planRecipients(
+  input: { audience: Audience; category: string; except?: readonly string[] },
+  deps: NotificationDeps,
+): Promise<RecipientPlan> {
+  const [categories, policyRows, baseDirectory] = await Promise.all([deps.listCategories(), deps.listPolicies(), deps.loadDirectory()]);
+  const category = categories.find((item) => item.key === input.category && item.active);
+  if (!category) return no("unknown-category");
+
+  const directory: Directory = needsEveryAccount(input.audience, baseDirectory.rolePermissions)
+    ? { ...baseDirectory, accountIds: await deps.listAccountIds() }
+    : baseDirectory;
+  const matched = resolveAudience(input.audience, directory, input.except);
+
+  const policies = policiesByCategory(policyRows).get(category.key) ?? NOT_OFFERED;
+  const stored = matched.length > 0 ? await deps.listPreferences(matched) : [];
+  const live = CHANNELS.filter((channel) => CHANNEL_STATUS[channel] === "live");
+
+  const recipients = matched.flatMap((userId) => {
+    const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel)).enabled;
+    // Someone with every delivering channel off is not told at all.
+    return live.some(on) ? [{ userId, inApp: live.includes("in_app") && on("in_app"), push: live.includes("push") && on("push") }] : [];
+  });
+  return { ok: true, category, matched, recipients };
+}
 
 /**
  * Tells an audience that something happened.
@@ -333,25 +387,9 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
   const coalesce: NotificationWrite["coalesce"] =
     definition.coalesce && input.entity ? { ...definition.coalesce, title: folded.title, body: folded.body } : null;
 
-  const categoryKey = input.category ?? definition.category;
-  const [categories, policyRows, baseDirectory] = await Promise.all([deps.listCategories(), deps.listPolicies(), deps.loadDirectory()]);
-  const category = categories.find((item) => item.key === categoryKey && item.active);
-  if (!category) return no("unknown-category");
-
-  const directory: Directory = needsEveryAccount(input.audience, baseDirectory.rolePermissions)
-    ? { ...baseDirectory, accountIds: await deps.listAccountIds() }
-    : baseDirectory;
-  const userIds = resolveAudience(input.audience, directory, input.except);
-
-  const policies = policiesByCategory(policyRows).get(category.key) ?? NOT_OFFERED;
-  const stored = userIds.length > 0 ? await deps.listPreferences(userIds) : [];
-  const live = CHANNELS.filter((channel) => CHANNEL_STATUS[channel] === "live");
-
-  const recipients = userIds.flatMap((userId) => {
-    const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel)).enabled;
-    // Someone with every delivering channel off is not told at all.
-    return live.some(on) ? [{ userId, inApp: live.includes("in_app") && on("in_app"), push: live.includes("push") && on("push") }] : [];
-  });
+  const plan = await planRecipients({ audience: input.audience, category: input.category ?? definition.category, except: input.except }, deps);
+  if (!plan.ok) return plan;
+  const { category, recipients } = plan;
 
   const { eventId, notifications } = await deps.record({
     category: category.key,
@@ -359,7 +397,7 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
     actorUserId: input.actorUserId ?? null,
     entityType: input.entity?.type ?? null,
     entityId: input.entity?.id ?? null,
-    payload: input.payload ?? {},
+    payload: typeof input.payload === "function" ? input.payload({ recipients: recipients.length }) : (input.payload ?? {}),
     title,
     body,
     actionUrl,

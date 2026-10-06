@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { regularOccurrences } from "@/lib/availability/occurrences";
 
 import { TEAM, actor, notificationStore } from "../__fixtures__/notifications";
-import { NOTIFICATION_EVENTS, type NotificationEventKey } from "../catalog";
+import { users } from "../audience";
+import { NOTIFICATION_EVENTS, type NotificationEventDefinition, type NotificationEventKey } from "../catalog";
 import { CHANNEL_STATUS, safeActionUrl } from "../model";
 import { listNotifications, notify, notifySafely, type NotificationDeps, type NotifyInput } from "../service";
 import { accountAccessChanged, accountRequestCreated } from "./account";
+import { adminAnnouncement } from "./announcement";
 import { availabilityNormalChanged, availabilityRangeChanged, availabilityServiceChanged } from "./availability";
 import { libraryIndexProblem } from "./library";
 import {
@@ -130,6 +132,16 @@ describe("every real event", () => {
     accountRequestCreated({ created: true, id: 7 })!,
     accountAccessChanged({ actorId: "user_admin", userId: "user_john", changed: true })!,
     libraryIndexProblem({ actorId: DIRECTOR, newlyFailed: 1, failed: 1 })!,
+    adminAnnouncement({
+      actorId: DIRECTOR,
+      id: "send-1",
+      title: "Rehearsal moved to Thursday",
+      body: "We will meet at 7:00 in the choir room.",
+      actionUrl: null,
+      priority: "normal",
+      audience: users("user_john"),
+      snapshot: (told) => ({ recipients: told.recipients }),
+    }),
   ];
 
   it("is built by a feature, and says what it is about", () => {
@@ -145,7 +157,9 @@ describe("every real event", () => {
     const { deps } = notificationStore(TEAM);
     for (const sample of samples) {
       expect(sample.title).not.toMatch(/notification|event|action has occurred/i);
-      const link = sample.actionUrl ?? NOTIFICATION_EVENTS[sample.event].actionUrl;
+      const definition: NotificationEventDefinition = NOTIFICATION_EVENTS[sample.event];
+      // An event may lead nowhere (an announcement without a link): null is a link like any other.
+      const link = sample.actionUrl === undefined ? (definition.actionUrl ?? null) : sample.actionUrl;
       expect(safeActionUrl(link), sample.event).toBe(link);
       expect((await notify(sample, deps)).ok, sample.event).toBe(true);
     }

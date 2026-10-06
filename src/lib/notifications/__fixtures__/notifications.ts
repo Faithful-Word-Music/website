@@ -1,6 +1,7 @@
 import { DEFAULT_ROLES, type Permission, type PermissionOverride } from "@/lib/auth/permissions";
 
 import type { DeliveryRecord, StoredSubscription } from "../delivery";
+import type { InstrumentOption, ManualDeps, NamedLabels, NotificationTemplate, RoleOption } from "../manual-service";
 import { CHANNELS, DEFAULT_CATEGORIES, type NotificationCategory, type NotificationItem } from "../model";
 import type { PushPayload } from "../push";
 import type { NotificationActor, NotificationDeps, NotificationWrite, PolicyRow, PreferenceRow } from "../service";
@@ -241,3 +242,132 @@ export const director = actor("user_director", "manage_notifications");
 /** An ordinary musician: their own notifications and choices, nothing more. */
 export const john = actor("user_john");
 export const mary = actor("user_mary");
+/** Someone who may send announcements, and nothing else to do with notifications. */
+export const sender = actor("user_director", "send_notifications");
+
+/** The words for each named audience, as the composer's content gives them. */
+export const NAMED: NamedLabels = {
+  everyone: "Everyone",
+  musicTeam: "Music Team",
+  musicians: "Musicians",
+  songLeaders: "Song Leaders",
+  planners: "Planners",
+  administrators: "Administrators",
+  servicePlanViewers: "Service Plan Viewers",
+  availabilityManagers: "Availability Managers",
+  aiUsers: "AI Users",
+};
+
+/**
+ * For the tests of announcements: the notification store above, with what
+ * the manual layer adds behind the same doors the database gives
+ * (src/lib/notifications/manual-store.ts) - the site's roles and
+ * instruments, who plays what, everyone's name, and the templates. The
+ * history is READ from the store's own events, notifications and deliveries,
+ * exactly as the real one is: there is no second list of sends.
+ *
+ * `options` is read afresh each time, so a test can change who holds a role
+ * or who has an account between a preview and a send.
+ */
+export function manualStore(
+  options: NonNullable<Parameters<typeof notificationStore>[0]> & {
+    /** Who plays each instrument, by its id. */
+    players?: Record<number, string[]>;
+    names?: Record<string, string>;
+  } = {},
+) {
+  const store = notificationStore(options);
+  const roles: RoleOption[] = DEFAULT_ROLES.map((role) => ({ key: role.key, label: role.label }));
+  const instruments: InstrumentOption[] = [
+    { id: 1, label: "Piano", archived: false },
+    { id: 2, label: "Guitar", archived: false },
+    { id: 3, label: "Harpsichord", archived: true },
+  ];
+  const templates: NotificationTemplate[] = [];
+  let nextTemplateId = 0;
+  let nextSend = 0;
+  /** When each event was recorded. */
+  const sentAt = new Map<number, string>();
+  let clock = Date.parse("2026-10-06T12:00:00.000Z");
+  const stamp = () => new Date((clock += 60_000)).toISOString();
+  /** How many times the accounts were read. */
+  const people = { calls: 0 };
+
+  const accounts = () => options.accountIds ?? Object.keys(options.userRoles ?? {});
+  const announcements = () => store.events.filter((event) => event.eventKey === "admin.announcement");
+  const attemptsOf = (eventId: number) => store.deliveries.filter((delivery) => delivery.eventId === eventId);
+
+  const deps: ManualDeps = {
+    notifications: {
+      ...store.deps,
+      record: async (write) => {
+        const result = await store.deps.record(write);
+        sentAt.set(result.eventId, stamp());
+        return result;
+      },
+    },
+    listRoles: async () => roles.map((role) => ({ ...role })),
+    listInstruments: async () => instruments.map((instrument) => ({ ...instrument })),
+    instrumentPlayers: async (ids) => [...new Set(ids.flatMap((id) => options.players?.[id] ?? []))],
+    listPeople: async () => {
+      people.calls += 1;
+      return accounts().map((id) => ({ id, name: options.names?.[id] ?? id }));
+    },
+    newId: () => `send-${(nextSend += 1)}`,
+    listAnnouncements: async ({ before, limit }) =>
+      announcements()
+        .filter((event) => before === null || event.id < before)
+        .sort((a, b) => b.id - a.id)
+        .slice(0, limit)
+        .map((event) => {
+          const count = (status: string) => attemptsOf(event.id).filter((attempt) => attempt.status === status).length;
+          return {
+            id: event.id,
+            actorUserId: event.actorUserId,
+            createdAt: sentAt.get(event.id) ?? "",
+            payload: event.payload,
+            delivery: { sent: count("sent"), failed: count("failed"), expired: count("expired") },
+          };
+        }),
+    getAnnouncement: async (id) => {
+      const event = announcements().find((item) => item.id === id);
+      if (!event) return null;
+      return {
+        id: event.id,
+        actorUserId: event.actorUserId,
+        createdAt: sentAt.get(event.id) ?? "",
+        payload: event.payload,
+        recipientIds: store.rows.filter((row) => row.eventId === id).map((row) => row.recipient),
+        attempts: attemptsOf(id).map((attempt) => ({
+          userId: attempt.userId,
+          device: attempt.device,
+          status: attempt.status,
+          attemptedAt: sentAt.get(id) ?? "",
+        })),
+      };
+    },
+    listTemplates: async () => templates.map((template) => structuredClone(template)),
+    getTemplate: async (id) => {
+      const found = templates.find((template) => template.id === id);
+      return found ? structuredClone(found) : null;
+    },
+    createTemplate: async ({ name, draft, userId }) => {
+      const now = stamp();
+      templates.push({ id: (nextTemplateId += 1), name, draft: structuredClone(draft), createdBy: userId, updatedBy: userId, createdAt: now, updatedAt: now });
+      return nextTemplateId;
+    },
+    updateTemplate: async ({ id, name, draft, userId }) => {
+      const found = templates.find((template) => template.id === id);
+      if (!found) return false;
+      Object.assign(found, { name, draft: structuredClone(draft), updatedBy: userId, updatedAt: stamp() });
+      return true;
+    },
+    deleteTemplate: async (id) => {
+      const index = templates.findIndex((template) => template.id === id);
+      if (index >= 0) templates.splice(index, 1);
+      return index >= 0;
+    },
+  };
+
+  return { ...store, deps, notifications: store.deps, roles, instruments, templates, people };
+}

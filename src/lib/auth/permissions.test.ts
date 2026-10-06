@@ -93,6 +93,45 @@ describe("AI permission", () => {
   });
 });
 
+describe("notification permissions", () => {
+  const holds = (roleKeys: string[], overrides: Parameters<typeof resolvePermissions>[2] = []) => resolvePermissions(roleKeys, rolePermissions, overrides);
+
+  it("are two: sending is not configuring, and either may be held without the other", () => {
+    const sends = holds(["musician"], [{ permission: "send_notifications", effect: "grant" }]);
+    expect(sends.has("send_notifications")).toBe(true);
+    expect(sends.has("manage_notifications")).toBe(false);
+    const configures = holds(["musician"], [{ permission: "manage_notifications", effect: "grant" }]);
+    expect(configures.has("manage_notifications")).toBe(true);
+    expect(configures.has("send_notifications")).toBe(false);
+    // Either one opens the admin area, where both live.
+    expect(canAccessAdmin(sends)).toBe(true);
+    expect(canAccessAdmin(configures)).toBe(true);
+  });
+
+  it("are both held by administrators and the Music Director, and by nobody else", () => {
+    for (const permission of ["send_notifications", "manage_notifications"] as const) {
+      expect(holds([ADMIN_ROLE]).has(permission)).toBe(true);
+      expect(holds(["music_director"]).has(permission)).toBe(true);
+      expect(holds(["song_leader"]).has(permission)).toBe(false);
+      expect(holds(["musician"]).has(permission)).toBe(false);
+      expect(holds([]).has(permission)).toBe(false);
+    }
+  });
+
+  it("can be taken from a Music Director by an exception", () => {
+    expect(holds(["music_director"], [{ permission: "send_notifications", effect: "deny" }]).has("send_notifications")).toBe(false);
+  });
+
+  it("gives sending once to the existing Music Director role only, in a fix-up of its own", () => {
+    const fixup = PERMISSION_FIXUPS.find((item) => item.permissions.includes("send_notifications"));
+    expect(fixup).toBeDefined();
+    expect(fixupGrants(fixup!.permissions)).toEqual([{ role: "music_director", permission: "send_notifications" }]);
+    // Its own key: the fix-up that gave manage_notifications has already run on existing sites and would not run again.
+    expect(fixup!.key).not.toBe(PERMISSION_FIXUPS.find((item) => item.permissions.includes("manage_notifications"))!.key);
+    expect(new Set(PERMISSION_FIXUPS.map((item) => item.key)).size).toBe(PERMISSION_FIXUPS.length);
+  });
+});
+
 describe("AI memory and planning philosophy permissions", () => {
   const AI_EXTRAS = ["use_personal_ai_memory", "manage_global_ai_memory", "manage_planning_philosophy"] as const;
 

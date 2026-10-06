@@ -9,11 +9,11 @@ The authoritative description of the notification system, and the handoff betwee
 | 1 | Notification core and configuration: domain, tables, policies, preferences, the bell, the history page, settings, admin policies | **Built** |
 | 2 | Product notification events (Service Planner, Availability, account access, the library index), folding, the best-effort rule, settings relevance | **Built** |
 | 3 | Web Push to every device a person switched it on for, delivery tracking, the service worker, and the app-icon unread badge | **Built** |
-| 4 | Manual notification centre: composer, audiences, templates, send history | Next |
-| 5 | Reliability, scheduling, reminders, AI budget alerts, advanced preferences | Later |
+| 4 | Manual notification centre: composer, audiences, templates, send history and delivery results | **Built** |
+| 5 | Reliability, scheduling, reminders, AI budget alerts, advanced preferences | Next |
 | 6 | Email through Resend | Later |
 
-**Not built yet:** the custom composer, saved templates, an admin view of what was sent and delivered, scheduling and reminders, digests, retries of a failed push, AI budget alerts, notification email, offline use, and sheet-music report events (the report feature itself does not exist yet; its category is ready).
+**Not built yet:** scheduled and delayed sends, reminders, recurring sends, digests, retries of a failed push, AI budget alerts, notification email, offline use, and sheet-music report events (the report feature itself does not exist yet; its category is ready).
 
 ## The idea
 
@@ -64,7 +64,12 @@ await notifyBestEffort(viewer.env, servicePlanPublished({ actorId, publicationId
 | `src/app/api/account/push/` | `POST` register / status / remove for the browser asking |
 | `src/app/notifications/` | The history page, the settings page, and the preference action |
 | `src/app/notifications/open/[id]/` | Where a tapped push lands: marks it read as the session's person, then redirects to its stored link |
-| `src/app/admin/notifications/` | The policy page. Its actions are in `src/app/admin/actions.ts` |
+| `src/lib/notifications/manual.ts` | Manual notifications without a server: the draft, the audience selection, the send's snapshot, the delivery summary (pure) |
+| `src/lib/notifications/events/announcement.ts` | The `admin.announcement` builder (pure) |
+| `src/lib/notifications/manual-service.ts` | Preview, send, history and templates, each checking `send_notifications`. Takes `ManualDeps`, so it is tested without a database |
+| `src/lib/notifications/manual-store.ts` | The real `ManualDeps`: roles, instruments and who plays them, names from Clerk, the history queries, the templates (server-only) |
+| `src/app/admin/notifications/` | The notification centre: Send (`page.tsx`), `history/`, `history/[id]/`, `templates/`, `policies/`. Send, history and template actions are in its own `actions.ts`; the policy actions are in `src/app/admin/actions.ts` |
+| `src/components/admin/notifications/` | The composer, the message fields, the audience picker, the template manager, the history list |
 | `src/components/notifications/` | `notification-store.ts` (the one browser store), the bell, the list, the history, the settings; `push-device.ts` (this device's push state and its three actions), `PushSync.tsx` (service-worker messages and the app badge), `PushDevice.tsx` (the settings section and the Dashboard card) |
 | `src/components/admin/NotificationPolicyEditor.tsx` | The policy editor and the development test button |
 | `src/content/notifications.ts` | All wording |
@@ -82,11 +87,13 @@ Created on first use, like the account tables, on top of them (`db()` in `src/li
 | `notifications` | `event_id`, `recipient_user_id`, `category_key`, `title`, `body`, `action_url`, `priority`, `in_app`, `read_at`, `created_at`. `in_app = false` is someone told by push alone: the row is what their push is about, and stays out of the list and the unread count |
 | `push_subscriptions` | One row per browser or installed app: `clerk_user_id`, `endpoint` (**unique on its own**), `p256dh`, `auth`, `device` ("Chrome on Windows"), `user_agent`, `created_at`, `updated_at`, `last_seen_at`, `last_success_at`, `failure_count` |
 | `notification_deliveries` | One row per attempt to reach one device: `event_id`, `notification_id`, `recipient_user_id`, `channel`, `push_subscription_id`, `device`, `status` (`sent`, `failed`, `expired`), `status_code`, `error`, `attempted_at`, `delivered_at` |
+| `notification_templates` | A manual notification kept to start from: `name`, `title`, `body`, `action_url`, `priority`, `audience` (jsonb, an `AudienceSelection`), `created_by`, `updated_by`, `created_at`, `updated_at`. Added in Phase 4. What was **sent** is not here: a send is its `notification_events` row |
 
 - **Delivery history has no foreign key to a notification or a device.** A notification is replaced when a later one folds into it and a dead device is retired; neither takes the history with it. `device` is the device's name as it was. The endpoint and keys are never written there. `delivered_at` means the push service accepted it, which is all a server is ever told.
+- **Phase 4 indexes:** `notification_events (clerk_env, event_key, id DESC)`, `notifications (event_id)` and `notification_deliveries (clerk_env, event_id)`, for the send history.
 - **Indexes:** `notifications (clerk_env, recipient_user_id, id DESC) WHERE in_app` for the list; `notifications (clerk_env, recipient_user_id) WHERE in_app AND read_at IS NULL` for the unread count, which is one `count(*)` over it.
 - **History is durable.** Title and body are stored as sent. An event's entity is plain text with no foreign key, so deleting a service or a request never deletes the notifications about it. A person's rows go only with their account (`deleteNotificationData`, called from `deleteUserAction`): their notifications, choices, **devices** and delivery rows.
-- **The payload never reaches the browser** and is never used to decide access.
+- **The payload never reaches the browser** through anything a person's own notifications are read by (the bell, `/notifications`, the push payload), and is never used to decide access. The one reader is the send history, which shows an announcement's own snapshot to people holding `send_notifications`, and matches on the event's kind so no other event's payload can be read through it.
 - **Seeding:** the starting categories and policies are inserted with `ON CONFLICT DO NOTHING`. A category added to `DEFAULT_CATEGORIES` later arrives by itself; nothing an administrator changed is put back.
 
 ## Channels and policies
@@ -99,7 +106,7 @@ Channels: `in_app`, `push`, `email`. `CHANNEL_STATUS` in `model.ts` says how far
 | `push` | `live` | Delivered to every device the person switched push on for |
 | `email` | `soon` | Not offered: no policy but `unavailable` can be chosen, and nothing can switch it on |
 
-Policies, per category and channel, set under **Admin → Notifications**:
+Policies, per category and channel, set under **Admin → Notifications → Policies**:
 
 | Policy | Effect |
 |---|---|
@@ -159,6 +166,7 @@ Starting policies (data, changeable; nothing is mandatory in code):
 - Reading and marking: any signed-in person, their own only. The recipient comes from the session and every query matches on it, so someone else's id is "not found".
 - Preferences: the caller's own, from the session.
 - Policies: `manage_notifications` (Administrator always; Music Director by default, granted once to existing sites through `PERMISSION_FIXUPS`).
+- Sending, templates and the send history: `send_notifications`, a separate permission with the same defaults and its own one-time fix-up (`2026-10-send-notifications-permission`). Someone may hold either without the other.
 
 ## Read and unread
 
@@ -174,11 +182,11 @@ Starting policies (data, changeable; nothing is mandatory in code):
 | `/notifications` | The history, twenty at a time with **Load more** |
 | `/notifications/settings` | **Push on this device** (the browser's side), then a person's own choices for the categories that concern them. Linked from `/account` |
 | `/dashboard` | A dismissible card offering to switch push on, only where pressing it can work |
-| **Admin → Setup → Notifications** | The policies, and in development a test button |
+| **Admin → Setup → Notifications** | A group of four pages: Send, History, Templates (`send_notifications`) and Policies (`manage_notifications`, with a test button in development). See [Manual notifications](#manual-notifications) |
 
 ## Development test
 
-**Admin → Notifications → Send me a test notification** shows only on the Clerk development instance. The action refuses anywhere else, needs `manage_notifications`, and only ever sends to the person pressing it. It goes through `notify()`, so the chosen category's policy and your own choice apply, and it is pushed to your devices like any other. It is the quickest way to test push.
+**Admin → Notifications → Policies → Send me a test notification** shows only on the Clerk development instance. The action refuses anywhere else, needs `manage_notifications`, and only ever sends to the person pressing it. It goes through `notify()`, so the chosen category's policy and your own choice apply, and it is pushed to your devices like any other. It is the quickest way to test push.
 
 ## Push
 
@@ -292,7 +300,7 @@ One `notification_deliveries` row per device per notification:
 | `failed` | Anything else, or nothing | **Kept.** `failure_count + 1`. Includes 401 and 403, which can be this site's own keys |
 | `expired` | 404 or 410 | Deleted |
 
-Every device is attempted whatever happens to the others. Nothing is retried, and nothing reads this table yet: it is there for Phase 4's send history and Phase 5's retries. Someone with push on and no device registered produces no row, because nothing was attempted.
+Every device is attempted whatever happens to the others. Nothing is retried. The table is read by the send history ([Manual notifications](#manual-notifications)) and is there for Phase 5's retries. Someone with push on and no device registered produces no row, because nothing was attempted.
 
 ### Security
 
@@ -359,9 +367,10 @@ The principle: **notify about consequences, not clicks.** One real-world action 
 | `account.request_created` | A request for an account is recorded | `accountManagers` | important | `account-request:<id>` |
 | `account.access_changed` | Someone else changes a person's roles or individual permissions. One per save | that person | important | `account:<userId>` |
 | `ai.library_index_problem` | A refresh of the library index leaves song files that **newly** failed | `aiUsers` | important | `library-index:failures` |
+| `admin.announcement` | Someone sends a notification from Admin → Notifications | the audience they chose, **themselves included** | whatever they chose (normal by default) | `admin_announcement:<uuid>` |
 | `system.test` | The development test button | the person pressing it | normal | none |
 
-An anchor is a service's address, `2026-10-11-am`. In every row the actor is left out (`except`). Nothing is `critical`: that is kept for the exceptional.
+An anchor is a service's address, `2026-10-11-am`. In every row but `admin.announcement` the actor is left out (`except`). Nothing is `critical`: that is kept for the exceptional.
 
 **Availability's recipients.** Someone changing their own: `availabilityManagers`. A leader changing someone else's: that person ("Your availability was changed") and the other `availabilityManagers` ("John's availability changed"), as two events about the same entity, because the two are worded differently. The whole music team is never told. The note written with an exception is never put in a notification.
 
@@ -404,7 +413,7 @@ Quick repeats about the same thing become one notification.
 | `account.access` | access_changed | A roles save and an exception soon after are one |
 | `ai.library_index` | library_index_problem | The passes of one refresh are one |
 
-`service_plan.published` and `account.request_created` never fold: each publication and each request is its own.
+`service_plan.published`, `account.request_created` and `admin.announcement` never fold: each publication, each request and each announcement is its own.
 
 ## Settings relevance
 
@@ -423,7 +432,137 @@ Three things that are not each other:
 - **Settings relevance:** whether a category is worth asking a person about. It only filters `preferencesFor()`. `setPreference()` and `notify()` ignore it, so a hidden category can still be chosen and still delivers.
 - **Authorization:** whether a person may open the page a notification leads to. Decided by that page, never by either of the above.
 
-Admin → Notifications still lists every category.
+Admin → Notifications → Policies still lists every category.
+
+## Manual notifications
+
+**Admin → Setup → Notifications** is where a person writes a notification and sends it. It is a caller of `notify()` and nothing more: there is no second push path, no second history, and no channel chosen in the composer.
+
+```
+compose                          title, message, link, priority, audience
+  -> review                      the server says who it would reach now (planRecipients)
+  -> Send                        sendAnnouncement(): validates, resolves the audience AGAIN
+       -> notify()               event admin.announcement, category admin_announcement
+            -> policy + choices  the Announcements policy and each person's own settings
+            -> notifications     one row per person told, the sender among them
+            -> dispatchPush()    every registered device, tracked as always
+  -> History                     the event row itself, its payload the snapshot
+```
+
+### Pages and permissions
+
+| Page | Address | Needs |
+|---|---|---|
+| Send | `/admin/notifications` | `send_notifications` |
+| History | `/admin/notifications/history`, `/history/<event id>` | `send_notifications` |
+| Templates | `/admin/notifications/templates` | `send_notifications` |
+| Policies | `/admin/notifications/policies` | `manage_notifications` |
+
+- `send_notifications` and `manage_notifications` are separate; either may be held alone. Both are in `ADMIN_PERMISSIONS`, and the sidebar shows only the pages a person may open (`admin-sections.ts`).
+- `/admin/notifications` used to be the policy page. Someone who holds `manage_notifications` and not `send_notifications` is redirected from it to `/policies`.
+- Every action goes through `withPermission("send_notifications")`, and every function in `manual-service.ts` checks the permission again.
+
+### The composer
+
+- **Title** and **message**: required, tidied and limited by the notification system's own `normalizeTitle` / `normalizeBody` (120 and 600 characters).
+- **Open when tapped**: optional. A page on this site only, checked by `safeActionUrl`; common pages are suggested and any internal path may be typed. With none, the notification leads nowhere (the event has no default link).
+- **Priority**: `NotificationPriority`, normal by default.
+- **Three steps:** compose, review, sent. Only the review step has a Send button. The review shows the notification as the list will show it, the audience, how many people will be told and who, how many have push on for announcements, and how many in the audience switched announcements off (possible only if the policy is no longer mandatory).
+- **After sending:** "Notification sent to N people." N is the number of people told, which is what `notify()` returns. It says nothing about devices.
+
+### The audience
+
+An `AudienceSelection` (`manual.ts`) is any mix of four parts; several means **anyone in any of them, each once**.
+
+| Part | What it is | Resolved by |
+|---|---|---|
+| `named` | Everyone, Music Team, Musicians, Song Leaders, Music Director / planners, Administrators, Service Plan Viewers, Availability Managers, AI Users | `AUDIENCES` in `audience.ts`, unchanged |
+| `roles` | Any role the site has, custom ones included | `{ kind: "role" }` |
+| `userIds` | Particular people | `{ kind: "users" }` |
+| `instrumentIds` | Everyone who lists the instrument on their profile | `user_instruments`, looked up in `manual-service.ts` and handed over as users |
+
+- `toAudience()` turns a selection into one `anyOf(...)` audience, so deduplication is `resolveAudience()`'s, as for every event.
+- Instruments are not part of the generic `Audience` type. The manual layer resolves them to people first.
+- The role and instrument lists are the site's live ones (`listRoles`, `listOptions("instruments")`). The picker hides the Member role (Everyone already says it) and archived instruments unless one is already chosen.
+- **The sender is not excluded.** No `except` is passed.
+- **The preview is never trusted.** `previewAnnouncement()` and `notify()` both decide through `planRecipients()` (extracted from `notify()` in `service.ts`), so they cannot disagree about the rule. `sendAnnouncement()` takes only the draft, and resolves roles, instruments, accounts, policies and choices again at that moment. Anything else in the request is ignored.
+- A send whose audience names a role, instrument or person that no longer exists is refused ("stale") rather than quietly narrowed. A send that would reach nobody is refused and leaves no event.
+
+### Sending and failure
+
+- `sendAnnouncement()` calls `notify()`, not `notifySafely()`: this is the one place where the notification is the action, so a refusal or a thrown error is reported to the sender as "nothing was sent".
+- A push that fails after the notification is written does not fail the send. It is a row in `notification_deliveries`, as for any notification.
+- The accounts are read from Clerk once per send, and that list is handed to `notify()` in place of a second request.
+
+### Templates
+
+- Optional. Compose, send, done needs none, and sending never creates one.
+- A template keeps a name, the message, link, priority and audience. It needs a name and a title; the message and audience may be left for whoever uses it. At most 100.
+- **Use** is a link to `/admin/notifications?template=<id>`: the composer starts with a copy. Editing that draft does not change the template; **Save as template** offers "Update template" explicitly.
+- Create, edit, duplicate ("Copy of …") and delete are on the Templates page.
+- A send records the template it was started from (`{ id, name }`, as it was called then) in its snapshot. Editing or deleting the template afterwards changes nothing already sent.
+
+### History
+
+There is no history table. A send is its `notification_events` row (`event_key = 'admin.announcement'`), and its `payload` is the snapshot:
+
+```
+{ v: 1, title, body, actionUrl, priority, audience, labels, recipients, senderName, template }
+```
+
+- `audience` is the selection as chosen; `labels` is the same in words as they read then (a role's label, an instrument's name, a person's name), so a later rename changes nothing.
+- `recipients` is how many people were told. `NotifyInput.payload` may be a function of that count, which is how it gets into the snapshot.
+- `senderName` is kept beside the event's `actor_user_id`, so the history still reads when the sender's account is gone.
+- **The list** is newest first, 20 at a time with "Show older notifications" (cursor on the event id).
+- **The detail page** shows the snapshot, the people who still have a notification from the send (read from `notifications`), and each push attempt to them by **device name and outcome only**. Someone whose account was deleted is no longer listed, because their notifications went with it; the snapshot's count still says how many were told. Names come from Clerk; if it cannot be reached the page still shows everything else.
+- **Use again** is a link to `/admin/notifications?from=<event id>`: the composer starts with a copy of the message and audience. It sends nothing, changes nothing and makes no template. Whatever of the old audience no longer exists is left out, and the composer says so.
+
+### Delivery reporting
+
+`summarizeDeliveries()` adds up a send's `notification_deliveries` rows:
+
+| Shown as | Meaning |
+|---|---|
+| Push attempts | One per device per person |
+| Accepted by push service | `sent`. Not proof that a device displayed it or that anyone read it; the page says so |
+| Failed | `failed` |
+| Device no longer registered | `expired` |
+| People with an accepted push | People with at least one `sent` |
+| People with no push attempted | People told with no delivery row: push off for them, or no device registered, or push not set up. The tables cannot say which |
+
+### Security
+
+- Permission is checked on every page, in every action and again in every service function.
+- Title, message, link, priority and every part of the audience are validated on the server (`parseDraft`, `parseSelection`), and roles, instruments and people are checked against what exists.
+- Links are internal paths only (`safeActionUrl`).
+- The history never returns a device's endpoint or keys: they are not in `notification_deliveries`, and a test checks nothing returned contains them.
+- An announcement's snapshot is read only through the `send_notifications`-gated history. What recipients receive is the ordinary `NotificationItem` and push payload, with nothing of it.
+- Every query carries `clerk_env`.
+
+### Testing it by hand
+
+| # | Check | Expect |
+|---|---|---|
+| 1 | Admin → Notifications → Send; write a message, choose Everyone, Review | The preview, the count and "Show who" |
+| 2 | Send | "Notification sent to N people"; it is in your own bell; a push arrives on a device with push on |
+| 3 | History | The send, newest first; its page shows who was told and each device's result |
+| 4 | Use again | The composer filled in; nothing sent until you send |
+| 5 | Save as template; then Templates: Use, Edit, Duplicate, Delete | Each works; history is unchanged |
+| 6 | Musicians + one instrument a musician plays | That person is counted once |
+| 7 | An account with only `manage_notifications` | Policies only; `/admin/notifications` redirects there |
+| 8 | An account with only `send_notifications` | Send, History, Templates; no Policies |
+| 9 | Policies: set Announcements push to Unavailable, send | In the app only; no push attempt |
+
+## Decisions that differ from the Phase 4 brief
+
+- **Two extra refusals.** A send to an audience that resolves to nobody is refused and leaves no event, and a send naming a role, instrument or person that no longer exists is refused rather than narrowed.
+- **A template needs only a name and a title.** Its message and audience may be empty, so a template can be a reusable message without a fixed audience.
+- **The recipient list on a send's page is read live from `notifications`,** not snapshotted; only the count is in the snapshot. A deleted account's rows go with the account, as decided in Phase 3.
+- **`notify()` changed in two small ways:** the recipient rule moved into an exported `planRecipients()` so the preview uses the same code, and `payload` may be a function of the recipient count. Behaviour for existing events is unchanged.
+- **Three new indexes** on existing tables, for the history queries.
+- **"People with no push attempted" is one number.** The brief asked for recipients with no registered device; the tables cannot tell that apart from push being off for the person or not set up, so the page reports what it can prove and says what it may mean.
+- **The Member role is not offered as a role** in the picker, and **archived instruments** are offered only when already chosen.
+- **Named audiences are the nine the brief listed.** `accountManagers` and `sheetMusicManagers` exist in `AUDIENCES` and are not offered; adding one is a line in `MANUAL_AUDIENCES` and its wording.
 
 ## Decisions that differ from the Phase 2 brief
 
@@ -457,6 +596,5 @@ Admin → Notifications still lists every category.
 
 ## Later phases
 
-- **Phase 4 (composer):** calls `notify()` with the `admin_announcement` category, and so is pushed with no further work. It needs its own "send" permission or reuses `manage_notifications`; a composer UI with audiences from `AUDIENCES`, saved templates, and a send history. That history can read `notification_events` joined to `notification_deliveries` (per device: sent, failed, expired), which nothing shows yet.
-- **Phase 5 (scheduling and reliability):** retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
+- **Phase 5 (scheduling and reliability):** scheduled, delayed and recurring manual sends, which can reuse the composer as it is: a scheduled send is a stored `AnnouncementDraft` (the shape a template already keeps) handed to `sendAnnouncement()` when its time comes, so the audience is resolved then. Also retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
 - **Phase 6 (email):** set `CHANNEL_STATUS.email` to `planned` then `live`. `allowedPolicies("email")` then offers mandatory, default off and unavailable; "default on" is never offered for email.

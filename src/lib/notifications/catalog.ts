@@ -37,6 +37,13 @@ export const NOTIFICATION_EVENTS = {
   /** Admin -> Notifications -> "Send me a test notification" (development only). */
   "system.test": { category: "ai_system", priority: "normal", actionUrl: "/notifications" },
 
+  /**
+   * A message someone wrote and sent from Admin -> Notifications
+   * (manual-service.ts). It leads only where its writer says, and never
+   * folds: two announcements are two things said.
+   */
+  "admin.announcement": { category: "admin_announcement", priority: "normal" },
+
   /** One publication: a service, or several published together. */
   "service_plan.published": { category: "service_plan_published", priority: "normal", actionUrl: "/song-list" },
   /** A published service's songs, keys or time changed. */

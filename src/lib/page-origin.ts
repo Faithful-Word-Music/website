@@ -118,7 +118,10 @@ export function backLabel(entry: string): string {
     "/admin/users": labels.people,
     "/admin/roles": labels.roles,
     "/admin/configuration": labels.configuration,
-    "/admin/notifications": labels.notificationPolicies,
+    "/admin/notifications": labels.notificationCenter,
+    "/admin/notifications/history": labels.notificationHistory,
+    "/admin/notifications/templates": labels.notificationTemplates,
+    "/admin/notifications/policies": labels.notificationPolicies,
     "/admin/ai": labels.ai,
   };
   return named[path] ?? labels.generic;

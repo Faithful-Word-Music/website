@@ -1,60 +1,79 @@
+import { redirect } from "next/navigation";
+
 import { NoAccess, Notice } from "@/components/account/Notices";
-import { NotificationPolicyEditor, NotificationTest } from "@/components/admin/NotificationPolicyEditor";
+import { AnnouncementComposer, type DraftSource } from "@/components/admin/notifications/AnnouncementComposer";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
-import { requireAnyPermission } from "@/lib/auth/session";
-import { CHANNELS, allowedPolicies } from "@/lib/notifications/model";
-import { policiesFor, type CategoryPolicyView } from "@/lib/notifications/service";
-import { notificationDeps } from "@/lib/notifications/store";
+import { requireViewer } from "@/lib/auth/session";
+import { SEND_PERMISSION } from "@/lib/notifications/manual";
+import { composerOptions, loadDraft, type ComposerOptions, type LoadedDraft } from "@/lib/notifications/manual-service";
+import { manualDeps } from "@/lib/notifications/manual-store";
+import { MANAGE_PERMISSION } from "@/lib/notifications/service";
 
-export const metadata = { title: "Notifications" };
+export const metadata = { title: "Send a notification" };
 
-const content = notificationsContent.admin;
+const content = notificationsContent.center;
+
+const positive = (value: string | string[] | undefined): number | null => {
+  const id = typeof value === "string" && /^\d{1,15}$/.test(value) ? Number(value) : 0;
+  return id > 0 ? id : null;
+};
 
 /**
- * /admin/notifications - how each kind of notification reaches people
- * (manage_notifications).
+ * /admin/notifications - write a notification and send it (send_notifications).
  *
- * Every category has its own policy for each channel: mandatory, on by
- * default, off by default, or unavailable. Nothing about a category is fixed
- * in code - Announcements only START mandatory - and changing a policy never
- * erases anyone's own choices (src/lib/notifications/model.ts).
+ * `?template=<id>` starts from a template and `?from=<id>` from something
+ * already sent ("Use again"). Either way the composer is handed a COPY:
+ * nothing is sent, and neither the template nor the old send is touched,
+ * until the person reviews it and presses Send.
  *
- * A channel that cannot deliver yet offers only what makes sense for it:
- * email stays "Unavailable" until email is built, and the action refuses
- * anything else (setNotificationPoliciesAction).
+ * This address used to be the policy page. Someone who may configure
+ * notifications and not send them is taken on to where the policies now are
+ * (/admin/notifications/policies), so an old link or bookmark still arrives.
  */
-export default async function NotificationPoliciesPage() {
-  const viewer = await requireAnyPermission("/admin/notifications", ["manage_notifications"]);
-  if (!viewer) return <NoAccess />;
-
-  let categories: CategoryPolicyView[] | null;
-  try {
-    categories = await policiesFor(viewer, notificationDeps(viewer.env));
-  } catch (error) {
-    console.error("[notifications] Could not load the policies:", error instanceof Error ? error.message : "unknown error");
-    categories = null;
+export default async function SendNotificationPage({ searchParams }: PageProps<"/admin/notifications">) {
+  const viewer = await requireViewer("/admin/notifications");
+  if (!viewer.can(SEND_PERMISSION)) {
+    if (viewer.can(MANAGE_PERMISSION)) redirect("/admin/notifications/policies");
+    return <NoAccess />;
   }
 
-  const allowed = Object.fromEntries(CHANNELS.map((channel) => [channel, [...allowedPolicies(channel)]]));
+  const params = await searchParams;
+  const templateId = positive(params.template);
+  const eventId = positive(params.from);
+  const source: DraftSource | undefined = templateId ? "template" : eventId ? "history" : undefined;
+
+  const deps = manualDeps(viewer.env);
+  let options: ComposerOptions | null;
+  let initial: LoadedDraft | null = null;
+  try {
+    [options, initial] = await Promise.all([
+      composerOptions(viewer, deps),
+      templateId ? loadDraft(viewer, { templateId }, deps) : eventId ? loadDraft(viewer, { eventId }, deps) : null,
+    ]);
+  } catch (error) {
+    console.error("[notifications] Could not load the composer:", error instanceof Error ? error.message : "unknown error");
+    options = null;
+  }
 
   return (
     <div>
-      <SectionHeading as="h1" title={content.title}>
-        <p className="text-base">{content.intro}</p>
+      <SectionHeading as="h1" title={content.compose.title}>
+        <p className="text-base">{content.compose.intro}</p>
       </SectionHeading>
 
-      {categories ? (
-        <>
-          <NotificationPolicyEditor categories={categories} allowed={allowed} />
-          {/* Development only: the action refuses anywhere else, whatever is shown. */}
-          {viewer.env === "development" ? (
-            <NotificationTest categories={categories.filter((category) => category.active).map(({ key, name }) => ({ key, name }))} />
-          ) : null}
-        </>
+      {options ? (
+        // A fresh composer for each thing it is started from.
+        <AnnouncementComposer
+          key={`${source ?? "new"}:${templateId ?? eventId ?? 0}`}
+          options={options}
+          initial={initial ?? undefined}
+          source={initial ? source : undefined}
+          missing={source !== undefined && initial === null}
+        />
       ) : (
-        <Notice tone="warning" title={content.unavailableTitle} className="mt-8">
-          {content.unavailableBody}
+        <Notice tone="warning" title={content.compose.unavailableTitle} className="mt-8">
+          {content.compose.unavailableBody}
         </Notice>
       )}
     </div>

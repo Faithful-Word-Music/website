@@ -10,8 +10,8 @@
  * Showing a section is only a convenience; the page still checks for itself.
  *
  * A section with `children` is a GROUP. It is not a page: it leads nowhere
- * itself and opens to show its own pages (AI: Usage, Memory, Planning
- * Philosophy).
+ * itself and opens to show its own pages (Notifications: Send, History,
+ * Templates, Policies; AI: Usage, Memory, Planning Philosophy).
  *
  * Pure - no server-only import - so the browser can use it and it is unit
  * tested.
@@ -19,6 +19,7 @@
 
 import { adminContent } from "@/content/admin";
 import { aiContent } from "@/content/ai";
+import { notificationsContent } from "@/content/notifications";
 
 import { ADMIN_PERMISSIONS, PEOPLE_PERMISSIONS, type Permission } from "./auth/permissions";
 
@@ -41,7 +42,10 @@ export type AdminPageId =
   | "users"
   | "roles"
   | "configuration"
-  | "notifications"
+  | "notificationsSend"
+  | "notificationsHistory"
+  | "notificationsTemplates"
+  | "notificationsPolicies"
   | "aiUsage"
   | "aiMemory"
   | "aiPhilosophy";
@@ -58,6 +62,7 @@ export interface AdminSectionGroup {
 
 const nav = adminContent.nav;
 const ai = aiContent.admin.nav;
+const notifications = notificationsContent.center.nav;
 
 export const ADMIN_SECTIONS: AdminSectionGroup[] = [
   {
@@ -84,10 +89,15 @@ export const ADMIN_SECTIONS: AdminSectionGroup[] = [
       },
       {
         id: "notifications",
-        href: "/admin/notifications",
         label: nav.items.notifications,
         icon: "notifications",
-        anyOf: ["manage_notifications"],
+        children: [
+          // Sending and configuring are separate permissions: someone may hold either without the other.
+          { id: "notificationsSend", href: "/admin/notifications", label: notifications.send, anyOf: ["send_notifications"] },
+          { id: "notificationsHistory", href: "/admin/notifications/history", label: notifications.history, anyOf: ["send_notifications"] },
+          { id: "notificationsTemplates", href: "/admin/notifications/templates", label: notifications.templates, anyOf: ["send_notifications"] },
+          { id: "notificationsPolicies", href: "/admin/notifications/policies", label: notifications.policies, anyOf: ["manage_notifications"] },
+        ],
       },
       {
         id: "ai",

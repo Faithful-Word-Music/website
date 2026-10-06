@@ -270,9 +270,226 @@ export const notificationsContent = {
     },
   },
 
-  /** /admin/notifications */
+  /**
+   * Admin -> Notifications: writing and sending an announcement, what was
+   * sent, and the templates kept for next time (send_notifications).
+   */
+  center: {
+    /** The group's pages in the admin sidebar. */
+    nav: { send: "Send", history: "History", templates: "Templates", policies: "Policies" },
+
+    /** The named audiences (MANUAL_AUDIENCES in src/lib/notifications/manual.ts). */
+    audiences: {
+      everyone: { label: "Everyone", detail: "Every account." },
+      musicTeam: { label: "Music Team", detail: "Everyone on the availability board." },
+      musicians: { label: "Musicians", detail: "Everyone with the Musician role." },
+      songLeaders: { label: "Song Leaders", detail: "Everyone with the Song Leader role." },
+      planners: { label: "Music Director / planners", detail: "Whoever plans the services." },
+      administrators: { label: "Administrators", detail: "Everyone with the Administrator role." },
+      servicePlanViewers: { label: "Service Plan Viewers", detail: "Whoever prepares from the published song lists." },
+      availabilityManagers: { label: "Availability Managers", detail: "Whoever looks after availability." },
+      aiUsers: { label: "AI Users", detail: "Whoever may use the AI features." },
+    },
+
+    priorities: {
+      normal: { label: "Normal", detail: "An ordinary message." },
+      important: { label: "Important", detail: "Marked Important, and pushed with high urgency." },
+      critical: { label: "Critical", detail: "Marked Important, and pushed with high urgency. Keep it for the exceptional." },
+    },
+    priorityNote: "Important and Critical stand out because they are rare. Use them on purpose.",
+
+    compose: {
+      title: "Send a notification",
+      intro:
+        "Write a message and choose who receives it. How it reaches each person, in the app and by push, follows the Announcements policy and their own notification settings.",
+      messageHeading: "Message",
+      titleLabel: "Title",
+      titlePlaceholder: "Rehearsal moved to Thursday",
+      bodyLabel: "Message",
+      bodyPlaceholder: "What people need to know.",
+      /** {left} is replaced. */
+      charsLeft: "{left} left",
+      linkLabel: "Open when tapped",
+      linkHint: "Optional",
+      linkPlaceholder: "/song-list",
+      linkHelp: "A page on this site, beginning with a slash. Leave it empty for a message that leads nowhere.",
+      linkInvalid: "That is not a page on this site. Use an address like /song-list.",
+      priorityLabel: "Priority",
+      audienceHeading: "Who receives it",
+      audienceLead: "Choose as many as you like. Anyone matching at least one receives it, once.",
+      groupsLabel: "Groups",
+      rolesLabel: "Roles",
+      instrumentsLabel: "Instruments",
+      instrumentsHint: "Everyone who lists the instrument on their profile.",
+      archived: "(archived)",
+      peopleLabel: "Specific people",
+      peopleSearch: "Search people by name",
+      peopleNone: "Nobody matches.",
+      peopleMore: ["{count} more. Keep typing to narrow it down.", "{count} more. Keep typing to narrow it down."],
+      /** A chosen person's remove button. {name} is replaced. */
+      removePerson: "Remove {name}",
+      nobodyChosen: "Nobody chosen yet.",
+      review: "Review",
+      reviewing: "Checking…",
+      reset: "Start over",
+      /** A draft loaded from a template or an old send. {name} is replaced. */
+      fromTemplate: "Started from the template “{name}”. Changes here do not change the template.",
+      fromHistory: "Started from an earlier notification. Nothing is sent until you send it.",
+      dropped: "Part of the original audience no longer exists and was left out. Check who receives it.",
+      notFound: "That template or notification could not be found, so this starts empty.",
+      unavailableTitle: "Sending is unavailable",
+      unavailableBody: "The people and roles to choose from could not be loaded just now. Please try again later.",
+    },
+
+    review: {
+      title: "Review and send",
+      lead: "This is what will be sent. Nothing has been sent yet.",
+      previewLabel: "As it appears in the app",
+      now: "Just now",
+      destination: "Opens",
+      noDestination: "Leads nowhere when tapped",
+      audience: "Audience",
+      /** {count} is replaced. */
+      recipients: ["{count} person will receive this notification.", "{count} people will receive this notification."],
+      nobody: "Nobody would receive this. Choose a different audience.",
+      showPeople: "Show who",
+      hidePeople: "Hide",
+      unnamed: "Unnamed account",
+      push: ["{count} of them has push on for announcements.", "{count} of them have push on for announcements."],
+      pushNote: "A push reaches only devices where the person switched push on and allows notifications.",
+      optedOut: [
+        "{count} person in this audience has announcements switched off and will not be told.",
+        "{count} people in this audience have announcements switched off and will not be told.",
+      ],
+      send: ["Send to {count} person", "Send to {count} people"],
+      back: "Edit",
+    },
+
+    sent: {
+      title: "Sent",
+      /** {count} is replaced. */
+      body: ["Notification sent to {count} person.", "Notification sent to {count} people."],
+      note: "That is how many people were told. Whether a push reached each device is recorded under History as the results come in.",
+      viewHistory: "View in History",
+      another: "Send another",
+    },
+
+    template: {
+      saveAs: "Save as template",
+      update: "Update template",
+      nameLabel: "Template name",
+      namePlaceholder: "Rehearsal change",
+      saveTitle: "Save as a template",
+      saveLead: "Keeps the message, link, priority and audience to start from next time. Nothing is sent.",
+      save: "Save template",
+      saved: "Template saved.",
+      updated: "Template updated.",
+      cancel: "Cancel",
+    },
+
+    templates: {
+      title: "Templates",
+      intro: "Messages kept to start from. Using one copies it into the composer; sending never changes a template, and changing a template never changes what was already sent.",
+      empty: "No templates yet. Write a notification under Send and choose “Save as template”, or make one here.",
+      create: "New template",
+      createTitle: "New template",
+      editTitle: "Edit template",
+      use: "Use",
+      edit: "Edit",
+      duplicate: "Duplicate",
+      /** {name} is replaced. */
+      copyName: "Copy of {name}",
+      delete: "Delete",
+      confirmDelete: "Delete this template? Notifications already sent from it are kept.",
+      confirmYes: "Delete",
+      confirmNo: "Keep",
+      deleted: "Template deleted.",
+      duplicated: "Template duplicated.",
+      noBody: "No message yet",
+      noAudience: "No audience chosen",
+      /** {date} and {name} are replaced. */
+      changed: "Changed {date}",
+      by: "by {name}",
+      count: ["{count} template", "{count} templates"],
+      unavailableTitle: "Templates are unavailable",
+      unavailableBody: "The templates could not be loaded just now. Please try again later.",
+    },
+
+    history: {
+      title: "History",
+      intro: "Every notification sent from here, newest first, exactly as it was sent.",
+      empty: "Nothing has been sent yet.",
+      /** {name} is replaced. */
+      sentBy: "Sent by {name}",
+      sentByUnknown: "Sender no longer listed",
+      recipients: ["{count} person", "{count} people"],
+      loadMore: "Show older notifications",
+      loading: "Loading…",
+      unavailableTitle: "The history is unavailable",
+      unavailableBody: "What was sent could not be loaded just now. Please try again later.",
+      /** One line under each send. */
+      push: {
+        none: "No push attempted",
+        sent: ["{count} push accepted", "{count} pushes accepted"],
+        failed: ["{count} failed", "{count} failed"],
+        expired: ["{count} expired", "{count} expired"],
+      },
+    },
+
+    detail: {
+      back: "Back to History",
+      useAgain: "Use again",
+      useAgainHint: "Opens the composer with this message and audience. Nothing is sent until you send it.",
+      message: "Message",
+      sent: "Sent",
+      sender: "Sender",
+      priority: "Priority",
+      destination: "Opens",
+      noDestination: "Nowhere",
+      template: "Started from",
+      audience: "Audience",
+      recipientsHeading: "Who was told",
+      recipients: ["{count} person was told.", "{count} people were told."],
+      /** When fewer are listed than were told. */
+      recipientsGone: "Someone whose account has since been deleted is no longer listed.",
+      unnamed: "Name unavailable",
+      deliveryHeading: "Push delivery",
+      deliveryLead:
+        "One attempt is made for each device a person has switched push on for. “Accepted” means the push service took the message; it does not show that a device displayed it or that anyone read it.",
+      attempts: "Push attempts",
+      accepted: "Accepted by push service",
+      failed: "Failed",
+      expired: "Device no longer registered",
+      reached: "People with an accepted push",
+      notAttempted: "People with no push attempted",
+      notAttemptedNote: "Push is off for them, or no device is registered, or push is not set up on this site.",
+      noDevice: "No push attempted",
+      status: { sent: "Accepted", failed: "Failed", expired: "No longer registered" },
+      unknownDevice: "Unnamed device",
+      notFoundTitle: "That notification could not be found",
+      notFoundBody: "It may have been sent from a different environment.",
+    },
+
+    errors: {
+      title: "Give the notification a title of up to 120 characters.",
+      body: "Write a message of up to 600 characters.",
+      templateBody: "Keep the message to 600 characters.",
+      link: "The link must be a page on this site, such as /song-list.",
+      priority: "Choose a priority.",
+      audience: "Choose who receives it.",
+      templateAudience: "That audience could not be saved. Choose it again.",
+      stale: "Part of that audience no longer exists. Review who receives it and try again.",
+      nobody: "Nobody would receive this, so it was not sent. Choose a different audience.",
+      unavailable: "The notification could not be sent. Nothing was sent to anyone; please try again.",
+      name: "Give the template a name of up to 80 characters.",
+      notFound: "That template no longer exists.",
+      tooMany: "There are already 100 templates. Delete one first.",
+    },
+  },
+
+  /** /admin/notifications/policies */
   admin: {
-    title: "Notifications",
+    title: "Notification policies",
     intro:
       "How each kind of notification reaches people. A policy applies to everyone; within it, each person chooses for themselves under their own notification settings. Changing a policy never erases anyone's choices: they count again whenever the policy allows.",
     policies: {

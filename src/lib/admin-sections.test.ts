@@ -21,6 +21,9 @@ describe("the admin area's sections", () => {
       "/admin/roles",
       "/admin/configuration",
       "/admin/notifications",
+      "/admin/notifications/history",
+      "/admin/notifications/templates",
+      "/admin/notifications/policies",
       "/admin/ai",
       "/admin/ai/memory",
       "/admin/ai/philosophy",
@@ -28,7 +31,18 @@ describe("the admin area's sections", () => {
   });
 
   it("gives the Music Director the pages that role's permissions open, and no others", () => {
-    expect(hrefs(role("music_director"))).toEqual(["/admin", "/admin/users", "/admin/configuration", "/admin/notifications", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
+    expect(hrefs(role("music_director"))).toEqual([
+      "/admin",
+      "/admin/users",
+      "/admin/configuration",
+      "/admin/notifications",
+      "/admin/notifications/history",
+      "/admin/notifications/templates",
+      "/admin/notifications/policies",
+      "/admin/ai",
+      "/admin/ai/memory",
+      "/admin/ai/philosophy",
+    ]);
   });
 
   it("gives a Musician, a Song Leader and a Member nothing", () => {
@@ -44,6 +58,9 @@ describe("the admin area's sections", () => {
     expect(hrefs(holding("manage_users"))).toEqual(["/admin", "/admin/requests", "/admin/invitations", "/admin/users"]);
     expect(hrefs(holding("use_ai"))).toEqual(["/admin", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
     expect(hrefs(holding("manage_sheet_music"))).toEqual(["/admin", "/admin/users", "/admin/configuration"]);
+    // Sending notifications and configuring them are separate: either opens only its own pages.
+    expect(hrefs(holding("send_notifications"))).toEqual(["/admin", "/admin/notifications", "/admin/notifications/history", "/admin/notifications/templates"]);
+    expect(hrefs(holding("manage_notifications"))).toEqual(["/admin", "/admin/notifications/policies"]);
     // Permissions that open nothing in the admin area.
     expect(hrefs(holding("manage_service_plans", "view_availability", "manage_availability", "manage_planning_philosophy"))).toEqual([]);
   });
@@ -62,6 +79,13 @@ describe("the admin area's sections", () => {
     expect(ai.children?.map((page) => page.label)).toEqual(["Usage", "Memory", "Planning Philosophy"]);
     expect(ai.children?.map((page) => page.href)).toEqual(["/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
     expect(aiContent.admin.nav.philosophy).toBe("Planning Philosophy");
+  });
+
+  it("makes Notifications a group too: Send, History, Templates, Policies", () => {
+    const groups = adminSectionsFor(role("administrator"));
+    const notifications = groups.flatMap((group) => group.sections).find((section) => section.id === "notifications")!;
+    expect(notifications).not.toHaveProperty("href");
+    expect(notifications.children?.map((page) => page.label)).toEqual(["Send", "History", "Templates", "Policies"]);
   });
 
   it("drops a group with no page left, and a heading with nothing under it", () => {

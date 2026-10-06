@@ -54,6 +54,11 @@ export const PERMISSIONS = {
     description: "Choose how each kind of notification reaches people: required, on or off by default, or not offered.",
     group: "administration",
   },
+  send_notifications: {
+    label: "Send notifications",
+    description: "Compose and send manual notifications, manage notification templates, and view manual notification history.",
+    group: "administration",
+  },
   manage_songs: {
     label: "Manage songs",
     description: "Edit songs and their details.",
@@ -137,7 +142,8 @@ export function isPermission(value: string): value is Permission {
  * link. manage_sheet_music is here because each person's sheet music is
  * chosen on their page under People; use_ai because the AI's status and usage
  * are there (/admin/ai); manage_notifications because the notification
- * policies are (/admin/notifications).
+ * policies are (/admin/notifications/policies); send_notifications because
+ * the notification centre is (/admin/notifications).
  */
 export const ADMIN_PERMISSIONS: Permission[] = [
   "manage_users",
@@ -147,6 +153,7 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "manage_sheet_music",
   "use_ai",
   "manage_notifications",
+  "send_notifications",
 ];
 
 /** Permissions that open People (/admin/users): everything that works on a person's page. */
@@ -187,6 +194,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     description: "Leads the music ministry: songs, service plans, sheet music and reports.",
     permissions: [
       "manage_notifications",
+      "send_notifications",
       "manage_songs",
       "manage_service_plans",
       "manage_sheet_music",
@@ -239,6 +247,7 @@ export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readon
     permissions: ["use_personal_ai_memory", "manage_global_ai_memory", "manage_planning_philosophy"],
   },
   { key: "2026-10-notifications-permission", permissions: ["manage_notifications"] },
+  { key: "2026-10-send-notifications-permission", permissions: ["send_notifications"] },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

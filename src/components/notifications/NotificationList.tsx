@@ -138,6 +138,45 @@ function Row({ item, now, onOpen }: { item: NotificationItem; now: number; onOpe
   );
 }
 
+/**
+ * A notification as it will look in the list, before it exists: the
+ * announcement composer's preview (Admin -> Notifications). It is shown
+ * unread, as it arrives, and nothing in it can be pressed.
+ */
+export function NotificationSample({
+  category,
+  title,
+  body,
+  important,
+  when,
+}: {
+  category: string;
+  title: string;
+  body: string;
+  important: boolean;
+  /** "Just now". */
+  when: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 bg-paper/60 px-4 py-3.5">
+      <span aria-hidden="true" className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gold text-gold-dark">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d={CATEGORY_ICONS[category] ?? BELL_ICON} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-sm font-semibold text-ink">{title}</p>
+        {body ? <p className="mt-0.5 whitespace-pre-line break-words text-sm text-muted">{body}</p> : null}
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+          {important ? <span className="font-semibold uppercase tracking-wide text-gold-dark">{copy.important}</span> : null}
+          <span>{when}</span>
+        </p>
+      </div>
+      <span aria-hidden="true" className="mt-1.5 block h-2.5 w-2.5 shrink-0 rounded-full border border-gold bg-gold" />
+    </div>
+  );
+}
+
 /** "You're all caught up." */
 export function NotificationsEmpty({ className }: { className?: string }) {
   const empty = notificationsContent.empty;

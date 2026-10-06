@@ -1,6 +1,6 @@
 import "server-only";
 
-import { listAccounts } from "@/lib/auth/clerk";
+import { listAccounts, type AccountSummary } from "@/lib/auth/clerk";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import type { PermissionOverride } from "@/lib/auth/permissions";
 import { db, type Sql } from "@/lib/auth/store";
@@ -40,6 +40,10 @@ import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
  *   push_subscriptions              the devices a person receives push on
  *   notification_deliveries         each attempt to reach one of them
  *                                   (both: push-store.ts)
+ *   notification_templates          announcements kept to be used again
+ *                                   (manual-store.ts). What was SENT is not
+ *                                   here: a send is its notification_events
+ *                                   row, whose payload is what was said.
  *
  * Created on first use, on top of the account tables (db() in
  * src/lib/auth/store.ts); every row carries the Clerk environment, so a test
@@ -172,12 +176,35 @@ const SCHEMA = [
    )`,
   `CREATE INDEX IF NOT EXISTS notification_deliveries_notification ON notification_deliveries (clerk_env, notification_id)`,
   `CREATE INDEX IF NOT EXISTS notification_deliveries_recipient ON notification_deliveries (clerk_env, recipient_user_id, id DESC)`,
+  // The send history (manual-store.ts): one kind of event, newest first, then who each was for and what became of each push.
+  `CREATE INDEX IF NOT EXISTS notification_events_key ON notification_events (clerk_env, event_key, id DESC)`,
+  `CREATE INDEX IF NOT EXISTS notifications_event ON notifications (event_id)`,
+  `CREATE INDEX IF NOT EXISTS notification_deliveries_event ON notification_deliveries (clerk_env, event_id)`,
+  // An announcement kept as a template: what it says, where it leads, and
+  // who it is for (an AudienceSelection, manual.ts). Created and changed by
+  // are plain ids: a template outlives the account of whoever wrote it.
+  `CREATE TABLE IF NOT EXISTS notification_templates (
+     id         bigserial   PRIMARY KEY,
+     ${ENV},
+     name       text        NOT NULL,
+     title      text        NOT NULL,
+     body       text        NOT NULL DEFAULT '',
+     action_url text,
+     priority   text        NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'important', 'critical')),
+     audience   jsonb       NOT NULL DEFAULT '{}',
+     created_by text,
+     updated_by text,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     updated_at timestamptz NOT NULL DEFAULT now()
+   )`,
+  `CREATE INDEX IF NOT EXISTS notification_templates_env ON notification_templates (clerk_env, id)`,
 ];
 
 let schemaReady = false;
 const seeded = new Set<ClerkEnv>();
 
-async function notificationSql(env: ClerkEnv): Promise<Sql> {
+/** The database with the notification tables in place, for the stores built on them (manual-store.ts). */
+export async function notificationSql(env: ClerkEnv): Promise<Sql> {
   const sql = await db(env);
   if (!schemaReady) {
     for (const statement of SCHEMA) await sql.query(statement);
@@ -247,6 +274,20 @@ const toItem = (row: NotificationRow): NotificationItem => ({
 
 /** Clerk returns at most this many accounts at a time. */
 const ACCOUNT_PAGE = 500;
+
+/**
+ * Every account, from Clerk, which is where accounts live. If it cannot be
+ * asked this throws: nobody is ever sent to a guessed list.
+ */
+export async function everyAccount(): Promise<AccountSummary[]> {
+  const accounts: AccountSummary[] = [];
+  for (let offset = 0; ; offset += ACCOUNT_PAGE) {
+    const page = await listAccounts({ limit: ACCOUNT_PAGE, offset });
+    if (!page.ok) throw new Error("The list of accounts could not be read from Clerk.");
+    accounts.push(...page.value.accounts);
+    if (page.value.accounts.length < ACCOUNT_PAGE || accounts.length >= page.value.total) return accounts;
+  }
+}
 
 /** The database behind the notification rules (service.ts), for one environment. */
 export function notificationDeps(env: ClerkEnv): NotificationDeps {
@@ -347,13 +388,7 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
     // Accounts belong to Clerk. If it cannot be asked, the notification is
     // not sent to a guessed list: the caller hears that it failed.
     async listAccountIds() {
-      const ids: string[] = [];
-      for (let offset = 0; ; offset += ACCOUNT_PAGE) {
-        const page = await listAccounts({ limit: ACCOUNT_PAGE, offset });
-        if (!page.ok) throw new Error("The list of accounts could not be read from Clerk.");
-        ids.push(...page.value.accounts.map((account) => account.id));
-        if (page.value.accounts.length < ACCOUNT_PAGE || ids.length >= page.value.total) return ids;
-      }
+      return (await everyAccount()).map((account) => account.id);
     },
 
     // The event and every recipient's notification in one statement: either all of it is there, or none.

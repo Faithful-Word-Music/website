@@ -984,7 +984,7 @@ export async function setNotificationPoliciesAction(category: unknown, policies:
         return { ok: false, error: result.problem === "forbidden" ? ACTION_ERRORS.forbidden : result.problem === "not-allowed" ? copy.notAllowed : copy.unknown };
       }
     }
-    revalidatePath("/admin/notifications");
+    revalidatePath("/admin/notifications/policies");
     revalidatePath("/notifications/settings");
     return { ok: true, value: null, message: copy.saved };
   });
