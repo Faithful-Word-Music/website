@@ -50,6 +50,14 @@ export const AUDIENCES = {
   musicTeam: { kind: "permission", permission: "view_availability", explicit: true },
   musicians: { kind: "role", role: MUSICIAN_ROLE },
   songLeaders: { kind: "role", role: SONG_LEADER_ROLE },
+  /**
+   * Whoever prepares from the published song lists: the people a role or a
+   * grant gives view_service_plans on purpose - not an administrator who
+   * merely holds everything.
+   */
+  servicePlanViewers: { kind: "permission", permission: "view_service_plans", explicit: true },
+  /** Whoever looks after availability (the Music Director), by the same reckoning. */
+  availabilityManagers: { kind: "permission", permission: "manage_availability", explicit: true },
   /** Whoever plans the services (the Music Director). */
   planners: { kind: "permission", permission: "manage_service_plans" },
   /** Whoever reviews account requests. */
@@ -64,6 +72,11 @@ export const AUDIENCES = {
 /** One person, or a few. */
 export function users(...userIds: string[]): Audience {
   return { kind: "users", userIds };
+}
+
+/** Anyone in any of these audiences. */
+export function anyOf(...of: Audience[]): Audience {
+  return { kind: "any", of };
 }
 
 /** Everything that decides who holds what, for one Clerk environment. */

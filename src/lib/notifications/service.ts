@@ -9,6 +9,7 @@ import {
   allowedPolicies,
   effectiveSetting,
   isChannel,
+  isRelevantCategory,
   isChannelPolicy,
   isPriority,
   normalizeBody,
@@ -84,6 +85,15 @@ export interface NotificationWrite {
   actionUrl: string | null;
   priority: NotificationPriority;
   recipients: ReadonlyArray<{ userId: string; inApp: boolean }>;
+  /**
+   * Set when the event folds (catalog.ts) and says what it is about. For each
+   * recipient, an UNREAD notification of the same family about the same
+   * entity, no older than `windowMinutes`, is replaced by this one - shown
+   * with this title and body in place of the write's own. Someone with no
+   * such notification, or who has read theirs, simply gets a new one. The
+   * event itself is always recorded.
+   */
+  coalesce: { family: string; windowMinutes: number; title: string; body: string } | null;
 }
 
 export interface NotificationDeps {
@@ -140,7 +150,11 @@ export interface CategoryPreferences {
   channels: Record<Channel, EffectiveSetting>;
 }
 
-/** A person's own notification settings: every active category, and how each channel stands for them. */
+/**
+ * A person's own notification settings: every active category worth asking
+ * them about (isRelevantCategory in model.ts), and how each channel stands
+ * for them.
+ */
 export async function preferencesFor(actor: NotificationActor, deps: NotificationDeps): Promise<CategoryPreferences[]> {
   const [categories, policyRows, stored] = await Promise.all([
     deps.listCategories(),
@@ -149,7 +163,7 @@ export async function preferencesFor(actor: NotificationActor, deps: Notificatio
   ]);
   const policies = policiesByCategory(policyRows);
   return categories
-    .filter((category) => category.active)
+    .filter((category) => category.active && isRelevantCategory(category.key, (permission) => actor.can(permission)))
     .map((category) => {
       const own = policies.get(category.key) ?? NOT_OFFERED;
       const setting = (channel: Channel) =>
@@ -247,6 +261,13 @@ export interface NotifyInput {
   entity?: { type: string; id: string } | null;
   /** Structured context kept with the event. Never sent to the browser. */
   payload?: Record<string, unknown>;
+  /**
+   * What to show instead when this replaces an unread notification about the
+   * same thing (an event that folds: catalog.ts) - "Several changes were
+   * made…" rather than the last change alone. Without it the latest wording
+   * is shown, which is right when only the latest state matters.
+   */
+  whenCoalesced?: { title?: string; body?: string };
 }
 
 export type NotifyResult =
@@ -258,9 +279,16 @@ export type NotifyResult =
  *
  * The event is always recorded. A recipient gets a notification when at
  * least one channel that delivers today is on for them (the category's
- * policy and their own choice, together); in Phase 1 that is the app alone.
+ * policy and their own choice, together); today that is the app alone.
  * A channel still to come is evaluated by the same rule, so launching it is
  * adding its delivery below, not changing how anything is decided.
+ *
+ * An event that folds (catalog.ts) replaces a recipient's unread
+ * notification about the same thing rather than adding to it; one they have
+ * read is never touched, so a later change is a new notification.
+ *
+ * Features call this through notifyBestEffort() (send.ts), so a notification
+ * that cannot be made never fails the change it is about.
  */
 export async function notify(input: NotifyInput, deps: NotificationDeps): Promise<NotifyResult> {
   if (!isNotificationEvent(input.event)) return no("invalid");
@@ -271,6 +299,15 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
   const actionUrl = safeActionUrl(input.actionUrl === undefined ? definition.actionUrl : input.actionUrl);
   const priority = input.priority ?? definition.priority;
   if (title === null || body === null || actionUrl === undefined || !isPriority(priority)) return no("invalid");
+
+  const folded = {
+    title: input.whenCoalesced?.title === undefined ? title : normalizeTitle(input.whenCoalesced.title),
+    body: input.whenCoalesced?.body === undefined ? body : normalizeBody(input.whenCoalesced.body),
+  };
+  if (folded.title === null || folded.body === null) return no("invalid");
+  // Folding needs to know what the event is about: without an entity every one stands alone.
+  const coalesce: NotificationWrite["coalesce"] =
+    definition.coalesce && input.entity ? { ...definition.coalesce, title: folded.title, body: folded.body } : null;
 
   const categoryKey = input.category ?? definition.category;
   const [categories, policyRows, baseDirectory] = await Promise.all([deps.listCategories(), deps.listPolicies(), deps.loadDirectory()]);
@@ -304,12 +341,30 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
     actionUrl,
     priority,
     recipients,
+    coalesce,
   });
 
   // In the app, the row just written IS the delivery. Push and email hand
   // each recipient whose setting is on to their own sender here, once they
   // exist - with a notification_deliveries row per attempt (NOTIFICATIONS.md).
   return { ok: true, eventId, recipients: recipients.length };
+}
+
+/**
+ * notify(), for a feature: whatever happens, the change the notification is
+ * about has already been saved and stays saved. Nothing to send (null), a
+ * notification refused, a database that cannot be reached - each is logged
+ * and none is thrown. Features reach this through notifyBestEffort()
+ * (send.ts), which supplies the real `deps`.
+ */
+export async function notifySafely(input: NotifyInput | null, deps: NotificationDeps): Promise<void> {
+  if (!input) return;
+  try {
+    const result = await notify(input, deps);
+    if (!result.ok) console.warn(`[notifications] ${input.event} was not sent: ${result.problem}.`);
+  } catch (error) {
+    console.error(`[notifications] ${input.event} could not be sent:`, error instanceof Error ? error.message : "unknown error");
+  }
 }
 
 // ---------------------------------------------------------------------------

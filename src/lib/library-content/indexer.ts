@@ -74,6 +74,8 @@ export type LibraryRefreshResult =
       report: RefreshReport;
       /** Why embedding stopped, in words safe to show; null when it did not. */
       embeddingMessage: string | null;
+      /** Files this pass could not read that had not already failed: what is worth telling someone about. */
+      newlyFailed: number;
     }
   | { ok: false; reason: LibraryRefreshFailure };
 
@@ -168,6 +170,7 @@ export async function refreshLibraryIndex(viewer: Viewer, options: { continuing?
     const report: RefreshReport = { ...EMPTY_REPORT, songs: plan.songs.length, removed: plan.removed.length };
     report.unchanged = plan.songs.filter((entry) => entry.source && entry.work !== "read").length;
 
+    let newlyFailed = 0;
     let at = 0;
     for (; at < toRead.length && Date.now() < deadline; at += FILES_AT_ONCE) {
       const batch = toRead.slice(at, at + FILES_AT_ONCE);
@@ -175,8 +178,9 @@ export async function refreshLibraryIndex(viewer: Viewer, options: { continuing?
       await saveSongs(env, records);
       records.forEach((record, index) => {
         report.read += 1;
-        if (record.status !== "indexed") return;
         const before = batch[index].known?.status;
+        if (record.status === "failed" && before !== "failed") newlyFailed += 1;
+        if (record.status !== "indexed") return;
         if (before === "indexed" || before === "no_lyrics") report.updated += 1;
         else report.added += 1;
       });
@@ -225,7 +229,7 @@ export async function refreshLibraryIndex(viewer: Viewer, options: { continuing?
     report.noSource = counts.noSource;
     report.noLyrics = counts.noLyrics;
     report.failed = counts.failed;
-    return { ok: true, report, embeddingMessage };
+    return { ok: true, report, embeddingMessage, newlyFailed };
   } catch (error) {
     if (error instanceof LibraryIndexUnavailableError) return { ok: false, reason: "database" };
     console.error("[library] Could not refresh the index:", error instanceof Error ? error.message : "unknown error");

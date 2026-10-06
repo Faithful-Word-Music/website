@@ -6,6 +6,14 @@ import { servicePlannerContent } from "@/content/service-planner";
 import { firstIssue } from "@/lib/auth/forms";
 import { withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
 import { addDays, findOccurrence, serviceOccurrences, type Occurrence } from "@/lib/availability/occurrences";
+import {
+  servicePlanPublished,
+  servicePlanSaved,
+  servicePlanStatusChanged,
+  servicePlansWithdrawnByInsert,
+  type ServiceRef,
+} from "@/lib/notifications/events/service-plan";
+import { notifyBestEffort } from "@/lib/notifications/send";
 import { plural } from "@/lib/plural";
 import { dayOfWeek } from "@/lib/service-time";
 import { startsAtAt } from "@/lib/service-planner/format";
@@ -60,7 +68,10 @@ import type { ServiceSlot } from "@/types/song-list";
  *   3. checks the service is real and not yet frozen into history;
  *   4. writes, recording what changed (service_plan_events);
  *   5. refreshes the pages that show it - the whole public site when a
- *      published service changed, only the planner's pages for a draft.
+ *      published service changed, only the planner's pages for a draft;
+ *   6. tells the people it affects, when it changes what they must prepare
+ *      (src/lib/notifications/events/service-plan.ts). That is best effort:
+ *      the change is saved whether or not anyone could be told.
  */
 
 const PERMISSION = "manage_service_plans";
@@ -164,10 +175,26 @@ export async function saveService(
     if (!saved.ok) return { ok: false, error: MESSAGES.conflict };
 
     let plan = saved.plan;
+    let publicationId: string | null = null;
     if (publish) {
-      await publishPlans(viewer.env, [where], viewer.userId);
+      ({ publicationId } = await publishPlans(viewer.env, [where], viewer.userId));
       plan = (await getPlan(viewer.env, where.date, where.slot)) ?? plan;
     }
+
+    // Told only of what changes their preparation (events/service-plan.ts): a service newly
+    // published, or a published one whose songs, keys or time changed. A draft is silent.
+    await notifyBestEffort(
+      viewer.env,
+      servicePlanSaved({
+        actorId: viewer.userId,
+        statusBefore: current?.status ?? null,
+        startsAtBefore: current?.startsAt ?? occurrence.startsAt,
+        publicationId,
+        service: plan,
+        changes: diffSlots(before, slots),
+        now,
+      }),
+    );
 
     // A draft that takes or drops the week's inserts changes what the song list shows for it (plannedInserts).
     if (plan.status === "published" || insertMode !== (current?.insertMode ?? "week")) refreshEverything();
@@ -195,6 +222,8 @@ export async function publishServices(input: unknown): Promise<ActionResult<{ co
 
     const plans = await listPlans(viewer.env, { from: dates[0], to: dates[dates.length - 1] });
     const targets: Array<{ date: string; slot: ServiceSlot }> = [];
+    /** The ones not already on the song list: what the publication has to announce. */
+    const fresh: ServiceRef[] = [];
 
     for (const where of wanted) {
       const plan = plans.find((item) => item.date === where.date && item.slot === where.slot) ?? null;
@@ -218,10 +247,17 @@ export async function publishServices(input: unknown): Promise<ActionResult<{ co
         );
       }
       targets.push(where);
+      if (plan?.status !== "published") {
+        fresh.push({ ...where, startsAt: plan?.startsAt ?? occurrence.startsAt, label: plan?.label ?? occurrence.label ?? null });
+      }
     }
 
-    const { count } = await publishPlans(viewer.env, targets, viewer.userId);
+    const { publicationId, count } = await publishPlans(viewer.env, targets, viewer.userId);
     refreshEverything();
+
+    // ONE notification for the publication, however many services are in it. A service that was
+    // already published and is only published again is nothing new to anyone.
+    await notifyBestEffort(viewer.env, servicePlanPublished({ actorId: viewer.userId, publicationId, services: fresh, now }));
     return {
       ok: true,
       value: { count },
@@ -266,6 +302,19 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
     if (!plan) return { ok: false, error: MESSAGES.notFound };
     // Leaving or entering the song list, or appearing/vanishing in Availability.
     refreshEverything();
+
+    // A song list people were given has gone, or a service they expected has: those are told.
+    // A draft made a draft again, or a cancelled service cancelled again, is not.
+    await notifyBestEffort(
+      viewer.env,
+      servicePlanStatusChanged({
+        actorId: viewer.userId,
+        before: current?.status ?? null,
+        after: plan.status,
+        service: plan,
+        now: Date.now(),
+      }),
+    );
     return {
       ok: true,
       value: { status: plan.status },
@@ -349,6 +398,7 @@ export async function setInsertWeek(input: unknown): Promise<ActionResult<{ upda
     if (!week) return { ok: false, error: MESSAGES.insertTwice };
     await setWeekInserts(viewer.env, weekStart, week, viewer.userId);
     const { updated, returned } = await passInsertOn(viewer, weekStart, week);
+    // Nothing is said of the insert itself - only of the published song lists it took back (passInsertOn).
 
     // The song list shows a planned insert on services not posted yet, and loses the ones returned to draft.
     refreshEverything();
@@ -415,6 +465,11 @@ export async function restoreWeekInserts(input: unknown): Promise<ActionResult<{
  * back, those that had stopped (insertRestoreFor) - which follow it again. A
  * published service still to come is returned to draft as well, so what the
  * song list shows is always something that was published as it reads.
+ *
+ * Those returned to draft are announced here, together, as ONE notification
+ * (servicePlansWithdrawnByInsert): the people who had been given those song
+ * lists are told they are being revised. Drafts brought up to date are
+ * nobody's news, and republishing later announces itself.
  */
 async function passInsertOn(
   viewer: Viewer,
@@ -425,7 +480,7 @@ async function passInsertOn(
   const now = Date.now();
   const plans = await listPlans(viewer.env, { from: weekStart, to: addDays(weekStart, 6) });
   let updated = 0;
-  let returned = 0;
+  const withdrawn: StoredPlan[] = [];
 
   for (const plan of plans) {
     const what = decide(plan, week, now);
@@ -440,9 +495,14 @@ async function passInsertOn(
     );
     if (!saved.ok) continue;
     if (what === "update") updated += 1;
-    else if (await setPlanStatus(viewer.env, plan, "draft", viewer.userId)) returned += 1;
+    else if (await setPlanStatus(viewer.env, plan, "draft", viewer.userId)) withdrawn.push(plan);
   }
-  return { updated, returned };
+
+  await notifyBestEffort(
+    viewer.env,
+    servicePlansWithdrawnByInsert({ actorId: viewer.userId, weekStart, services: withdrawn, now }),
+  );
+  return { updated, returned: withdrawn.length };
 }
 
 // ---------------------------------------------------------------------------

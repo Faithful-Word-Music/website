@@ -26,6 +26,7 @@
  * pages.
  */
 
+import type { Permission } from "@/lib/auth/permissions";
 import { isSitePath } from "@/lib/page-origin";
 
 export const CHANNELS = ["in_app", "push", "email"] as const;
@@ -161,6 +162,38 @@ export const DEFAULT_CATEGORIES: ReadonlyArray<Omit<NotificationCategory, "activ
     policies: { in_app: "default_on", push: "default_off", email: "unavailable" },
   },
 ];
+
+/**
+ * Which categories are worth showing in a person's notification settings:
+ * a category listed here shows only to someone holding ANY of its
+ * permissions - nothing in "AI and system" will ever reach a musician, so
+ * they are not asked about it. A category with no entry (announcements,
+ * account, sheet music, and any an administrator adds) shows to everyone.
+ *
+ * This is about what is worth ASKING, and nothing else. It is not who
+ * receives an event (audience.ts), and it is never who may open a page:
+ * a hidden category can still be chosen and still delivers.
+ */
+export const CATEGORY_RELEVANCE: Readonly<Record<string, readonly Permission[]>> = {
+  service_plan_published: ["view_service_plans", "manage_service_plans"],
+  service_plan_updated: ["view_service_plans", "manage_service_plans"],
+  availability_changed: ["view_availability", "manage_availability"],
+  ai_system: ["use_ai"],
+};
+
+/** Whether a category belongs in this person's notification settings. */
+export function isRelevantCategory(categoryKey: string, can: (permission: Permission) => boolean): boolean {
+  const permissions = Object.hasOwn(CATEGORY_RELEVANCE, categoryKey) ? CATEGORY_RELEVANCE[categoryKey] : null;
+  return !permissions || permissions.some(can);
+}
+
+/**
+ * How long related notifications fold into one, in minutes: a second change
+ * to the same thing within this long of an UNREAD notification about it
+ * replaces that notification instead of adding another (notify() in
+ * service.ts). The library index folds for a day (catalog.ts).
+ */
+export const COALESCE_MINUTES = 15;
 
 /** A notification as the person it is for sees it. Nothing of the event's payload is here. */
 export interface NotificationItem {

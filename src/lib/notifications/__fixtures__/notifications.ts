@@ -30,11 +30,16 @@ export function notificationStore(
   );
   const preferences: PreferenceRow[] = [];
   const events: Array<NotificationWrite & { id: number }> = [];
-  const rows: Array<NotificationItem & { recipient: string; inApp: boolean }> = [];
+  const rows: Array<NotificationItem & { recipient: string; inApp: boolean; eventId: number }> = [];
+  let nextRowId = 0;
   /** How many times the full list of accounts was asked for. */
   const calls = { accounts: 0 };
   let clock = Date.parse("2026-10-06T12:00:00.000Z");
   const tick = () => new Date((clock += 1000)).toISOString();
+  /** Lets time pass, for what depends on how old a notification is. */
+  const advance = (minutes: number) => {
+    clock += minutes * 60_000;
+  };
 
   const deps: NotificationDeps = {
     listCategories: async () => [...categories].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -63,14 +68,32 @@ export function notificationStore(
     record: async (write) => {
       const id = events.length + 1;
       events.push({ ...write, id });
+      // As the database does: an unread notification of the same family about the same thing, young enough, is replaced.
+      const fold = write.coalesce;
+      const replaced = new Set<string>();
+      if (fold) {
+        const since = clock - fold.windowMinutes * 60_000;
+        for (let index = rows.length - 1; index >= 0; index -= 1) {
+          const row = rows[index];
+          const event = events.find((item) => item.id === row.eventId)!;
+          const same =
+            event.coalesce?.family === fold.family && event.entityType === write.entityType && event.entityId === write.entityId;
+          if (!same || !row.inApp || row.readAt !== null || Date.parse(row.createdAt) < since) continue;
+          if (!write.recipients.some((recipient) => recipient.userId === row.recipient)) continue;
+          replaced.add(row.recipient);
+          rows.splice(index, 1);
+        }
+      }
       for (const recipient of write.recipients) {
+        const folded = fold && replaced.has(recipient.userId);
         rows.push({
-          id: rows.length + 1,
+          id: (nextRowId += 1),
+          eventId: id,
           recipient: recipient.userId,
           inApp: recipient.inApp,
           category: write.category,
-          title: write.title,
-          body: write.body,
+          title: folded ? fold.title : write.title,
+          body: folded ? fold.body : write.body,
           actionUrl: write.actionUrl,
           priority: write.priority,
           readAt: null,
@@ -112,8 +135,25 @@ export function notificationStore(
   const stored = (userId: string, category: string, channel: string) =>
     preferences.find((row) => row.userId === userId && row.category === category && row.channel === channel)?.enabled;
 
-  return { deps, categories, policies, preferences, events, rows, calls, stored };
+  return { deps, categories, policies, preferences, events, rows, calls, stored, advance };
 }
+
+/**
+ * A small ministry, for the tests of real events: two musicians' worth of
+ * roles, two leaders, an administrator who is not on the music team, and
+ * someone who only reviews account requests.
+ */
+export const TEAM = {
+  userRoles: {
+    user_john: ["musician"],
+    user_mary: ["song_leader"],
+    user_director: ["music_director"],
+    user_assistant: ["music_director"],
+    user_admin: ["administrator"],
+  },
+  overrides: { user_helper: [{ permission: "manage_users", effect: "grant" as const }] },
+  accountIds: ["user_john", "user_mary", "user_director", "user_assistant", "user_admin", "user_helper", "user_member"],
+};
 
 export const actor = (userId: string, ...permissions: Permission[]): NotificationActor => ({
   userId,

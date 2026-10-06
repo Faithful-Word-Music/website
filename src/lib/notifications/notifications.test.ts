@@ -6,12 +6,15 @@ import { actor, director, john, mary, notificationStore } from "./__fixtures__/n
 import { AUDIENCES, needsEveryAccount, resolveAudience, users, type Directory } from "./audience";
 import { relativeTime } from "./format";
 import {
+  CATEGORY_RELEVANCE,
   CHANNELS,
+  COALESCE_MINUTES,
   DEFAULT_CATEGORIES,
   NOTIFICATION_LIMITS,
   allowedPolicies,
   badgeLabel,
   effectiveSetting,
+  isRelevantCategory,
   normalizeBody,
   normalizeTitle,
   safeActionUrl,
@@ -30,6 +33,11 @@ import {
 } from "./service";
 
 const CATEGORY = "availability_changed";
+
+/** Someone on the music team: the categories about services and availability concern them. */
+const musician = (userId: string) => actor(userId, "view_availability", "view_service_plans");
+/** Someone every starting category concerns. */
+const everything = actor("user_everything", "view_availability", "view_service_plans", "use_ai");
 
 /** A test notification to these people, in a category of the test's choosing. */
 const send = (to: string[], extra: Partial<NotifyInput> = {}): NotifyInput => ({
@@ -86,9 +94,9 @@ describe("the starting categories", () => {
 });
 
 describe("a person's own choices", () => {
-  it("shows every category, with what is required locked and email unavailable", async () => {
+  it("shows every category to someone they all concern, with what is required locked and email unavailable", async () => {
     const { deps } = notificationStore();
-    const mine = await preferencesFor(john, deps);
+    const mine = await preferencesFor(everything, deps);
     expect(mine.map((category) => category.key)).toEqual(DEFAULT_CATEGORIES.map((category) => category.key));
     const announcements = mine.find((category) => category.key === "admin_announcement")!;
     expect(announcements.channels.in_app).toEqual({ enabled: true, locked: true, available: true });
@@ -98,6 +106,8 @@ describe("a person's own choices", () => {
 
   it("stores only what the person chose, and only for them", async () => {
     const { deps, preferences } = notificationStore();
+    const john = musician("user_john");
+    const mary = musician("user_mary");
     expect(await setPreference(john, { category: CATEGORY, channel: "in_app", enabled: false }, deps)).toEqual({ ok: true });
     expect(preferences).toEqual([{ userId: "user_john", category: CATEGORY, channel: "in_app", enabled: false }]);
     const forJohn = (await preferencesFor(john, deps)).find((category) => category.key === CATEGORY)!;
@@ -156,6 +166,7 @@ describe("changing a policy", () => {
 
   it("keeps a person's choice through mandatory and back", async () => {
     const { deps, stored } = notificationStore();
+    const john = musician("user_john");
     const effective = async () => (await preferencesFor(john, deps)).find((category) => category.key === CATEGORY)!.channels.in_app;
 
     // 1. John turns a default-on category off.
@@ -184,7 +195,116 @@ describe("changing a policy", () => {
     await setPolicy(director, { category: CATEGORY, channel: "push", policy: "unavailable" }, deps);
     expect(stored("user_john", CATEGORY, "push")).toBe(false);
     await setPolicy(director, { category: CATEGORY, channel: "push", policy: "default_on" }, deps);
-    expect((await preferencesFor(john, deps)).find((category) => category.key === CATEGORY)!.channels.push.enabled).toBe(false);
+    expect((await preferencesFor(musician("user_john"), deps)).find((category) => category.key === CATEGORY)!.channels.push.enabled).toBe(false);
+  });
+});
+
+describe("which categories a person is asked about", () => {
+  const keys = async (who: ReturnType<typeof actor>) => (await preferencesFor(who, notificationStore().deps)).map((category) => category.key);
+  const FOR_EVERYONE = ["admin_announcement", "account_access", "sheet_music_report"];
+
+  it("leaves out what could never reach them", async () => {
+    // A member with no part in the music: announcements, their account, sheet music.
+    expect(await keys(john)).toEqual(FOR_EVERYONE);
+    expect(await keys(musician("user_john"))).toEqual([
+      "admin_announcement",
+      "service_plan_published",
+      "service_plan_updated",
+      "availability_changed",
+      "account_access",
+      "sheet_music_report",
+    ]);
+    expect(await keys(actor("user_x", "use_ai"))).toEqual([...FOR_EVERYONE, "ai_system"]);
+    expect(await keys(actor("user_x", "manage_availability"))).toContain("availability_changed");
+    expect(await keys(actor("user_x", "manage_service_plans"))).toContain("service_plan_updated");
+  });
+
+  it("always shows a category nothing is said about, such as one added later", () => {
+    expect(isRelevantCategory("choir_news", () => false)).toBe(true);
+    expect(isRelevantCategory("ai_system", () => false)).toBe(false);
+    for (const key of Object.keys(CATEGORY_RELEVANCE)) expect(DEFAULT_CATEGORIES.map((category) => category.key)).toContain(key);
+  });
+
+  it("decides nothing else: a hidden category can still be chosen, and still delivers", async () => {
+    const { deps, rows } = notificationStore();
+    // John is not asked about AI and system, yet a choice he makes is kept, not refused...
+    expect((await preferencesFor(john, deps)).some((category) => category.key === "ai_system")).toBe(false);
+    expect(await setPreference(john, { category: "ai_system", channel: "push", enabled: true }, deps)).toEqual({ ok: true });
+    // ...and a notification addressed to him in it arrives all the same.
+    expect(await notify(send(["user_john"], { category: "ai_system" }), deps)).toMatchObject({ ok: true, recipients: 1 });
+    expect(rows.map((row) => row.recipient)).toEqual(["user_john"]);
+    // Nor does being asked about a category grant anything: relevance never appears among what an actor may do.
+    expect(john.can("use_ai")).toBe(false);
+    expect(john.can("manage_notifications")).toBe(false);
+  });
+});
+
+describe("folding related notifications", () => {
+  /** An event that folds (the catalog's availability.service_changed), about `entity`. */
+  const change = (title: string, entity = "user_john:2026-10-18-am", extra: Partial<NotifyInput> = {}): NotifyInput => ({
+    event: "availability.service_changed",
+    audience: users("user_director", "user_mary"),
+    title,
+    entity: { type: "availability", id: entity },
+    ...extra,
+  });
+  const reader = actor("user_director");
+  const titles = async (deps: Parameters<typeof notify>[1], who = reader) => (await listNotifications(who, {}, deps)).items.map((item) => item.title);
+
+  it("replaces an unread notification about the same thing, and keeps every event", async () => {
+    const { deps, events, advance } = notificationStore();
+    await notify(change("First"), deps);
+    advance(5);
+    await notify(change("Second"), deps);
+    expect(events.map((event) => event.title)).toEqual(["First", "Second"]);
+    expect(await titles(deps)).toEqual(["Second"]);
+    expect(await unreadCount(reader, deps)).toBe(1);
+    expect(await titles(deps, mary)).toEqual(["Second"]);
+  });
+
+  it("uses the wording for a folded notification only where one was replaced", async () => {
+    const { deps } = notificationStore();
+    await notify(change("First", undefined, { audience: users("user_director") }), deps);
+    await notify(change("Second", undefined, { whenCoalesced: { title: "Several changes", body: "More than one." } }), deps);
+    expect((await listNotifications(reader, {}, deps)).items[0]).toMatchObject({ title: "Several changes", body: "More than one." });
+    // Mary had nothing to replace: she is told what happened.
+    expect(await titles(deps, mary)).toEqual(["Second"]);
+  });
+
+  it("never touches a notification already read", async () => {
+    const { deps } = notificationStore();
+    await notify(change("First"), deps);
+    await markAllRead(reader, deps);
+    await notify(change("Second"), deps);
+    expect(await titles(deps)).toEqual(["Second", "First"]);
+    expect(await unreadCount(reader, deps)).toBe(1);
+    // Mary had not read hers, so hers was replaced.
+    expect(await titles(deps, mary)).toEqual(["Second"]);
+  });
+
+  it("starts afresh after the window, for another entity, and for another family", async () => {
+    const { deps, advance } = notificationStore();
+    await notify(change("First"), deps);
+    advance(COALESCE_MINUTES + 1);
+    await notify(change("Later"), deps);
+    await notify(change("Another service", "user_john:2026-10-18-pm"), deps);
+    await notify(change("Their range", "user_john:2026-10-18-am", { event: "availability.range_changed" }), deps);
+    expect(await titles(deps)).toEqual(["Their range", "Another service", "Later", "First"]);
+  });
+
+  it("does not fold an event that says nothing of what it is about, or one that never folds", async () => {
+    const { deps } = notificationStore();
+    await notify({ ...change("One"), entity: null }, deps);
+    await notify({ ...change("Two"), entity: null }, deps);
+    await notify(send(["user_director"], { title: "Test one", entity: { type: "x", id: "1" } }), deps);
+    await notify(send(["user_director"], { title: "Test two", entity: { type: "x", id: "1" } }), deps);
+    expect(await titles(deps)).toEqual(["Test two", "Test one", "Two", "One"]);
+  });
+
+  it("refuses folded wording that could not be a notification", async () => {
+    const { deps, events } = notificationStore();
+    expect(await notify(change("First", undefined, { whenCoalesced: { title: " " } }), deps)).toEqual({ ok: false, problem: "invalid" });
+    expect(events).toEqual([]);
   });
 });
 

@@ -30,7 +30,9 @@ import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
  *                                   channel - ONLY when they made one. No row
  *                                   means "follow the policy". Changing a
  *                                   policy never touches this table.
- *   notification_events             what happened, once per event
+ *   notification_events             what happened, once per event - every
+ *                                   one is kept, including those whose
+ *                                   notification was folded into a later one
  *   notifications                   one row per person told: the title and
  *                                   body as they were sent, and when it was
  *                                   read
@@ -97,6 +99,9 @@ const SCHEMA = [
      created_at    timestamptz NOT NULL DEFAULT now(),
      FOREIGN KEY (clerk_env, category_key) REFERENCES notification_categories (clerk_env, key)
    )`,
+  // group_key: the family an event folds with (catalog.ts), or null when it
+  // never folds. Added after the table first shipped, so it is its own statement.
+  `ALTER TABLE notification_events ADD COLUMN IF NOT EXISTS group_key text`,
   `CREATE INDEX IF NOT EXISTS notification_events_entity
      ON notification_events (clerk_env, entity_type, entity_id, created_at DESC) WHERE entity_type IS NOT NULL`,
   // in_app: whether it shows in the bell and the history. Always true while
@@ -307,16 +312,36 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
     },
 
     // The event and every recipient's notification in one statement: either all of it is there, or none.
+    //
+    // An event that folds (write.coalesce) also takes away each recipient's
+    // UNREAD notification of the same family about the same entity, if it is
+    // young enough, and gives them this one with the folded wording instead:
+    // a new row, so it is the newest in their list, and their unread count
+    // stays as it was. A notification already read is not matched, and the
+    // earlier events are never touched - only what people are shown.
     async record(write) {
       const sql = await notificationSql(env);
       const [row] = (await sql.query(
         `WITH event AS (
-           INSERT INTO notification_events (clerk_env, category_key, event_key, actor_user_id, entity_type, entity_id, payload)
-           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+           INSERT INTO notification_events (clerk_env, category_key, event_key, actor_user_id, entity_type, entity_id, payload, group_key)
+           VALUES ($1, $2, $3, $4, $5::text, $6::text, $7::jsonb, $13::text)
            RETURNING id
+         ), replaced AS (
+           DELETE FROM notifications n
+            USING notification_events e
+            WHERE $13::text IS NOT NULL
+              AND e.id = n.event_id AND e.clerk_env = $1 AND n.clerk_env = $1
+              AND e.group_key = $13::text AND e.entity_type = $5::text AND e.entity_id = $6::text
+              AND n.in_app AND n.read_at IS NULL
+              AND n.created_at >= now() - make_interval(mins => $14::int)
+              AND n.recipient_user_id IN (SELECT r.user_id FROM jsonb_to_recordset($12::jsonb) AS r(user_id text))
+           RETURNING n.recipient_user_id
          ), sent AS (
            INSERT INTO notifications (clerk_env, event_id, recipient_user_id, category_key, title, body, action_url, priority, in_app)
-           SELECT $1, event.id, r.user_id, $2, $8, $9, $10, $11, r.in_app
+           SELECT $1, event.id, r.user_id, $2,
+                  CASE WHEN r.user_id IN (SELECT recipient_user_id FROM replaced) THEN $15::text ELSE $8::text END,
+                  CASE WHEN r.user_id IN (SELECT recipient_user_id FROM replaced) THEN $16::text ELSE $9::text END,
+                  $10, $11, r.in_app
              FROM event CROSS JOIN jsonb_to_recordset($12::jsonb) AS r(user_id text, in_app boolean)
            RETURNING 1
          )
@@ -334,6 +359,10 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
           write.actionUrl,
           write.priority,
           JSON.stringify(write.recipients.map((recipient) => ({ user_id: recipient.userId, in_app: recipient.inApp }))),
+          write.coalesce?.family ?? null,
+          write.coalesce?.windowMinutes ?? 0,
+          write.coalesce?.title ?? write.title,
+          write.coalesce?.body ?? write.body,
         ],
       )) as Array<{ id: string | number }>;
       return { eventId: Number(row.id) };

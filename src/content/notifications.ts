@@ -93,6 +93,114 @@ export const notificationsContent = {
     accountLead: "Choose which notifications you receive.",
   },
 
+  /**
+   * What each notification says (built in src/lib/notifications/events/).
+   * {service} is a service's name ("Sunday Morning"), {date} its day
+   * ("Sunday, October 18"), {name} a person's first name. A pair is the
+   * wording for one and for several; {count} is replaced.
+   */
+  events: {
+    servicePlan: {
+      publishedOne: {
+        title: "{service} song list published",
+        body: "The song list for {service}, {date}, has been published.",
+      },
+      publishedMany: {
+        title: "New song lists published",
+        /** {services} is "Sunday Morning, Sunday Evening and Wednesday Evening". */
+        body: "The song lists for {services} have been published.",
+        /** When there are too many to name. */
+        bodyCount: "{count} song lists have been published.",
+      },
+      updated: {
+        title: "{service} song list updated",
+        /** {change} is one of the sentences below. */
+        body: "{date}: {change}",
+        added: "{song} was added.",
+        removed: "{song} was removed.",
+        replaced: "{removed} was replaced with {added}.",
+        key: "{song} is now in {key}.",
+        keyCleared: "{song} no longer has a key set.",
+        time: "The service now starts at {time}.",
+        several: "Several changes were made to the published song list.",
+      },
+      withdrawn: {
+        title: "{service} song list is being revised",
+        body: "The published song list for {date} has been returned to draft.",
+        insertBody: "The published song list for {date} was returned to draft after this week's insert changed.",
+        manyTitle: "Published song lists are being revised",
+        manyBody: [
+          "{count} upcoming song list was returned to draft after this week's insert changed.",
+          "{count} upcoming song lists were returned to draft after this week's insert changed.",
+        ],
+      },
+      cancelled: {
+        title: "{service} cancelled",
+        body: "The {service} service on {date} has been cancelled.",
+      },
+      restored: {
+        title: "{service} restored",
+        body: "The {service} service on {date} has been restored. Its song list has not been published yet.",
+      },
+      /** Joins the last two of a list of services. */
+      and: "and",
+    },
+    availability: {
+      /** How a choice reads in a sentence. */
+      states: { available: "available", unavailable: "unavailable", normal: "back to normal" },
+      /** When the person's name cannot be found. */
+      someone: "A team member",
+      service: {
+        title: "{name} is {state} for {service}",
+        body: "Availability changed for {date}.",
+        /** To the person, when a leader changed it for them. */
+        yoursTitle: "Your availability was changed",
+        yoursBody: "You are now {state} for {service}, {date}.",
+        /** To the other leaders, when a leader changed someone's. */
+        theirsTitle: "{name}'s availability changed",
+        theirsBody: "{name} is now {state} for {service}, {date}.",
+      },
+      range: {
+        absenceTitle: "{name} reported an absence",
+        title: "{name}'s availability changed",
+        /** {from} and {to} are days ("October 18"). */
+        body: ["{name} is {state} {from} to {to}, affecting {count} service.", "{name} is {state} {from} to {to}, affecting {count} services."],
+        oneDayBody: ["{name} is {state} on {from}, affecting {count} service.", "{name} is {state} on {from}, affecting {count} services."],
+        yoursTitle: "Your availability was changed",
+        yoursBody: ["You are now {state} {from} to {to}, affecting {count} service.", "You are now {state} {from} to {to}, affecting {count} services."],
+        yoursOneDayBody: ["You are now {state} on {from}, affecting {count} service.", "You are now {state} on {from}, affecting {count} services."],
+      },
+      normal: {
+        title: "{name} changed their normal services",
+        /** {services} is "Sunday morning, Sunday evening". */
+        body: "{name} now normally serves: {services}.",
+        noneBody: "{name} no longer has any normal services.",
+        yoursTitle: "Your normal services were changed",
+        yoursBody: "You are now normally down for: {services}.",
+        yoursNoneBody: "You no longer have any normal services.",
+      },
+    },
+    account: {
+      requestCreated: {
+        title: "New account request",
+        body: "A new request for a Faithful Word Music account is waiting for review.",
+      },
+      accessChanged: {
+        title: "Your account access changed",
+        body: "Your Faithful Word Music roles or permissions were updated.",
+      },
+    },
+    library: {
+      indexProblem: {
+        title: "Library index needs attention",
+        body: [
+          "{count} song file could not be indexed. Review the library index status.",
+          "{count} song files could not be indexed. Review the library index status.",
+        ],
+      },
+    },
+  },
+
   /** /admin/notifications */
   admin: {
     title: "Notifications",

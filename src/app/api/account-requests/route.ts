@@ -6,6 +6,8 @@ import { accountExistsForEmail, listInvitations } from "@/lib/auth/clerk";
 import { normalizeEmail } from "@/lib/auth/request-status";
 import { accountsStatus, siteOrigin } from "@/lib/auth/session";
 import { createRequest } from "@/lib/auth/store";
+import { accountRequestCreated } from "@/lib/notifications/events/account";
+import { notifyBestEffort } from "@/lib/notifications/send";
 import { sendAccountRequestEmail } from "@/lib/resend";
 import {
   accountRequestSchema,
@@ -92,6 +94,8 @@ export async function POST(request: Request): Promise<NextResponse<AccountReques
       reviewUrl: `${await siteOrigin()}/admin/requests/${created.id}`,
       isTest: status.env !== "production",
     });
+    // And in the app, for whoever reviews requests. It names nobody, and never fails the request.
+    await notifyBestEffort(status.env, accountRequestCreated(created));
 
     return success();
   } catch (error) {

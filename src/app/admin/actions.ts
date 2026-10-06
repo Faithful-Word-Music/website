@@ -75,6 +75,9 @@ import { refreshLibraryIndex } from "@/lib/library-content/indexer";
 import type { RefreshReport } from "@/lib/library-content/plan";
 import { MAX_ACCIDENTALS } from "@/lib/capo-policy";
 import { users } from "@/lib/notifications/audience";
+import { accountAccessChanged } from "@/lib/notifications/events/account";
+import { libraryIndexProblem } from "@/lib/notifications/events/library";
+import { notifyBestEffort } from "@/lib/notifications/send";
 import { CHANNELS, allowedPolicies, isChannelPolicy } from "@/lib/notifications/model";
 import { notify, setPolicy } from "@/lib/notifications/service";
 import { deleteNotificationData, notificationDeps } from "@/lib/notifications/store";
@@ -310,6 +313,8 @@ export async function setUserRolesAction(userId: unknown, changes: unknown): Pro
     const ordered = [...requested].sort(
       (a, b) => Number(b.roleKey === ADMIN_ROLE && !b.assigned) - Number(a.roleKey === ADMIN_ROLE && !a.assigned),
     );
+    // What they hold now, to tell a real change from saving what was already so.
+    const held = new Set((await loadAuthorization(viewer.env, target.data)).roleKeys);
     for (const change of ordered) {
       if (change.assigned) {
         await assignRole(viewer.env, target.data, change.roleKey, viewer.userId);
@@ -318,6 +323,15 @@ export async function setUserRolesAction(userId: unknown, changes: unknown): Pro
       }
     }
     revalidatePath(`/admin/users/${target.data}`);
+    // One notification for the whole save, to the person whose access it is.
+    await notifyBestEffort(
+      viewer.env,
+      accountAccessChanged({
+        actorId: viewer.userId,
+        userId: target.data,
+        changed: requested.some((change) => change.assigned !== held.has(change.roleKey)),
+      }),
+    );
     return { ok: true, value: null, message: "Roles saved." };
   });
 }
@@ -341,6 +355,7 @@ export async function setOverrideAction(userId: unknown, input: unknown): Promis
 
     await setOverride(viewer.env, target.data, { ...parsed.data, permission }, viewer.userId);
     revalidatePath(`/admin/users/${target.data}`);
+    await notifyBestEffort(viewer.env, accountAccessChanged({ actorId: viewer.userId, userId: target.data, changed: true }));
     return { ok: true, value: null, message: "Exception saved." };
   });
 }
@@ -357,6 +372,7 @@ export async function removeOverrideAction(userId: unknown, permission: unknown)
     }
     await removeOverride(viewer.env, target.data, permission);
     revalidatePath(`/admin/users/${target.data}`);
+    await notifyBestEffort(viewer.env, accountAccessChanged({ actorId: viewer.userId, userId: target.data, changed: true }));
     return { ok: true, value: null, message: "Exception removed." };
   });
 }
@@ -917,6 +933,13 @@ export async function refreshLibraryIndexAction(continuing: unknown): Promise<Ac
   return withPermission("use_ai", async (viewer) => {
     const result = await refreshLibraryIndex(viewer, { continuing: continuing === true });
     revalidatePath("/admin/ai");
+    // The others who look after the AI hear of files that newly failed; whoever pressed Refresh sees it here.
+    if (result.ok) {
+      await notifyBestEffort(
+        viewer.env,
+        libraryIndexProblem({ actorId: viewer.userId, newlyFailed: result.newlyFailed, failed: result.report.failed }),
+      );
+    }
     if (!result.ok) {
       const { errors } = aiContent.admin.library;
       return { ok: false, error: errors[result.reason].replace("{type}", siteConfig.sheetMusic.lyricsType) };
