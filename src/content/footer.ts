@@ -24,12 +24,17 @@ export const footerContent = {
   contactHeading: "Contact",
   contactBlurb: "For questions about the music ministry:",
 
-  /** Bottom-right of the footer. Only `login` / `account` are links. */
+  /** The last line of the navigation list, for a visitor. Only `login` is a link. */
   account: {
     prompt: "Have an account?",
     login: "Log in!",
-    signedIn: "Signed in ·",
-    dashboard: "Dashboard",
+  },
+
+  /** Beside the copyright. Only `name` is a link. */
+  developer: {
+    prompt: "Developed by",
+    name: "Alexander D. Ball",
+    href: "https://alexball.dev",
   },
 
   /** {year} is replaced with the current year at render time. */

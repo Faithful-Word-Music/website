@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* The installed app's login screen (src/app/login): no header, the mark and
-   name stacked above the form, no footer but the copyright, and the whole
+   name stacked above the form, no footer but its closing line, and the whole
    screen on one page with no scrolling. Only in the
    installed app (display-mode: standalone) - the website's login page is
    unchanged. The page marks itself with data-app-login. */

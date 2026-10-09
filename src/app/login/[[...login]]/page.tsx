@@ -30,7 +30,7 @@ export const metadata: Metadata = {
  * data-app-login: in the installed app, this is the whole screen, like an
  * app's sign-in screen - no header or navigation, the mark with the name
  * and tagline stacked above the form (as on the loading screen), the footer's
- * copyright line, and nothing scrolling (the app-login variant in globals.css).
+ * closing line (copyright and developer credit), and nothing scrolling (the app-login variant in globals.css).
  */
 export default async function LoginPage() {
   const status = await requestAccountsStatus();

@@ -2,11 +2,7 @@
 
 import Link from "next/link";
 
-import { useAccount } from "@/components/account/AccountContext";
 import { footerContent } from "@/content/footer";
-
-const linkClass =
-  "text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark";
 
 /**
  * Next.js does not scroll when a link points at the page already open - so
@@ -18,32 +14,21 @@ function scrollUpIfCurrent(event: React.MouseEvent<HTMLAnchorElement>) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-/** "Have an account? Log in!" - only "Log in!" is the link. */
+/**
+ * "Have an account? Log in!" - only "Log in!" is the link. The last line of
+ * the footer's navigation for a visitor (FooterNav.tsx); someone signed in
+ * has the Dashboard there instead.
+ */
 export function FooterLoginLink() {
   return (
-    <p className="text-xs text-muted">
-      {footerContent.account.prompt}{" "}
-      <Link href="/login" className={linkClass} onClick={scrollUpIfCurrent}>
+    <p className="flex min-h-9 flex-wrap items-center gap-x-1 text-sm text-muted">
+      {footerContent.account.prompt}
+      <Link
+        href="/login"
+        className="text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark"
+        onClick={scrollUpIfCurrent}
+      >
         {footerContent.account.login}
-      </Link>
-    </p>
-  );
-}
-
-/**
- * The footer's account link: the login prompt for visitors (and whenever
- * accounts are switched off), a link to their Dashboard for someone signed
- * in. Until Clerk has loaded it shows the login prompt, which is what the
- * static page holds.
- */
-export function FooterAccountLink() {
-  const { nav } = useAccount();
-  if (!nav.signedIn) return <FooterLoginLink />;
-  return (
-    <p className="text-xs text-muted">
-      {footerContent.account.signedIn}{" "}
-      <Link href="/dashboard" className={linkClass} onClick={scrollUpIfCurrent}>
-        {footerContent.account.dashboard}
       </Link>
     </p>
   );
