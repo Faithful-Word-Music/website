@@ -16,7 +16,14 @@
 
 import { siteConfig } from "@/config/site";
 import { getTimeline } from "@/lib/service-time";
-import { type IndexSong, matchIndexSong, type SheetFile, type SheetMusicIndex, type SongVersion } from "@/lib/sheet-music";
+import {
+  type IndexSong,
+  matchIndexSong,
+  type SheetFile,
+  type SheetMusicIndex,
+  type SongVersion,
+  versionedFileHref,
+} from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer as SheetViewer } from "@/lib/sheet-music-access";
 import { assignedFiles } from "@/lib/sheet-music-type";
 import { serviceSlots, songPath, songSlug } from "@/lib/song-list";
@@ -230,7 +237,7 @@ export function servicePacketPath(service: Pick<Service, "date" | "slot">): stri
 
 /** Where one song's file is: the song page's file route, which checks access itself. */
 function fileHref(title: string, file: SheetFile): string {
-  return `${songPath(songSlug(title))}/sheet-music/${file.slug}`;
+  return versionedFileHref(`${songPath(songSlug(title))}/sheet-music/${file.slug}`, file);
 }
 
 function toComingUpSheet(sheet: ServiceSheet): ComingUpSheet {

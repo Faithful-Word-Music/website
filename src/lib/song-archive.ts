@@ -1,6 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 import { siteConfig } from "@/config/site";
 import { loadStoredServices, saveServices, type SaveSummary } from "@/lib/archive-store";
@@ -12,6 +13,7 @@ import {
   matchIndexSong,
   type PublicSheetMusic,
   toPublicSheetMusic,
+  versionedFileHref,
 } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
@@ -140,7 +142,7 @@ export async function getArchiveData(): Promise<ArchiveData> {
 
   return {
     ok: true,
-    records: buildSongRecords(past),
+    records: songRecordsOf(past),
     serviceCount: past.length,
     since: past[0]?.startsAt ?? null,
     persistent,
@@ -153,11 +155,11 @@ export async function getArchiveData(): Promise<ArchiveData> {
  * plans combined. null when neither source is available, as there is nothing
  * honest to show then.
  */
-export async function loadPast(): Promise<{
+export const loadPast = cache(async (): Promise<{
   past: DatedService[];
   persistent: boolean;
   loadedAt: number;
-} | null> {
+} | null> => {
   const schedule = await getSchedule();
   const loadedAt = Date.now();
   const history = await getSongHistory(publishedOf(schedule), loadedAt);
@@ -168,7 +170,13 @@ export async function loadPast(): Promise<{
     persistent: history.persistent,
     loadedAt,
   };
-}
+});
+
+/**
+ * One record per song for a list of services - built once per request for
+ * the same list (loadPast's), however many parts of the page ask.
+ */
+const songRecordsOf = cache((services: DatedService[]): SongRecord[] => buildSongRecords(services));
 
 export type YearRecapData =
   | {
@@ -186,7 +194,7 @@ export type YearRecapData =
  * archive (services that have already happened), summed up for one year.
  * Pass no year to learn only which years exist.
  */
-export async function getYearRecapData(year?: number): Promise<YearRecapData> {
+export const getYearRecapData = cache(async (year?: number): Promise<YearRecapData> => {
   const schedule = await getSchedule();
   const loadedAt = Date.now();
   const history = await getSongHistory(publishedOf(schedule), loadedAt);
@@ -199,7 +207,7 @@ export async function getYearRecapData(year?: number): Promise<YearRecapData> {
     years: availableYears(past),
     loadedAt,
   };
-}
+});
 
 export type LibraryData =
   | { ok: true; songs: LibrarySong[]; loadedAt: number }
@@ -208,8 +216,9 @@ export type LibraryData =
 /**
  * Songs added in the Service Planner's catalog - new songs that may not have
  * been sung yet. Empty (never an error) when the planner cannot be read.
+ * Read once per request.
  */
-async function catalogSongs(): Promise<CatalogSong[]> {
+const catalogSongs = cache(async (): Promise<CatalogSong[]> => {
   if (!plannerConfigured()) return [];
   try {
     return await listCatalogSongs(scheduleEnv());
@@ -217,7 +226,7 @@ async function catalogSongs(): Promise<CatalogSong[]> {
     console.error("[song-archive] Could not read the catalog:", error instanceof Error ? error.message : "unknown error");
     return [];
   }
-}
+});
 
 /**
  * The Library, /library: every song that has a page - sung in a past
@@ -252,7 +261,7 @@ export async function getLibraryData(): Promise<LibraryData> {
 
   return {
     ok: true,
-    songs: buildLibrary(buildSongRecords(past), upcoming, hasSheetMusic),
+    songs: buildLibrary(songRecordsOf(past), upcoming, hasSheetMusic),
     loadedAt,
   };
 }
@@ -298,12 +307,12 @@ interface FoundSong {
  * published service, or added to the planner's catalog. null when the
  * address matches no song at all.
  */
-async function findSong(slug: string): Promise<FoundSong | null> {
+const findSong = cache(async (slug: string): Promise<FoundSong | null> => {
   const [history, schedule, catalog] = await Promise.all([loadPast(), getSchedule(), catalogSongs()]);
   const loadedAt = history?.loadedAt ?? Date.now();
 
   const record = history
-    ? buildSongRecords(history.past).find((candidate) => songSlug(candidate.title) === slug)
+    ? songRecordsOf(history.past).find((candidate) => songSlug(candidate.title) === slug)
     : undefined;
 
   const upcoming: FoundSong["upcoming"] = [];
@@ -335,14 +344,14 @@ async function findSong(slug: string): Promise<FoundSong | null> {
     number: record?.number ?? upcoming.find((play) => play.number)?.number ?? listed?.number ?? null,
     loadedAt,
   };
-}
+});
 
 /** The browser-safe sheet music for a song page; links point at the file route. */
 function publicSheetMusic(slug: string, song: IndexSong, viewer: Viewer): PublicSheetMusic {
   return toPublicSheetMusic(
     song,
     (file) => canAccessFile(song, file, viewer),
-    (file) => `${songPath(slug)}/sheet-music/${file.slug}`,
+    (file) => versionedFileHref(`${songPath(slug)}/sheet-music/${file.slug}`, file),
     (file) => canAccessFile(song, file, MEMBER_VIEWER),
   );
 }
@@ -379,7 +388,7 @@ export async function getIndexSongForPage(
  * page, so links from the schedule never lead nowhere. Returns null for an
  * address that matches no song at all.
  */
-export async function getSongPage(slug: string): Promise<SongPageData | null> {
+export const getSongPage = cache(async (slug: string): Promise<SongPageData | null> => {
   const [found, index] = await Promise.all([findSong(slug), getSheetMusicIndex()]);
   if (!found) return null;
   const { history, record, upcoming, title, number, loadedAt } = found;
@@ -406,7 +415,7 @@ export async function getSongPage(slug: string): Promise<SongPageData | null> {
     ),
     loadedAt,
   };
-}
+});
 
 /**
  * Copies every published service that has already happened into the

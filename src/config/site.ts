@@ -50,14 +50,27 @@ export const siteConfig = {
 
     /**
      * How long (seconds) a rendered schedule page is reused before it is built
-     * again from the database. Publishing in the Service Planner refreshes the
-     * pages at once; this only bounds anything else.
-     * Keep in step with `revalidate` in src/app/page.tsx, src/app/song-list/page.tsx and
-     * src/app/song-list/archive/page.tsx, src/app/library/page.tsx and
-     * src/app/library/songs/[song]/page.tsx and src/app/api/search/route.ts, which
-     * Next.js needs as literal numbers.
+     * again. Every Service Planner change that reaches the song list refreshes
+     * the pages (and the stored schedule, SCHEDULE_TAG in src/lib/schedule.ts)
+     * at once, and the browser keeps "Now" and "Next" current on its own clock,
+     * so this only bounds the turn of the month and anything changed some
+     * other way. Also how long the CDN keeps the song list PDF and picture.
+     * Keep in step with `revalidate` in src/app/page.tsx, src/app/song-list/page.tsx
+     * and src/app/api/search/route.ts, which Next.js needs as literal numbers.
      */
-    revalidateSeconds: 10,
+    revalidateSeconds: 300,
+
+    /**
+     * The same for the pages of history: the archive, the services and year
+     * pages, the Library and the song pages. Publishing, the nightly archive
+     * sync and "Refresh sheet music" refresh them at once; this bounds how
+     * long a service that has just been sung takes to move into the history.
+     * Keep in step with `revalidate` in src/app/song-list/archive/page.tsx,
+     * src/app/song-list/archive/services/page.tsx, src/app/song-list/year/page.tsx,
+     * src/app/song-list/year/[year]/page.tsx, src/app/library/page.tsx and
+     * src/app/library/songs/[song]/page.tsx.
+     */
+    historyRevalidateSeconds: 3600,
 
     /** The retired sheet's visible tabs read by the one-time import. Goes with it. */
     maxMonths: 2,
@@ -178,13 +191,17 @@ export const siteConfig = {
 
     /**
      * How long (seconds) a read of the Index and the Drive folders is reused,
-     * and how long the CDN keeps a served file. A file dropped into Drive or
-     * an edit to the sheet reaches the song pages within this time, without a
-     * redeploy. Each refresh is 2 Sheets and ~2 Drive requests, and only
-     * happens when someone visits - so 10s is at most ~12 Sheets requests a
-     * minute, against the service account's limit of 60.
+     * and how long the CDN keeps a served public file. A file dropped into
+     * Drive or an edit to the sheet (a song made private again included)
+     * reaches the song pages within this time, without a redeploy - or at
+     * once with "Refresh sheet music" under Admin -> Configuration. A replaced
+     * file gets a new link (versionedFileHref), so nobody is sent the old
+     * copy; only someone holding the old link itself could still open it
+     * until this runs out.
+     * Every refresh lists the whole Drive folder and rebuilds every song
+     * page, so it is kept long to spare the server.
      */
-    revalidateSeconds: 10,
+    revalidateSeconds: 3600,
 
     /**
      * The sheet music type whose MuseScore files a song's LYRICS are read

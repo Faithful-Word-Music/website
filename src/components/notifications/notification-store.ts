@@ -21,13 +21,16 @@ import type { NotificationPage } from "@/lib/notifications/service";
  * here: the installed app's icon badge does (PushSync.tsx).
  *
  * Kept fresh without a socket: asked again when a page is opened, when the
- * tab is looked at again, and once a minute while it is in view
- * (useNotificationSync) - and at once when a push arrives or is tapped, which
- * the service worker tells every open page (PushSync.tsx).
+ * tab is looked at again, and every two minutes while it is in view
+ * (useNotificationSync) - unless the count came in within the last few
+ * seconds - and at once when a push arrives or is tapped, which the service
+ * worker tells every open page (PushSync.tsx).
  */
 
 const ENDPOINT = "/api/account/notifications";
-const POLL_MS = 60_000;
+const POLL_MS = 120_000;
+/** Opening a page or coming back to the tab asks nothing when the count is this fresh. */
+export const FRESH_MS = 15_000;
 
 export interface NotificationState {
   /** Whose these are; null when signed out. */
@@ -60,9 +63,14 @@ const EMPTY: NotificationState = {
 let state: NotificationState = EMPTY;
 /** Changes sent to the server and not yet answered: what it says about read and unread may be a moment behind. */
 let inFlight = 0;
+/** When `unread` last came from the server. */
+let countedAt = 0;
+/** The count being asked for now, and for whom: a second reason to ask joins it. */
+let counting: { userId: string; done: Promise<void> } | null = null;
 const listeners = new Set<() => void>();
 
 function set(next: Partial<NotificationState>) {
+  if (next.counted) countedAt = Date.now();
   state = { ...state, ...next };
   listeners.forEach((listener) => listener());
 }
@@ -98,10 +106,31 @@ export function setNotificationUser(userId: string | null) {
   listeners.forEach((listener) => listener());
 }
 
-/** Asks only for the count: what the bell needs, and cheap enough to ask often. */
-export async function refreshUnread() {
+/**
+ * Asks only for the count: what the bell needs, and cheap enough to ask often.
+ *
+ * `ifStale` is for the routine reasons to ask (a page opened, the tab looked
+ * at again, the poll): it asks nothing when the count is under FRESH_MS old,
+ * and joins a request already on its way. Without it - something has just
+ * changed on the server - it always asks.
+ */
+export async function refreshUnread(options: { ifStale?: boolean } = {}) {
   const { userId } = state;
   if (!userId) return;
+  if (options.ifStale) {
+    if (state.counted && Date.now() - countedAt < FRESH_MS) return;
+    if (counting?.userId === userId) return counting.done;
+  }
+  const done = askUnread(userId);
+  counting = { userId, done };
+  try {
+    await done;
+  } finally {
+    if (counting?.done === done) counting = null;
+  }
+}
+
+async function askUnread(userId: string) {
   const data = await request<{ unread: number }>(`${ENDPOINT}/unread`);
   if (!data || !stillFor(userId)) return;
   const changed = data.unread !== state.unread;
@@ -151,6 +180,7 @@ export function hydrateNotifications(userId: string, page: NotificationPage) {
   // page may have been rendered before that landed. What was just done here wins.
   const local = inFlight > 0 ? new Map(state.items.map((item) => [item.id, item.readAt])) : null;
   const items = local ? page.items.map((item) => (local.has(item.id) ? { ...item, readAt: local.get(item.id) ?? null } : item)) : page.items;
+  if (!local) countedAt = Date.now();
   state = {
     ...state,
     userId,
@@ -255,14 +285,15 @@ export function useNotificationSync(userId: string | null) {
 
   // A new page: a fresh count (and the first one, on arriving).
   useEffect(() => {
-    if (userId) void refreshUnread();
+    if (userId) void refreshUnread({ ifStale: true });
   }, [userId, pathname]);
 
+  // Coming back to the tab fires both events: the second joins the first.
   useEffect(() => {
     if (!userId) return;
     const visible = () => document.visibilityState === "visible";
     const onReturn = () => {
-      if (visible()) void refreshUnread();
+      if (visible()) void refreshUnread({ ifStale: true });
     };
     const timer = setInterval(onReturn, POLL_MS);
     document.addEventListener("visibilitychange", onReturn);

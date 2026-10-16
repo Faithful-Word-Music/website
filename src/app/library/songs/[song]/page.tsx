@@ -20,8 +20,21 @@ import { songPath } from "@/lib/song-list";
 
 const { songPage, serviceMarkerLabels } = songListContent;
 
-/** Same cadence as the schedule and archive (siteConfig.songList.revalidateSeconds). */
-export const revalidate = 10;
+/**
+ * Same cadence as the archive and the sheet music (siteConfig.songList.historyRevalidateSeconds);
+ * the Service Planner, the nightly sync and Admin -> Configuration refresh it at once.
+ */
+export const revalidate = 3600;
+
+/**
+ * No song is built ahead, but each one is kept once it has been visited and
+ * reused until it is refreshed - without this, every view built the page
+ * from scratch. Nothing on it depends on who is looking: members' files are
+ * fetched by the browser (MemberSheetMusic).
+ */
+export function generateStaticParams(): Array<{ song: string }> {
+  return [];
+}
 
 export async function generateMetadata({
   params,

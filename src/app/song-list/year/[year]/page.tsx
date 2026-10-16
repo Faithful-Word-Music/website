@@ -21,8 +21,13 @@ import { getYearRecapData } from "@/lib/song-archive";
 
 const { yearRecap: copy } = songListContent;
 
-/** Same cadence as the archive (siteConfig.songList.revalidateSeconds). */
-export const revalidate = 10;
+/** Same cadence as the archive (siteConfig.songList.historyRevalidateSeconds). */
+export const revalidate = 3600;
+
+/** No year is built ahead, but each one is kept once visited (see the song pages). */
+export function generateStaticParams(): Array<{ year: string }> {
+  return [];
+}
 
 /** "2026" -> 2026; anything that is not a plain four-digit year -> null. */
 function readYear(value: string): number | null {

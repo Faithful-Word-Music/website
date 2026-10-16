@@ -19,3 +19,18 @@ export function getSql(): NeonQueryFunction<false, false> | null {
   client ??= neon(url);
   return client;
 }
+
+/**
+ * Runs a store's `CREATE … IF NOT EXISTS` statements, in order, as ONE
+ * request: each server does this once, when a store is first used, and one
+ * round trip instead of one per statement keeps that first request quick.
+ * Every statement is idempotent; if one fails, none is kept and the caller
+ * tries again next time, as it did before.
+ */
+export async function applySchema(
+  sql: NeonQueryFunction<false, false>,
+  statements: readonly string[],
+): Promise<void> {
+  if (statements.length === 0) return;
+  await sql.transaction(statements.map((statement) => sql.query(statement)));
+}

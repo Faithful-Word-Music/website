@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 import { toChurchIso } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
 import type { ServiceSlot } from "@/types/song-list";
@@ -150,7 +150,7 @@ async function plannerSql() {
   const sql = getSql();
   if (!sql) throw new PlannerUnavailableError();
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     schemaReady = true;
   }
   return sql;

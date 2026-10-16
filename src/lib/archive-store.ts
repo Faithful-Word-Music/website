@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 import { isFresh, serviceId } from "@/lib/song-history";
 import { cleanSong, songKey } from "@/lib/song-list";
 import type { DatedService, ServiceSlot, Song } from "@/types/song-list";
@@ -108,7 +108,7 @@ let schemaReady = false;
 async function ensureSchema(): Promise<void> {
   const sql = getSql();
   if (!sql || schemaReady) return;
-  for (const statement of SCHEMA) await sql.query(statement);
+  await applySchema(sql, SCHEMA);
   schemaReady = true;
 }
 

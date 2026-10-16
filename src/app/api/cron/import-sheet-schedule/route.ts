@@ -5,7 +5,7 @@ import { regularKeyFor } from "@/lib/availability/occurrences";
 import { saveServices } from "@/lib/archive-store";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { readSheetSchedule } from "@/lib/google-sheets";
-import { scheduleEnv } from "@/lib/schedule";
+import { SCHEDULE_TAG, scheduleEnv } from "@/lib/schedule";
 import { siteConfig } from "@/config/site";
 import { planSong, takesWeekInsert, weekStartOf, type InsertWeek, type PlanSlots } from "@/lib/service-planner/model";
 import { getPlan, publishPlans, savePlan, setWeekInserts } from "@/lib/service-planner/store";
@@ -146,6 +146,7 @@ export async function GET(request: Request) {
 
   if (!dry) {
     revalidateTag(ARCHIVE_TAG, "max");
+    revalidateTag(SCHEDULE_TAG, "max");
     revalidatePath("/", "layout");
   }
 

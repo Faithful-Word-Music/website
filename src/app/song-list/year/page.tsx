@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { churchYear } from "@/lib/service-time";
 import { getYearRecapData } from "@/lib/song-archive";
 
-/** Same cadence as the archive (siteConfig.songList.revalidateSeconds). */
-export const revalidate = 10;
+/** Same cadence as the archive (siteConfig.songList.historyRevalidateSeconds). */
+export const revalidate = 3600;
 
 /**
  * /song-list/year goes to the latest year with songs recorded - this year,

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 
 import type { AiErrorCode } from "./errors";
 import type { AiFeature } from "./features";
@@ -104,9 +104,9 @@ async function usageSql() {
   const sql = getSql();
   if (!sql) throw new AiUsageUnavailableError();
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     const [calls] = (await sql.query(`SELECT to_regclass('ai_usage_calls') IS NOT NULL AS present`)) as Array<{ present: boolean }>;
-    if (!calls?.present) for (const statement of CALLS_SCHEMA) await sql.query(statement);
+    if (!calls?.present) await applySchema(sql, CALLS_SCHEMA);
     schemaReady = true;
   }
   return sql;

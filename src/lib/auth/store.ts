@@ -3,7 +3,7 @@ import "server-only";
 import type { NeonQueryFunction } from "@neondatabase/serverless";
 
 import { NO_CAPO_RULES, parseCapoPolicy, type CapoPolicy, type CapoRules, type SongCapoRule } from "@/lib/capo-policy";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 import { ANYWHERE } from "@/lib/sheet-music";
 import {
   DEFAULT_SHEET_MUSIC_TYPES,
@@ -64,7 +64,7 @@ export async function db(env: ClerkEnv): Promise<Sql> {
   const sql = getSql();
   if (!sql) throw new AccountsUnavailableError();
   if (!schemaReady) {
-    for (const statement of AUTH_SCHEMA) await sql.query(statement);
+    await applySchema(sql, AUTH_SCHEMA);
     schemaReady = true;
   }
   if (!seeded.has(env)) {

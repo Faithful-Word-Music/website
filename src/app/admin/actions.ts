@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
@@ -83,7 +83,7 @@ import { notify, setPolicy } from "@/lib/notifications/service";
 import { deleteNotificationData, deletePushSubscriptions, notificationDeps } from "@/lib/notifications/store";
 import { notificationsContent } from "@/content/notifications";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
-import { getSheetMusicSources } from "@/lib/sheet-music-index";
+import { getSheetMusicSources, SHEET_MUSIC_TAG } from "@/lib/sheet-music-index";
 import { describeSource } from "@/lib/sheet-music-type";
 
 /**
@@ -620,7 +620,24 @@ function revalidateSheetMusicTypes() {
   revalidatePath("/admin/configuration");
   revalidatePath("/admin/users", "layout");
   revalidatePath("/dashboard");
+  // The Library marks which songs have sheet music; the song pages list it.
+  revalidatePath("/library");
   revalidatePath("/library/songs", "layout");
+}
+
+/**
+ * "Refresh sheet music": reads the Sheet Music Index and the Drive folders
+ * again now, rather than when the hourly cache runs out
+ * (siteConfig.sheetMusic.revalidateSeconds), and rebuilds every page that
+ * shows sheet music.
+ */
+export async function refreshSheetMusicAction(): Promise<ActionResult> {
+  return withPermission("manage_sheet_music", async () => {
+    updateTag(SHEET_MUSIC_TAG);
+    revalidateSheetMusicTypes();
+    revalidatePath("/service-planner", "layout");
+    return { ok: true, value: null, message: "Refreshed. Song pages show the latest sheet music." };
+  });
 }
 
 /** A capo threshold: 1 to 7 flats or sharps, or null for "off". */
@@ -939,6 +956,8 @@ export interface LibraryRefreshOutcome {
  */
 export async function refreshLibraryIndexAction(continuing: unknown): Promise<ActionResult<LibraryRefreshOutcome>> {
   return withPermission("use_ai", async (viewer) => {
+    // A refresh starts from what is in Drive now, not the hourly copy (later passes reuse it).
+    if (continuing !== true) updateTag(SHEET_MUSIC_TAG);
     const result = await refreshLibraryIndex(viewer, { continuing: continuing === true });
     revalidatePath("/admin/ai");
     // The others who look after the AI hear of files that newly failed; whoever pressed Refresh sees it here.

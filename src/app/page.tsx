@@ -8,11 +8,13 @@ import { getTimeline } from "@/lib/service-time";
 import type { Service } from "@/types/song-list";
 
 /**
- * Re-render at most every 10 seconds (siteConfig.songList.revalidateSeconds),
- * like the song list, so the next service shown here stays current. Only the
- * sheet is read - no archive database - so the home page stays light.
+ * Re-rendered at most every 5 minutes (siteConfig.songList.revalidateSeconds),
+ * like the song list, and at once whenever the Service Planner changes the
+ * song list. Which service is next does not depend on this: the browser keeps
+ * the card current against its own clock. Only the schedule is read - no
+ * archive database - so the home page stays light.
  */
-export const revalidate = 10;
+export const revalidate = 300;
 
 export default async function HomePage() {
   const { services, loadedAt } = await loadNextService();

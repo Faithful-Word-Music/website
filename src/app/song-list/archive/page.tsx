@@ -28,11 +28,12 @@ export const metadata: Metadata = {
 
 /**
  * The archive includes published services straight away (not only once the
- * nightly sync has stored them), so it refreshes on the same 10-second cadence
- * as the schedule (siteConfig.songList.revalidateSeconds). The database read
- * behind it is cached for an hour.
+ * nightly sync has stored them): publishing refreshes it at once, and so does
+ * the nightly sync. Otherwise it is rebuilt at most hourly
+ * (siteConfig.songList.historyRevalidateSeconds), which moves a service that
+ * has just been sung into the history.
  */
-export const revalidate = 10;
+export const revalidate = 3600;
 
 export default async function SongArchivePage() {
   const data = await getArchiveData();

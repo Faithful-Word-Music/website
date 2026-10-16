@@ -4,6 +4,7 @@ import { listAccounts, type AccountSummary } from "@/lib/auth/clerk";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import type { PermissionOverride } from "@/lib/auth/permissions";
 import { db, type Sql } from "@/lib/auth/store";
+import { applySchema } from "@/lib/db";
 
 import type { Directory } from "./audience";
 import {
@@ -207,7 +208,7 @@ const seeded = new Set<ClerkEnv>();
 export async function notificationSql(env: ClerkEnv): Promise<Sql> {
   const sql = await db(env);
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     schemaReady = true;
   }
   if (!seeded.has(env)) {

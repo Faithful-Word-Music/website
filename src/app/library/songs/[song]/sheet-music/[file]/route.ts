@@ -82,11 +82,12 @@ export async function GET(
       "Content-Type": CONTENT_TYPES[file.format],
       "Content-Disposition": contentDisposition(file.format === "pdf" ? "inline" : "attachment", fileName),
       // A public file may be kept by the CDN - but no longer than the Index
-      // cache, so a song made private again stops being served within
-      // minutes. A members-only file must never be cached anywhere shared,
-      // or the next visitor could be handed it without signing in.
+      // cache (and only a minute past it while it is fetched again), so a song
+      // made private again stops being served within about an hour. A
+      // members-only file must never be cached anywhere shared, or the next
+      // visitor could be handed it without signing in.
       "Cache-Control": isPublic
-        ? `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=${seconds}`
+        ? `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=60`
         : "private, no-store",
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex",

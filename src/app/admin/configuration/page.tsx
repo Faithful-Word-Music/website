@@ -2,6 +2,7 @@ import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { OptionListEditor } from "@/components/admin/OptionListEditor";
 import { CapoPolicyForm } from "@/components/admin/CapoPolicyForm";
+import { SheetMusicRefresh } from "@/components/admin/SheetMusicRefresh";
 import { SheetMusicTypeListEditor } from "@/components/admin/SheetMusicTypeListEditor";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -77,6 +78,7 @@ export default async function ConfigurationPage() {
                   null
                 }
               />
+              <SheetMusicRefresh />
             </Card>
           </section>
         ) : null}

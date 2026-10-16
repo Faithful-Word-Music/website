@@ -25,8 +25,8 @@ export const metadata: Metadata = {
   },
 };
 
-/** As fresh as the song archive beside it (siteConfig.songList.revalidateSeconds). */
-export const revalidate = 10;
+/** As fresh as the song archive beside it (siteConfig.songList.historyRevalidateSeconds). */
+export const revalidate = 3600;
 
 /**
  * /song-list/archive/services - every past service as a complete song list:

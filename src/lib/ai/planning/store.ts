@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 
 import type { PhilosophyRevision, PhilosophyRevisionSummary, PhilosophySource } from "./revisions";
 
@@ -51,7 +51,7 @@ async function philosophySql() {
   const sql = getSql();
   if (!sql) return null;
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     schemaReady = true;
   }
   return sql;

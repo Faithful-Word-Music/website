@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 
 import type { LyricSection, SectionKind } from "./lyrics";
 import type { IndexedSong, IndexStatus, SongSource } from "./plan";
@@ -100,7 +100,7 @@ async function librarySql() {
   const sql = getSql();
   if (!sql) throw new LibraryIndexUnavailableError();
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     schemaReady = true;
   }
   return sql;

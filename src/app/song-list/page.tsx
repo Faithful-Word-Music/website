@@ -25,11 +25,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * Re-render at most every 10 seconds (siteConfig.songList.revalidateSeconds);
+ * Re-render at most every 5 minutes (siteConfig.songList.revalidateSeconds);
  * publishing in the Service Planner also refreshes it straight away. Which service is
  * "Next" does not depend on this: the browser works that out live.
  */
-export const revalidate = 10;
+export const revalidate = 300;
 
 export default async function SongListPage() {
   const { result, plays, loadedAt } = await getScheduleData();

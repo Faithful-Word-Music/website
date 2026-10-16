@@ -12,11 +12,12 @@ import type { Service } from "@/types/song-list";
  * Fetched by the search palette the first time it opens (see
  * src/components/search/CommandPalette.tsx).
  *
- * Refreshed on the same cadence as the pages it points to
- * (siteConfig.songList.revalidateSeconds), so a newly scheduled song is found
- * as soon as its page exists.
+ * Refreshed on the same cadence as the song list
+ * (siteConfig.songList.revalidateSeconds), and at once when the Service
+ * Planner publishes, so a newly scheduled song is found as soon as its page
+ * exists.
  */
-export const revalidate = 10;
+export const revalidate = 300;
 
 type DatedService = Service & { date: string; startsAt: string };
 

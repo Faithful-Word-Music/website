@@ -1,6 +1,7 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 import { siteConfig } from "@/config/site";
 import { getGoogleAccessToken, isGoogleConfigured } from "@/lib/google-auth";
@@ -23,9 +24,10 @@ import {
  * (the "Sheet Music" folder) - a handful of requests, cached, never per page
  * view. See src/lib/sheet-music.ts for how folders and names are read.
  *
- * All of it is cached for siteConfig.sheetMusic.revalidateSeconds, so a file
- * dropped into Drive or an edit to the sheet reaches the song pages within a
- * few seconds, and most page views cost no Google request at all.
+ * All of it is cached for siteConfig.sheetMusic.revalidateSeconds (an hour),
+ * so a file dropped into Drive or an edit to the sheet reaches the song pages
+ * within the hour - or at once, with "Refresh sheet music" under Admin ->
+ * Configuration (SHEET_MUSIC_TAG) - and page views cost no Google request.
  */
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
@@ -183,13 +185,14 @@ export async function getSheetMusicSources(): Promise<SheetMusicSourcesResult> {
  *
  * Never throws: when the service account is not set up yet, or Google is
  * unreachable, callers get a reason and the song pages simply leave the
- * sheet-music section out.
+ * sheet-music section out. Worked out once per request, however many parts
+ * of the page ask.
  */
-export async function getSheetMusicIndex(): Promise<SheetMusicResult> {
+export const getSheetMusicIndex = cache(async (): Promise<SheetMusicResult> => {
   const [sources, types] = await Promise.all([getSheetMusicSources(), sheetMusicTypesForSite()]);
   if (!sources.ok) return sources;
   return { ok: true, index: classify(sources.sources, types) };
-}
+});
 
 /**
  * A whole file from Drive, for the server's own reading (the library index

@@ -15,6 +15,7 @@ import {
   sourceCoverage,
   toPublicSheetMusic,
   type TypeSources,
+  versionedFileHref,
 } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { DEFAULT_SHEET_MUSIC_TYPES, legacyVariant } from "@/lib/sheet-music-type";
@@ -457,5 +458,19 @@ describe("access and the public view", () => {
     expect(music.available).toBe(true);
     expect(music.membersOnly).toBe(false);
     expect(files.every((file) => file.href !== null && file.membersHref === null)).toBe(true);
+  });
+});
+
+describe("versionedFileHref", () => {
+  const href = "/library/songs/the-solid-rock/sheet-music/standard-1.pdf";
+
+  it("puts the file's version on its link, so a replaced file gets a new one", () => {
+    expect(versionedFileHref(href, { md5: "3f2a9c1e77aa" })).toBe(`${href}?v=3f2a9c1e`);
+    expect(versionedFileHref(href, { md5: "9b0d4e2f11cc" })).not.toBe(versionedFileHref(href, { md5: "3f2a9c1e77aa" }));
+  });
+
+  it("falls back to when it changed, and to the plain link", () => {
+    expect(versionedFileHref(href, { modifiedTime: "2026-10-16T12:00:00.000Z" })).toMatch(/\?v=[0-9a-z]+$/);
+    expect(versionedFileHref(href, {})).toBe(href);
   });
 });

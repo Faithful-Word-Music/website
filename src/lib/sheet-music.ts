@@ -59,6 +59,19 @@ export interface SheetFile {
   md5?: string;
 }
 
+/**
+ * A file's link with its version on the end: "…/standard-1.pdf?v=3f2a9c1e".
+ * The CDN keeps a public file for up to an hour, by its full address - so a
+ * file replaced in Drive (same name, new bytes) gets a new address once the
+ * pages are rebuilt, and nobody is handed the old copy. The file route itself
+ * ignores `v`.
+ */
+export function versionedFileHref(href: string, file: Pick<SheetFile, "md5" | "modifiedTime">): string {
+  const modified = file.modifiedTime ? Date.parse(file.modifiedTime) : Number.NaN;
+  const version = file.md5 ? file.md5.slice(0, 8) : Number.isNaN(modified) ? null : modified.toString(36);
+  return version ? `${href}?v=${version}` : href;
+}
+
 /** One version of a song's sheet music of one type. */
 export interface SongVersion {
   typeId: number;

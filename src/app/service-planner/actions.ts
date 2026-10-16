@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 
 import { servicePlannerContent } from "@/content/service-planner";
 import { firstIssue } from "@/lib/auth/forms";
@@ -15,6 +15,7 @@ import {
 } from "@/lib/notifications/events/service-plan";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import { plural } from "@/lib/plural";
+import { SCHEDULE_TAG } from "@/lib/schedule";
 import { dayOfWeek } from "@/lib/service-time";
 import { startsAtAt } from "@/lib/service-planner/format";
 import {
@@ -93,8 +94,9 @@ function refreshPlanner() {
   revalidatePath("/dashboard");
 }
 
-/** Something on the song list changed: every page that shows the schedule. */
+/** Something on the song list changed: the stored schedule, and every page that shows it. */
 function refreshEverything() {
+  updateTag(SCHEDULE_TAG);
   revalidatePath("/", "layout");
 }
 
@@ -519,7 +521,9 @@ export async function createSong(
     const song = parsed.data;
     const created = await createCatalogSong(viewer.env, song, viewer.userId);
     if (!created) return { ok: false, error: copy.newSong.exists };
+    // Its Library page exists at once.
     revalidatePath("/library");
+    revalidatePath("/library/songs", "layout");
     refreshPlanner();
     return {
       ok: true,

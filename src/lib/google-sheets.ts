@@ -28,7 +28,7 @@ import type { SongListMonth } from "@/types/song-list";
  * ---------------------------------------------------------------------------
  * FRESHNESS
  * ---------------------------------------------------------------------------
- * Both requests are cached for siteConfig.songList.revalidateSeconds (10s).
+ * Both requests are cached for siteConfig.songList.revalidateSeconds.
  * Hidden tabs are fetched too, but they only feed song history (services that
  * have already happened). They are never rendered as a schedule.
  * Editing the spreadsheet is reflected on the site within seconds, with

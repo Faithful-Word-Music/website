@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import { getSql } from "@/lib/db";
+import { applySchema, getSql } from "@/lib/db";
 
 import type { Memory, MemoryScope } from "./memory";
 import type { MemoryDeps } from "./service";
@@ -55,7 +55,7 @@ async function memorySql() {
   const sql = getSql();
   if (!sql) throw new MemoryUnavailableError();
   if (!schemaReady) {
-    for (const statement of SCHEMA) await sql.query(statement);
+    await applySchema(sql, SCHEMA);
     schemaReady = true;
   }
   return sql;

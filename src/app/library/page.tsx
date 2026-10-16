@@ -21,11 +21,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * Songs scheduled for the first time appear straight away, so the Library
- * refreshes on the same cadence as the schedule and the archive
- * (siteConfig.songList.revalidateSeconds).
+ * Songs scheduled or added to the catalog appear straight away (the Service
+ * Planner refreshes the Library when it changes them); otherwise it is rebuilt
+ * at most hourly, like the archive and the sheet music it marks
+ * (siteConfig.songList.historyRevalidateSeconds).
  */
-export const revalidate = 10;
+export const revalidate = 3600;
 
 /**
  * The Library: every song with a page, A-Z. Each kind of resource gets its
