@@ -165,7 +165,7 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
   const past = history?.past ?? [];
   const planned = plans
     .filter((item) => item !== plan && item.status !== "cancelled" && Date.parse(item.startsAt) > now)
-    .map((item) => ({ startsAt: item.startsAt, songs: slotSongs(item.slots).map(({ title }) => ({ title })) }));
+    .map((item) => ({ startsAt: item.startsAt, songs: slotSongs(item.slots).map(({ title, number }) => ({ title, number })) }));
 
   const candidates = buildCandidates({
     past,

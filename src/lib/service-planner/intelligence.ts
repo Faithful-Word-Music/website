@@ -88,7 +88,7 @@ export function buildCandidates(input: {
   /** Musicians expected at the service being planned, for missingFor. */
   musicians?: readonly PlannerMusician[];
   /** Services still to come (drafts too), for "also planned for". */
-  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<{ title: string }> }>;
+  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<{ title: string; number?: string | null }> }>;
   catalog: ReadonlyArray<{ title: string; number: string | null; collection: string | null; defaultKey: string | null }>;
   index: SheetMusicIndex | null;
   hymnalCollection: string;
@@ -103,8 +103,17 @@ export function buildCandidates(input: {
   const seasonal = christmasSongs([...past]);
 
   const ensure = (title: string, number: string | null, collection: string | null): CandidateSong | null => {
-    const id = songKey(title);
-    if (id === "") return null;
+    const base = songKey(title);
+    if (base === "") return null;
+    // Keep legacy title IDs where possible, but do not collapse two tunes
+    // with the same title and different hymn numbers (e.g. 167 and 168).
+    const matching = [...byId.values()].find(
+      (candidate) => songKey(candidate.title) === base && candidate.number === number,
+    );
+    const existing = byId.get(base);
+    const id = matching?.id ?? (existing && number && existing.number && existing.number !== number
+      ? `${base}~${number}`
+      : base);
     let entry = byId.get(id);
     if (!entry) {
       entry = {
@@ -143,7 +152,9 @@ export function buildCandidates(input: {
   }
 
   for (const song of catalog) {
-    const known = byId.has(songKey(song.title));
+    const known = [...byId.values()].some(
+      (candidate) => songKey(candidate.title) === songKey(song.title) && candidate.number === song.number,
+    );
     const entry = ensure(song.title, song.number, song.collection);
     if (!entry) continue;
     catalogKeys.set(entry.id, song.defaultKey);
@@ -157,7 +168,12 @@ export function buildCandidates(input: {
 
   for (const service of planned) {
     for (const song of service.songs) {
-      byId.get(songKey(song.title))?.upcoming.push(service.startsAt);
+      for (const candidate of byId.values()) {
+        if (songKey(candidate.title) === songKey(song.title) &&
+            (song.number === undefined || candidate.number === song.number)) {
+          candidate.upcoming.push(service.startsAt);
+        }
+      }
     }
   }
 
@@ -358,7 +374,9 @@ export function indexSheetMusicCheck(
 /** The sheet music check from the picker's candidates, which carry it to the browser. */
 export function candidateSheetMusicCheck(candidates: ReadonlyMap<string, CandidateSong>): SheetMusicCheck {
   return (song) => {
-    const candidate = candidates.get(songKey(song.title));
+    const candidate = [...candidates.values()].find(
+      (item) => songKey(item.title) === songKey(song.title) && item.number === song.number,
+    ) ?? candidates.get(songKey(song.title));
     return {
       inIndex: candidate?.inIndex ?? false,
       hasFiles: candidate?.sheetMusic === "complete" || candidate?.sheetMusic === "partial",

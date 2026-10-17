@@ -108,3 +108,30 @@ describe("what the song picker lists", () => {
     expect(pickerResults(many, "", { serviceStartsAt: STARTS, only: "inserts" })).toHaveLength(PICKER_LIMIT);
   });
 });
+
+describe("same-title arrangements", () => {
+  it("offers both numbered tunes independently from the Sheet Music Index", () => {
+    const duplicateTitle = "All Hail the Power of Jesus' Name";
+    const indexSongs = ["167", "168"].map((number) => ({
+      id: `SSSH1989-${number}`,
+      title: duplicateTitle,
+      hymnNumber: number,
+      collection: HYMNAL,
+      keys: number === "167" ? "G" : "Ab",
+      versions: [],
+    }));
+    const found = buildCandidates({
+      past: [],
+      planned: [],
+      catalog: [],
+      index: { songs: indexSongs, types: [] } as unknown as Parameters<typeof buildCandidates>[0]["index"],
+      hymnalCollection: HYMNAL,
+    });
+    expect(pickerResults(found, "all hail", { serviceStartsAt: STARTS }).map((song) => song.number))
+      .toEqual(["167", "168"]);
+    expect(pickerResults(found, "168", { serviceStartsAt: STARTS }).map((song) => song.number))
+      .toEqual(["168"]);
+    expect(found.find((song) => song.number === "167")?.defaultKey).toBe("G");
+    expect(found.find((song) => song.number === "168")?.defaultKey).toBe("Ab");
+  });
+});
