@@ -1,3 +1,4 @@
+import { normalizeSongTitle } from "@/lib/song-identity";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
 import {
@@ -109,8 +110,11 @@ function dataCell(row: readonly string[] | undefined, index: number): string {
  */
 export function cleanSong(song: Song): Song | null {
   if (isPlaceholder(song.title) || song.title.trim() === "") return null;
+  const { songId, collection } = song;
   return {
     title: song.title,
+    ...(songId ? { songId } : {}),
+    ...(collection ? { collection } : {}),
     number: isPlaceholder(song.number) ? null : song.number,
     key: isPlaceholder(song.key) ? null : song.key,
   };
@@ -416,23 +420,18 @@ export function openingMonthIndex(months: SongListMonth[], now: number): number 
 }
 
 /**
- * The identity of a song across the whole history: its title, lowercased,
+ * A search key and legacy spelling normalizer: the title, lowercased,
  * with punctuation and spacing dropped - so "Hallelujah, 'Tis Done" and
- * "Hallelujah 'Tis Done" count as the same song.
+ * "Hallelujah 'Tis Done" have the same search spelling. Identity is resolved separately.
  */
 export function songKey(title: string): string {
-  return title
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+  return normalizeSongTitle(title);
 }
 
 /**
- * The song's slug: its identity with hyphens, so "Hallelujah, 'Tis Done"
- * lives at /library/songs/hallelujah-tis-done. One song, one address,
- * however its title was punctuated in the sheet.
+ * A legacy title-only slug (new links use songUrlSlug with identity), so "Hallelujah, 'Tis Done"
+ * lives at /library/songs/hallelujah-tis-done. Ambiguous old title links now
+ * show arrangement choices; new links carry the canonical identity.
  */
 export function songSlug(title: string): string {
   return songKey(title).replace(/ /g, "-");

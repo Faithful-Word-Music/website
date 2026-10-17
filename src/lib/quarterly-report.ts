@@ -1,8 +1,9 @@
+import { songIdentity } from "@/lib/song-identity";
 import { siteConfig } from "@/config/site";
 import { christmasSeason, christmasSongs, inChristmasSeason, thanksgiving } from "@/lib/church-calendar";
 import { churchDay, churchMonth, churchYear } from "@/lib/service-time";
 import { buildSongRecords, usageCount } from "@/lib/song-history";
-import { normalizeKey, songKey } from "@/lib/song-list";
+import { normalizeKey } from "@/lib/song-list";
 import { buildSongStats, VISIT_DAYS, weeklyService } from "@/lib/song-stats";
 import type { DatedService, SongRecord } from "@/types/song-list";
 
@@ -283,7 +284,7 @@ export function buildQuarterlyReport(
   const scheduled = new Map<string, string[]>();
   for (const service of ahead) {
     for (const entry of service.songs) {
-      const id = songKey(entry.title);
+      const id = songIdentity(entry);
       if (id !== "") scheduled.set(id, [...(scheduled.get(id) ?? []), service.startsAt]);
     }
   }
@@ -295,7 +296,7 @@ export function buildQuarterlyReport(
   const activeRepertoire = new Set(
     all
       .filter((service) => dayNumber(service.date) > yearAgo && dayNumber(service.date) <= dayNumber(to))
-      .flatMap((service) => service.songs.map((entry) => songKey(entry.title)))
+      .flatMap((service) => service.songs.map((entry) => songIdentity(entry)))
       .filter((id) => id !== ""),
   ).size;
 
@@ -326,7 +327,7 @@ export function buildQuarterlyReport(
   // Each song's rhythm needs only the services it was in.
   const servicesWith = new Map<string, DatedService[]>();
   for (const service of all) {
-    for (const id of new Set(service.songs.map((entry) => songKey(entry.title)))) {
+    for (const id of new Set(service.songs.map((entry) => songIdentity(entry)))) {
       if (id !== "") servicesWith.set(id, [...(servicesWith.get(id) ?? []), service]);
     }
   }
@@ -392,7 +393,7 @@ export function buildQuarterlyReport(
       } else {
         keyless += 1;
       }
-      const id = songKey(entry.title);
+      const id = songIdentity(entry);
       const last = service.songs.length - 1;
       if (id === "" || last === 0) return;
       if (index === 0) openers.set(id, (openers.get(id) ?? 0) + 1);
@@ -417,7 +418,7 @@ export function buildQuarterlyReport(
   const together = new Map<string, number>();
   const pairKey = (a: string, b: string) => (a < b ? `${a}\n${b}` : `${b}\n${a}`);
   for (const service of all) {
-    const ids = [...new Set(service.songs.map((entry) => songKey(entry.title)))].filter((id) => id !== "");
+    const ids = [...new Set(service.songs.map((entry) => songIdentity(entry)))].filter((id) => id !== "");
     for (const id of ids) inServices.set(id, (inServices.get(id) ?? 0) + 1);
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
@@ -428,7 +429,7 @@ export function buildQuarterlyReport(
   }
   const pairsThisQuarter = new Set<string>();
   for (const service of services) {
-    const ids = [...new Set(service.songs.map((entry) => songKey(entry.title)))].filter((id) => id !== "");
+    const ids = [...new Set(service.songs.map((entry) => songIdentity(entry)))].filter((id) => id !== "");
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) pairsThisQuarter.add(pairKey(ids[i], ids[j]));
     }
@@ -479,14 +480,14 @@ export function buildQuarterlyReport(
   const sungAt = new Map<string, number[]>();
   for (const service of [...all, ...ahead]) {
     for (const entry of service.songs) {
-      const id = songKey(entry.title);
+      const id = songIdentity(entry);
       if (id !== "") sungAt.set(id, [...(sungAt.get(id) ?? []), Date.parse(service.startsAt)]);
     }
   }
   for (const service of nextServices) {
     const start = Date.parse(service.startsAt);
     for (const entry of service.songs) {
-      const id = songKey(entry.title);
+      const id = songIdentity(entry);
       // Carols come round every week or two all season long; that is the season.
       if (christmas.has(id) && inChristmasSeason(service.date)) continue;
       const previous = Math.max(-Infinity, ...(sungAt.get(id) ?? []).filter((at) => at < start));
@@ -503,7 +504,7 @@ export function buildQuarterlyReport(
     inChristmasSeason(service.date)
       ? []
       : service.songs
-          .map((entry) => songKey(entry.title))
+          .map((entry) => songIdentity(entry))
           .filter((id) => christmas.has(id))
           .map((id) => ({ ...song(id), startsAt: service.startsAt })),
   );

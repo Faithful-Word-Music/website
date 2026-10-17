@@ -137,11 +137,11 @@ describe("the library's songs", () => {
     song("BTH-015", "I Love You, Lord", "Bible Truth Hymns", "15", "no_lyrics"),
   ];
 
-  it("folds a song printed in several books into one: the church's hymnal, then its own songs, then other hymnals", () => {
+  it("keeps distinct indexed entries separate across books", () => {
     const folded = foldCopies(library, HYMNAL);
-    expect(folded).toHaveLength(6);
-    expect(folded[0]).toEqual({ song: library[0], alsoIn: ["Majesty Hymns"] });
-    expect(folded.find((entry) => entry.song.titleKey === "his eye is on the sparrow")).toEqual({ song: library[3], alsoIn: ["Songs & Hymns of Revival"] });
+    expect(folded).toHaveLength(8);
+    expect(folded[0]).toEqual({ song: library[0], alsoIn: [] });
+    expect(folded.find((entry) => entry.song.songId === "OS-014")).toEqual({ song: library[3], alsoIn: [] });
   });
 
   it("prefers a copy that has lyrics", () => {
@@ -150,7 +150,8 @@ describe("the library's songs", () => {
   });
 
   it("finds a song by title, part of a title, or its number in the church's hymnal", () => {
-    expect(resolveLibrarySong(library, "amazing grace!", HYMNAL).match?.song.songId).toBe("SSSH1989-107");
+    expect(resolveLibrarySong(library, "amazing grace!", HYMNAL).match).toBeNull();
+    expect(resolveLibrarySong(library, "SSSH1989-107", HYMNAL).match?.song.songId).toBe("SSSH1989-107");
     expect(resolveLibrarySong(library, "washed in the blood", HYMNAL).match?.song.songId).toBe("SSSH1989-022");
     expect(resolveLibrarySong(library, "#22", HYMNAL).match?.song.songId).toBe("SSSH1989-022");
     // 203 is Amazing Grace in another hymnal, not a number the song list uses.
@@ -165,9 +166,9 @@ describe("the library's songs", () => {
     expect(resolveLibrarySong(library, "   ", HYMNAL).candidates).toEqual([]);
   });
 
-  it("ties a library song to a song of the song list by title, or by its hymnal number", () => {
-    expect(isSameSong(library[0], { id: "amazing grace", number: "107" }, HYMNAL)).toBe(true);
-    expect(isSameSong(library[2], { id: "are you washed", number: "22" }, HYMNAL)).toBe(true);
-    expect(isSameSong(library[1], { id: "some other title", number: "203" }, HYMNAL)).toBe(false);
+  it("ties a library song to the same canonical identity despite a changed title", () => {
+    expect(isSameSong(library[0], { id: "SSSH1989-107", title: "Amazing Grace", number: "107" }, HYMNAL)).toBe(true);
+    expect(isSameSong(library[2], { id: "SSSH1989-022", title: "Are You Washed?", number: "22" }, HYMNAL)).toBe(true);
+    expect(isSameSong(library[1], { id: "SSSH1989-107", title: "Amazing Grace", number: "203" }, HYMNAL)).toBe(false);
   });
 });

@@ -18,7 +18,8 @@ import { buildAvailabilitySummary, type AvailabilitySummary } from "@/lib/availa
 import { getSchedule } from "@/lib/schedule";
 import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
-import { getReportInputs } from "@/lib/song-archive";
+import { getReportInputs, songDirectory } from "@/lib/song-archive";
+import { identifySong, referenceEntries, type SongReference } from "@/lib/song-identity";
 import type { DatedService, Service } from "@/types/song-list";
 
 import { invitationFollowUps, type InvitationFollowUps, type Person } from "./people";
@@ -42,11 +43,21 @@ export interface MusicData {
 }
 
 export async function loadMusicData(): Promise<MusicData> {
-  const [songList, report, sheetMusic] = await Promise.all([getSchedule(), getReportInputs(), getSheetMusicIndex()]);
+  const [songList, report, sheetMusic, known] = await Promise.all([getSchedule(), getReportInputs(), getSheetMusicIndex(), songDirectory()]);
+  const services = songList.ok ? songList.months.flatMap((month) => month.services) : null;
+  const identities = referenceEntries([
+    ...(report?.past.flatMap((service) => service.songs) ?? []),
+    ...(report?.upcoming.flatMap((service) => service.songs) ?? []),
+    ...(services?.flatMap((service) => [...service.songs, ...(service.plannedInserts ?? [])]) ?? []),
+  ], known);
+  const identify = <T extends SongReference>(song: T) => identifySong(song, identities);
   return {
-    services: songList.ok ? songList.months.flatMap((month) => month.services) : null,
-    past: report?.past ?? [],
-    upcoming: report?.upcoming ?? [],
+    services: services ? services.map((service) => ({
+      ...service, songs: service.songs.map(identify),
+      ...(service.plannedInserts ? { plannedInserts: service.plannedInserts.map(identify) } : {}),
+    })) : null,
+    past: (report?.past ?? []).map((service) => ({ ...service, songs: service.songs.map(identify) })),
+    upcoming: (report?.upcoming ?? []).map((service) => ({ ...service, songs: service.songs.map(identify) })),
     index: sheetMusic.ok ? sheetMusic.index : null,
     loadedAt: report?.loadedAt ?? Date.now(),
   };

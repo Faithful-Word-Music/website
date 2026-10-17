@@ -131,7 +131,20 @@ describe("same-title arrangements", () => {
       .toEqual(["167", "168"]);
     expect(pickerResults(found, "168", { serviceStartsAt: STARTS }).map((song) => song.number))
       .toEqual(["168"]);
+    expect(pickerResults(found, "167", { serviceStartsAt: STARTS }).map((song) => song.id))
+      .toEqual(["SSSH1989-167"]);
+    expect(found.map((song) => [song.id, song.songId])).toEqual([
+      ["SSSH1989-167", "SSSH1989-167"],
+      ["SSSH1989-168", "SSSH1989-168"],
+    ]);
     expect(found.find((song) => song.number === "167")?.defaultKey).toBe("G");
     expect(found.find((song) => song.number === "168")?.defaultKey).toBe("Ab");
+  });
+
+  it("searches the title independently of an opaque canonical ID", () => {
+    const candidate = { id: "SSSH1989-168", title: "All Hail the Power of Jesus' Name", number: "168" };
+    expect(matchRank(candidate, "all hail")).toBe(2);
+    expect(matchRank(candidate, "power of jesus")).toBe(3);
+    expect(matchRank(candidate, "168")).toBe(0);
   });
 });

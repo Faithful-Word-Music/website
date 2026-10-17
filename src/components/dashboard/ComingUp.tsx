@@ -9,6 +9,7 @@ import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
 import { formatCountdown, splitDateLabel } from "@/lib/service-time";
+import { songIdentity } from "@/lib/song-identity";
 
 const copy = dashboardContent.comingUp;
 
@@ -100,7 +101,7 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
         {service.plannedInserts.map((song) => (
-          <li key={song.title} className="py-2">
+          <li key={songIdentity(song)} className="py-2">
             <PlannedInsert song={song} />
           </li>
         ))}
@@ -134,7 +135,7 @@ function SongRow({ song, showLabel }: { song: ComingUpSong | null; showLabel: bo
         {song && !song.number ? <span className="sr-only">No number</span> : null}
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
-        {song ? <SongLink title={song.title} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
+        {song ? <SongLink {...song} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
         {song?.sheet ? <SongSheet sheet={song.sheet} showLabel={showLabel} /> : null}
       </span>
       {song?.key ? (

@@ -1,5 +1,7 @@
 "use client";
 
+import { songIdentity } from "@/lib/song-identity";
+
 import type { MouseEvent, ReactNode } from "react";
 
 import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
@@ -10,7 +12,7 @@ import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import { serviceName } from "@/lib/share-services";
 import { songHint, type PlayIndex } from "@/lib/song-history";
-import { serviceSlots, songKey } from "@/lib/song-list";
+import { serviceSlots } from "@/lib/song-list";
 import { splitDateLabel } from "@/lib/service-time";
 import type { ServiceStatus } from "@/lib/service-time";
 import type { Service } from "@/types/song-list";
@@ -223,7 +225,7 @@ export function ServiceCard({
             }
             const hint =
               !past && plays && service.startsAt
-                ? songHint(plays[songKey(song.title)], service.startsAt, now, { insert: song.insert })
+                ? songHint(plays[songIdentity(song)], service.startsAt, now, { insert: song.insert })
                 : null;
 
             return (
@@ -235,7 +237,7 @@ export function ServiceCard({
                   {song.number ?? <span aria-hidden="true">·</span>}
                 </td>
                 <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base">
-                  <SongLink title={song.title} />
+                  <SongLink {...song} />
                   {hint ? (
                     <span>
                       <SongHintText hint={hint} now={now} />

@@ -1,3 +1,4 @@
+import { indexEntries, identifySong, resolveSong, sameSong, songIdentity, type SongReference } from "@/lib/song-identity";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -49,12 +50,13 @@ async function authorized(): Promise<Viewer | NextResponse> {
 }
 
 /** The song from the request, or null when it names none. */
-function songFrom(title: unknown, number: unknown): { title: string; number: string | null } | null {
+function songFrom(title: unknown, number: unknown, songId?: unknown, collection?: unknown): SongReference | null {
   if (typeof title !== "string" || title.length > 200 || songKey(title) === "") return null;
-  return { title, number: typeof number === "string" && number.trim() !== "" ? number.trim().slice(0, 12) : null };
+  if (songId != null && (typeof songId !== "string" || !songId.trim() || songId.length > 2048)) return null;
+  return { title, ...(typeof songId === "string" ? { songId } : {}), ...(typeof collection === "string" ? { collection: collection.slice(0, 300) } : {}), number: typeof number === "string" && number.trim() !== "" ? number.trim().slice(0, 12) : null };
 }
 
-async function stateFor(viewer: Viewer, song: { title: string; number: string | null }): Promise<SongCapoState> {
+async function stateFor(viewer: Viewer, song: SongReference): Promise<SongCapoState> {
   const [rules, types, index, catalog] = await Promise.all([
     getCapoRules(viewer.env),
     listSheetMusicTypes(viewer.env),
@@ -64,9 +66,9 @@ async function stateFor(viewer: Viewer, song: { title: string; number: string | 
   const indexSong = index.ok ? matchIndexSong(index.index, song, siteConfig.sheetMusic.hymnalCollection) : null;
   const key = canonicalKey({
     indexKeys: indexSong?.keys,
-    catalogKey: catalog.find((entry) => songKey(entry.title) === songKey(song.title))?.defaultKey,
+    catalogKey: catalog.find((entry) => sameSong(entry, song))?.defaultKey,
   });
-  const rule = songCapoRule(song.title, rules);
+  const rule = songCapoRule(identifySong(song, index.ok ? indexEntries(index.index.songs) : []), rules);
   return {
     rule,
     key,
@@ -81,7 +83,7 @@ export async function GET(request: Request) {
     const viewer = await authorized();
     if (viewer instanceof NextResponse) return viewer;
     const params = new URL(request.url).searchParams;
-    const song = songFrom(params.get("title"), params.get("number"));
+    const song = songFrom(params.get("title"), params.get("number"), params.get("songId"), params.get("collection"));
     if (!song) return refuse(400, "invalid");
     return NextResponse.json({ ok: true, ...(await stateFor(viewer, song)) }, { headers });
   } catch (error) {
@@ -94,10 +96,16 @@ export async function POST(request: Request) {
   try {
     const viewer = await authorized();
     if (viewer instanceof NextResponse) return viewer;
-    const body = (await request.json().catch(() => null)) as { title?: unknown; number?: unknown; rule?: unknown } | null;
-    const song = songFrom(body?.title, body?.number);
+    const body = (await request.json().catch(() => null)) as { title?: unknown; number?: unknown; songId?: unknown; collection?: unknown; rule?: unknown } | null;
+    const song = songFrom(body?.title, body?.number, body?.songId, body?.collection);
     if (!song || !isSongCapoRule(body?.rule)) return refuse(400, "invalid");
-    await setSongCapoRule(viewer.env, songKey(song.title), body.rule, viewer.userId);
+    const index = await getSheetMusicIndex();
+    const indexed = index.ok ? indexEntries(index.index.songs) : [];
+    const catalog = await listCatalogSongs(viewer.env, indexed);
+    const entries = [...indexed, ...catalog.map((entry) => ({ id: entry.songId, title: entry.title, number: entry.number, collection: entry.collection }))];
+    const id = songIdentity(song, entries);
+    const legacy = resolveSong({ title: song.title }, entries);
+    await setSongCapoRule(viewer.env, id, body.rule, viewer.userId, legacy?.id === id ? songKey(song.title) : undefined);
     revalidatePath("/dashboard");
     revalidatePath("/service-planner", "layout");
     return NextResponse.json({ ok: true, ...(await stateFor(viewer, song)) }, { headers });

@@ -1,18 +1,14 @@
-import { preferredCopy, type DirectorySong } from "@/lib/library-content/directory";
+import type { DirectorySong } from "@/lib/library-content/directory";
 import type { CandidateSong } from "@/lib/service-planner/intelligence";
+import { resolveSong } from "@/lib/song-identity";
 
 /**
  * Tying the planner's songs to the library's. Pure - unit tested.
  *
- * The planner knows a song by its title (songKey) and, for a hymn, its number
- * in the church's hymnal. The library index knows it by its Song ID, and may
- * hold several copies of one song (one in each book it is printed in). A plan
- * is made of the planner's songs, so everything the library finds - lyrics, a
- * search by meaning - is brought back to them here.
+ * Explicit Song IDs take priority. A legacy candidate can be associated only
+ * when its collection/number or unique title resolves in the complete lyric
+ * directory. Different indexed copies retain independent associations.
  */
-
-/** "012" and "12" are the same number. */
-const plain = (number: string) => number.trim().replace(/^0+(?=\d)/, "").toLowerCase();
 
 export interface LibraryLinks<T extends DirectorySong> {
   /** The library's copy of a planner song (the one the church sings from), by candidate id. */
@@ -22,32 +18,33 @@ export interface LibraryLinks<T extends DirectorySong> {
 }
 
 export function linkLibrary<T extends DirectorySong>(
-  candidates: ReadonlyArray<Pick<CandidateSong, "id" | "number">>,
+  candidates: ReadonlyArray<Pick<CandidateSong, "id" | "title" | "number" | "collection"> & { songId?: string }>,
   library: readonly T[],
   hymnal: string,
 ): LibraryLinks<T> {
-  const ids = new Set(candidates.map((song) => song.id));
-  const byNumber = new Map<string, string>();
-  for (const song of candidates) {
-    if (song.number !== null && !byNumber.has(plain(song.number))) byNumber.set(plain(song.number), song.id);
-  }
-
-  const copies = new Map<string, T[]>();
+  const entries = library.map((song) => ({ ...song, id: song.songId, number: song.hymnNumber }));
+  const songOf = new Map<string, T>();
   const candidateOf = new Map<string, string>();
-  for (const song of library) {
-    // By title first; a hymn written a little differently in the two places is still found by its number.
-    const id = ids.has(song.titleKey)
-      ? song.titleKey
-      : song.collection === hymnal && song.hymnNumber !== null
-        ? byNumber.get(plain(song.hymnNumber))
-        : undefined;
-    if (!id) continue;
-    candidateOf.set(song.songId, id);
-    copies.set(id, [...(copies.get(id) ?? []), song]);
+  const ambiguous = new Set<string>();
+  for (const candidate of candidates) {
+    // This is a read-only bridge from unresolved numbered evidence to the
+    // lyric index. A canonical or catalog ID is never discarded.
+    const reference = /^legacy-n-[0-9a-f]+$/i.test(candidate.songId ?? "")
+      ? { ...candidate, songId: undefined }
+      : candidate;
+    const found = resolveSong(reference, entries, hymnal);
+    if (!found) continue;
+    if (ambiguous.has(found.songId)) continue;
+    songOf.set(candidate.id, found);
+    // More than one candidate claiming the same directory identity is
+    // ambiguous too; never assign a search hit to whichever came last.
+    const prior = candidateOf.get(found.songId);
+    if (prior && prior !== candidate.id) {
+      candidateOf.delete(found.songId);
+      songOf.delete(prior);
+      songOf.delete(candidate.id);
+      ambiguous.add(found.songId);
+    } else candidateOf.set(found.songId, candidate.id);
   }
-
-  return {
-    songOf: new Map([...copies].map(([id, group]) => [id, preferredCopy(group, hymnal)])),
-    candidateOf,
-  };
+  return { songOf, candidateOf };
 }

@@ -28,31 +28,32 @@ import { applyPlan, applySuggestions } from "./validate";
 
 const HYMNAL = siteConfig.sheetMusic.hymnalCollection;
 
-const SONGS: Record<string, { number: string | null; key: string | null }> = {
-  "Amazing Grace": { number: "330", key: "G" },
-  "Victory in Jesus": { number: "100", key: "Bb" },
-  "Blessed Assurance": { number: "200", key: "D" },
-  "At Calvary": { number: "150", key: "C" },
-  "Holy, Holy, Holy": { number: "1", key: "Eb" },
-  "Rarely Sung": { number: "50", key: "F" },
-  "Never Sung": { number: "60", key: "A" },
-  "Psalm 23": { number: null, key: "F" },
-  "Psalm 100": { number: null, key: "G" },
-  "Psalm 1": { number: null, key: "C" },
-  "Joy to the World": { number: "400", key: "D" },
-  "Silent Night": { number: "401", key: "Bb" },
-  "Away in a Manger": { number: "402", key: "F" },
-  "O Little Town": { number: "403", key: "F" },
+const SONGS: Record<string, { songId: string; number: string | null; key: string | null }> = {
+  "Amazing Grace": { songId: "SSSH1989-330", number: "330", key: "G" },
+  "Victory in Jesus": { songId: "SSSH1989-100", number: "100", key: "Bb" },
+  "Blessed Assurance": { songId: "SSSH1989-200", number: "200", key: "D" },
+  "At Calvary": { songId: "SSSH1989-150", number: "150", key: "C" },
+  "Holy, Holy, Holy": { songId: "SSSH1989-001", number: "1", key: "Eb" },
+  "Rarely Sung": { songId: "SSSH1989-050", number: "50", key: "F" },
+  "Never Sung": { songId: "SSSH1989-060", number: "60", key: "A" },
+  "Psalm 23": { songId: "PS-023", number: null, key: "F" },
+  "Psalm 100": { songId: "PS-100", number: null, key: "G" },
+  "Psalm 1": { songId: "PS-001", number: null, key: "C" },
+  "Joy to the World": { songId: "SSSH1989-400", number: "400", key: "D" },
+  "Silent Night": { songId: "SSSH1989-401", number: "401", key: "Bb" },
+  "Away in a Manger": { songId: "SSSH1989-402", number: "402", key: "F" },
+  "O Little Town": { songId: "SSSH1989-403", number: "403", key: "F" },
 };
 
-const id = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const titleKey = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const id = (title: string) => SONGS[title]?.songId ?? titleKey(title);
 
 function sung(date: string, titles: string[], slot: "AM" | "PM" = "AM"): DatedService {
   return {
     date,
     slot,
     startsAt: `${date}T${slot === "AM" ? "10:30" : "18:00"}:00-07:00`,
-    songs: titles.map((title) => ({ title, number: SONGS[title].number, key: SONGS[title].key })),
+    songs: titles.map((title) => ({ songId: id(title), title, collection: HYMNAL, number: SONGS[title].number, key: SONGS[title].key })),
   };
 }
 
@@ -71,13 +72,13 @@ const past: DatedService[] = [
 const candidates = buildCandidates({
   past,
   planned: [],
-  catalog: Object.entries(SONGS).map(([title, song]) => ({ title, number: song.number, collection: HYMNAL, defaultKey: song.key })),
+  catalog: Object.entries(SONGS).map(([title, song]) => ({ songId: song.songId, title, number: song.number, collection: HYMNAL, defaultKey: song.key })),
   index: null,
   hymnalCollection: HYMNAL,
 });
 
 // Made as the site makes them: a song is an insert because it has no hymnal number, not because anything says so.
-const song = (title: string, key: string | null = SONGS[title].key): PlanSong => planSong({ title, number: SONGS[title].number, key });
+const song = (title: string, key: string | null = SONGS[title].key): PlanSong => planSong({ songId: id(title), title, collection: HYMNAL, number: SONGS[title].number, key });
 /** A Psalm: an insert by being un-numbered. The name only says what the test means by it. */
 const insert = song;
 
@@ -218,29 +219,29 @@ describe("the library's songs tied to the planner's", () => {
   const lib = (songId: string, title: string, collection: string | null, hymnNumber: string | null, status: "indexed" | "no_source" = "indexed") => ({
     songId,
     title,
-    titleKey: id(title),
+    titleKey: titleKey(title),
     collection,
     hymnNumber,
     status,
   });
 
-  it("finds a song by its title, or by its number in the church's hymnal", () => {
+  it("links explicit Song IDs to their own lyric entries", () => {
     const links = linkLibrary(
       candidates,
-      [lib("S1", "Amazing Grace", HYMNAL, "330"), lib("S2", "Victory in Jesus!", HYMNAL, "0100"), lib("S3", "Unknown Song", HYMNAL, "999"), lib("S4", "Other", "Another Book", "330")],
+      [lib("SSSH1989-330", "Amazing Grace", HYMNAL, "330"), lib("SSSH1989-100", "Victory in Jesus!", HYMNAL, "0100"), lib("S3", "Unknown Song", HYMNAL, "999"), lib("S4", "Other", "Another Book", "330")],
       HYMNAL,
     );
-    expect(links.candidateOf.get("S1")).toBe(id("Amazing Grace"));
-    expect(links.candidateOf.get("S2")).toBe(id("Victory in Jesus"));
+    expect(links.candidateOf.get("SSSH1989-330")).toBe("SSSH1989-330");
+    expect(links.candidateOf.get("SSSH1989-100")).toBe("SSSH1989-100");
     expect(links.candidateOf.has("S3")).toBe(false);
     // A number in another book is not this hymnal's number.
     expect(links.candidateOf.has("S4")).toBe(false);
   });
 
-  it("stands a song printed in several books for the copy the church sings from", () => {
-    const links = linkLibrary(candidates, [lib("X9", "Amazing Grace", "Another Book", "12"), lib("S1", "Amazing Grace", HYMNAL, "330")], HYMNAL);
-    expect(links.songOf.get(id("Amazing Grace"))?.songId).toBe("S1");
-    expect(links.candidateOf.get("X9")).toBe(id("Amazing Grace"));
+  it("keeps same-title entries in other books independent", () => {
+    const links = linkLibrary(candidates, [lib("X9", "Amazing Grace", "Another Book", "12"), lib("SSSH1989-330", "Amazing Grace", HYMNAL, "330")], HYMNAL);
+    expect(links.songOf.get("SSSH1989-330")?.songId).toBe("SSSH1989-330");
+    expect(links.candidateOf.has("X9")).toBe(false);
   });
 });
 
@@ -269,10 +270,11 @@ describe("the candidates", () => {
   });
 
   it("always include the songs that may be kept, and never a song that cannot be moved", () => {
-    const kept = many.find((item) => item.id === "unsung 7")!;
-    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set(["hymn 0"]), keepable: [kept], thematic: [], christmasOnly: null, insertOpen: false });
+    const kept = many.find((item) => item.title === "Unsung 7")!;
+    const fixed = many.find((item) => item.title === "Hymn 0")!;
+    const list = buildShortlist({ candidates: many, startsAt: STARTS, fixed: new Set([fixed.id]), keepable: [kept], thematic: [], christmasOnly: null, insertOpen: false });
     expect(list[0]).toBe(kept);
-    expect(list.some((item) => item.id === "hymn 0")).toBe(false);
+    expect(list.some((item) => item.title === "Hymn 0")).toBe(false);
   });
 
   it("take songs found by meaning, but only a few that have never been sung", () => {
@@ -314,7 +316,7 @@ describe("the candidates", () => {
       openings: new Map([[amazing.id, "Amazing grace, how sweet the sound"]]),
     });
     expect(described).toEqual({
-      id: "amazing grace",
+      id: "SSSH1989-330",
       title: "Amazing Grace",
       number: "330",
       timesSung: 3,
@@ -351,7 +353,7 @@ describe("the brief", () => {
     expect(inserts(brief(twoInserts()))).toEqual([]);
 
     const asked = brief(usual(), { locked: unlocked, instruction: "Use a different Psalm this week." });
-    expect(inserts(asked)).toEqual([id("Psalm 1"), id("Psalm 100"), id("Psalm 23")]);
+    expect(inserts(asked)).toEqual(["PS-001", "PS-023", "PS-100"]);
     expect(asked.candidates.filter((item) => item.insert).map((item) => item.id).sort()).toEqual(inserts(asked));
     expect(asked.candidates.find((item) => item.id === id("Amazing Grace"))).not.toHaveProperty("insert");
   });
@@ -376,17 +378,17 @@ describe("the brief", () => {
     expect(made.places).toEqual([
       { place: 1, state: "empty" },
       { place: 2, state: "empty" },
-      { place: 3, state: "locked", song: { id: "psalm 23", title: "Psalm 23", number: null, insert: true } },
-      { place: 4, state: "open", song: { id: "at calvary", title: "At Calvary", number: "150" } },
+      { place: 3, state: "locked", song: { id: "PS-023", title: "Psalm 23", number: null, insert: true } },
+      { place: 4, state: "open", song: { id: "SSSH1989-150", title: "At Calvary", number: "150" } },
       { place: 5, state: "empty" },
     ]);
   });
 
   it("can keep a song the catalog does not know", () => {
-    const slots: PlanSlots = [planSong({ title: "A Brand New Song", number: "999", key: "E" }), null];
+    const slots: PlanSlots = [planSong({ songId: "catalog-unknown", title: "A Brand New Song", number: "999", key: "E" }), null];
     const made = brief(slots);
-    expect(made.offered.has("a brand new song")).toBe(true);
-    const applied = applyPlan(made, plan([{ place: 1, songId: "a brand new song" }, place(2, "Amazing Grace")]));
+    expect(made.offered.has("catalog-unknown")).toBe(true);
+    const applied = applyPlan(made, plan([{ place: 1, songId: "catalog-unknown" }, place(2, "Amazing Grace")]));
     expect(applied.ok && applied.slots[0]).toBe(made.slots[0]);
   });
 
@@ -403,7 +405,7 @@ describe("the brief", () => {
     const slots: PlanSlots = [song("Amazing Grace"), song("Silent Night"), insert("Psalm 23"), null];
     const made = brief(slots, {}, december(), { ...NO_LIBRARY, nativity: new Set([id("Away in a Manger")]) });
     expect(made.season).toBe("christmas");
-    expect([...made.offered].sort()).toEqual([id("Away in a Manger"), id("Joy to the World"), id("Silent Night")]);
+    expect([...made.offered].sort()).toEqual(["SSSH1989-400", "SSSH1989-401", "SSSH1989-402"]);
     expect(made.places[0].mustChange).toBe(true);
     expect(made.places[1].mustChange).toBeUndefined();
   });
@@ -421,7 +423,7 @@ describe("the brief", () => {
       const made = brief(drafted());
       expect(made.strategy).toBe("improve");
       expect(made.open).toEqual([0, 1, 3, 4]);
-      expect(made.places[0]).toEqual({ place: 1, state: "open", song: { id: "never sung", title: "Never Sung", number: "60" } });
+      expect(made.places[0]).toEqual({ place: 1, state: "open", song: { id: "SSSH1989-060", title: "Never Sung", number: "60" } });
       expect(made.places[3].state).toBe("open");
       // Kept on offer because it is there, though nothing else would have put it on the list.
       expect(made.offered.has(id("Never Sung"))).toBe(true);
@@ -434,7 +436,7 @@ describe("the brief", () => {
       expect(made.places).toEqual([
         { place: 1, state: "empty" },
         { place: 2, state: "empty" },
-        { place: 3, state: "locked", song: { id: "psalm 23", title: "Psalm 23", number: null, insert: true } },
+        { place: 3, state: "locked", song: { id: "PS-023", title: "Psalm 23", number: null, insert: true } },
         { place: 4, state: "empty" },
         { place: 5, state: "empty" },
       ]);
@@ -479,7 +481,7 @@ describe("the brief", () => {
       const held = brief(drafted(), { strategy: "fresh", locked: none });
       expect(held.open).toEqual([0, 1, 3, 4]);
       const asked = brief(drafted(), { strategy: "fresh", locked: none, instruction: "A stronger opener." });
-      expect(asked.places[2]).toEqual({ place: 3, state: "open", song: { id: "psalm 23", title: "Psalm 23", number: null, insert: true } });
+      expect(asked.places[2]).toEqual({ place: 3, state: "open", song: { id: "PS-023", title: "Psalm 23", number: null, insert: true } });
       expect(asked.offered.has(id("Psalm 23"))).toBe(true);
     });
 
@@ -667,7 +669,7 @@ describe("holding the answer to the rules", () => {
   it("refuses the same song twice, and a song already in a locked place", () => {
     const made = brief(usual());
     const twice = applyPlan(made, plan([place(1, "Amazing Grace"), place(2, "Amazing Grace"), place(4, "At Calvary"), place(5, "Blessed Assurance")]));
-    expect(twice).toEqual({ ok: false, problems: ['"amazing grace" (place 2) would be in the service twice.'] });
+    expect(twice).toEqual({ ok: false, problems: ['"SSSH1989-330" (place 2) would be in the service twice.'] });
 
     const locked = brief([song("Amazing Grace"), null], { locked: [true, false] });
     // It was never offered, so it cannot be named.
@@ -697,14 +699,14 @@ describe("holding the answer to the rules", () => {
     it("gives way to a regular hymn when asked, and that hymn is not an insert", () => {
       const made = brief(usual(), { locked: unlocked, instruction: skip });
       const applied = applyPlan(made, answer("Holy, Holy, Holy"));
-      expect(applied.ok && applied.slots[2]).toEqual({ title: "Holy, Holy, Holy", number: "1", key: "Eb", insert: false });
+      expect(applied.ok && applied.slots[2]).toEqual({ songId: "SSSH1989-001", title: "Holy, Holy, Holy", collection: HYMNAL, number: "1", key: "Eb", insert: false });
       expect(applied.ok && applied.slots.some((item) => item?.insert)).toBe(false);
     });
 
     it("can be a different insert for this one service when asked for: an insert because it is one, not because anyone says so", () => {
       const made = brief(usual(), { locked: unlocked, instruction: "Use Psalm 100 as the insert for this service only." });
       const applied = applyPlan(made, answer("Psalm 100"));
-      expect(applied.ok && applied.slots[2]).toEqual({ title: "Psalm 100", number: null, key: "G", insert: true });
+      expect(applied.ok && applied.slots[2]).toEqual({ songId: "PS-100", title: "Psalm 100", collection: HYMNAL, number: null, key: "G", insert: true });
       expect(applied.ok && applied.slots.filter((item) => item && isInsert(item))).toHaveLength(1);
     });
 
@@ -714,7 +716,7 @@ describe("holding the answer to the rules", () => {
       expect(applyPlan(made, answer("Psalm 23", "Psalm 100"))).toEqual({
         ok: false,
         problems: [
-          '"psalm 100" (place 1) is an insert, and place 1 is not an insert\'s place.',
+          '"PS-100" (place 1) is an insert, and place 1 is not an insert\'s place.',
           "The service may have at most 1 insert among the places you answer for.",
         ],
       });
@@ -742,7 +744,7 @@ describe("holding the answer to the rules", () => {
       expect(applied).toEqual({
         ok: false,
         problems: [
-          '"psalm 100" (place 1) is an insert, and place 1 is not an insert\'s place.',
+          '"PS-100" (place 1) is an insert, and place 1 is not an insert\'s place.',
           "This service's inserts are not yours to change, and no other insert may be added.",
         ],
       });
@@ -794,7 +796,7 @@ describe("holding the answer to the rules", () => {
       const applied = applyPlan(offered, plan([place(1, "Joy to the World"), place(2, "Amazing Grace"), place(4, "Silent Night")]));
       expect(applied).toEqual({
         ok: false,
-        problems: ['"amazing grace" (place 2) is not established as a Christmas song, and this service is in the Christmas season.'],
+        problems: ['"SSSH1989-330" (place 2) is not established as a Christmas song, and this service is in the Christmas season.'],
       });
     });
 
@@ -827,8 +829,8 @@ describe("holding the answer to the rules", () => {
       expect(applied).toEqual({
         ok: true,
         suggestions: [
-          { title: "Victory in Jesus", number: "100", key: "Bb", reason: "It follows the opener naturally.", lastSung: "2026-08-02T10:30:00-07:00" },
-          { title: "Blessed Assurance", number: "200", key: "D", reason: "It follows the opener naturally.", lastSung: "2026-08-02T10:30:00-07:00" },
+          { songId: "SSSH1989-100", title: "Victory in Jesus", number: "100", collection: HYMNAL, key: "Bb", reason: "It follows the opener naturally.", lastSung: "2026-08-02T10:30:00-07:00" },
+          { songId: "SSSH1989-200", title: "Blessed Assurance", number: "200", collection: HYMNAL, key: "D", reason: "It follows the opener naturally.", lastSung: "2026-08-02T10:30:00-07:00" },
         ],
       });
     });
@@ -859,7 +861,7 @@ describe("holding the answer to the rules", () => {
       expect(applied.ok && applied.suggestions.map((item) => item.title)).toEqual(["Victory in Jesus"]);
       expect(applySuggestions(offered, { suggestions: [suggestion("Psalm 100")] })).toEqual({
         ok: false,
-        problems: ['"psalm 100" is an insert, and this is not an insert\'s place.'],
+        problems: ['"PS-100" is an insert, and this is not an insert\'s place.'],
       });
     });
 
@@ -875,7 +877,7 @@ describe("holding the answer to the rules", () => {
     });
 
     it("are refused when none can be used", () => {
-      expect(applySuggestions(made(), { suggestions: [suggestion("Amazing Grace")] })).toEqual({ ok: false, problems: ['"amazing grace" is already in the service.'] });
+      expect(applySuggestions(made(), { suggestions: [suggestion("Amazing Grace")] })).toEqual({ ok: false, problems: ['"SSSH1989-330" is already in the service.'] });
       expect(applySuggestions(made(), { suggestions: [] })).toEqual({ ok: false, problems: ["No song was suggested."] });
     });
   });

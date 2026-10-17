@@ -1,5 +1,5 @@
 import { churchDay, churchWeek, churchYear, dayOfWeek } from "@/lib/service-time";
-import { songKey } from "@/lib/song-list";
+import { songIdentity, referenceEntries, type IdentityEntry } from "@/lib/song-identity";
 import type { DatedService, SongRecord } from "@/types/song-list";
 
 /**
@@ -60,7 +60,8 @@ export function pastServices(services: DatedService[], now: number): DatedServic
 }
 
 /** Groups every song sung across these services into one record per song. */
-export function buildSongRecords(services: DatedService[]): SongRecord[] {
+export function buildSongRecords(services: DatedService[], identities: readonly IdentityEntry[] = []): SongRecord[] {
+  identities = referenceEntries(services.flatMap((service) => service.songs), identities);
   const records = new Map<string, SongRecord>();
   const ordered = [...services].sort(
     (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
@@ -68,10 +69,10 @@ export function buildSongRecords(services: DatedService[]): SongRecord[] {
 
   for (const service of ordered) {
     for (const song of service.songs) {
-      const id = songKey(song.title);
+      const id = songIdentity(song, identities);
       if (id === "") continue;
 
-      const record = records.get(id) ?? { id, title: song.title, number: null, plays: [] };
+      const record = records.get(id) ?? { id, songId: id, collection: song.collection, title: song.title, number: null, plays: [] };
       // Walking oldest to newest, so the latest spelling and number win.
       record.title = song.title;
       if (song.number) record.number = song.number;
@@ -107,6 +108,7 @@ export function usageCount(song: { number: string | null }, plays: ReadonlyArray
 /** A song that is habitually sung in the same service as another. */
 export interface Companion {
   id: string;
+  songId?: string;
   /** Title as most recently written. */
   title: string;
   number: string | null;
@@ -138,7 +140,9 @@ export function buildCompanions(
   services: DatedService[],
   id: string,
   rules: CompanionRules,
+  identities: readonly IdentityEntry[] = [],
 ): Companion[] {
+  identities = referenceEntries(services.flatMap((service) => service.songs), identities);
   const ordered = [...services].sort(
     (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
   );
@@ -150,7 +154,7 @@ export function buildCompanions(
   for (const service of ordered) {
     const ids = new Set<string>();
     for (const song of service.songs) {
-      const songId = songKey(song.title);
+      const songId = songIdentity(song, identities);
       if (songId === "") continue;
       ids.add(songId);
       // Walking oldest to newest, so the latest spelling and number win.
@@ -179,7 +183,7 @@ export function buildCompanions(
     const share = together / (ownPlays + (plays.get(other) ?? 0) - together);
     if (together < rules.minTogether || share < rules.minShare) continue;
     const detail = details.get(other)!;
-    companions.push({ id: other, ...detail, together, share, lastTogether });
+    companions.push({ id: other, songId: other, ...detail, together, share, lastTogether });
   }
 
   return companions
@@ -193,17 +197,18 @@ export function buildCompanions(
 }
 
 /**
- * The dates each song was sung, keyed by songKey(). This is what the schedule
+ * The dates each song was sung, keyed by song identity. This is what the schedule
  * page hands to the browser for the hints - small, and enough to compute every
  * hint against the live clock.
  */
 export type PlayIndex = Record<string, string[]>;
 
-export function buildPlayIndex(services: DatedService[], onlyIds?: Set<string>): PlayIndex {
+export function buildPlayIndex(services: DatedService[], onlyIds?: Set<string>, identities: readonly IdentityEntry[] = []): PlayIndex {
+  identities = referenceEntries(services.flatMap((service) => service.songs), identities);
   const index: PlayIndex = {};
   for (const service of services) {
     for (const song of service.songs) {
-      const id = songKey(song.title);
+      const id = songIdentity(song, identities);
       if (id === "" || (onlyIds && !onlyIds.has(id))) continue;
       (index[id] ??= []).push(service.startsAt);
     }

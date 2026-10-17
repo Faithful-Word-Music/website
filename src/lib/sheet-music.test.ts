@@ -186,6 +186,20 @@ describe("parseDrivePath", () => {
 });
 
 describe("readSheetMusic", () => {
+  it("does not assign Drive files to an arbitrary ID when collection and number conflict", () => {
+    const ambiguous = readSheetMusic({
+      songs: [SONGS_HEADER, song("ALT-167", "All Hail", "167", HYMNAL, "Yes"), song("SSSH1989-167", "All Hail", "167", HYMNAL, "No")],
+      versions: [], drive: drive([[`${SSSH}/Standard/PDF`, "167 - All Hail.pdf", "ambiguous-file"]]),
+    });
+    expect(ambiguous.songs.map((song) => song.files.length)).toEqual([0, 0]);
+  });
+  it("does not let a title override a conflicting file number", () => {
+    const conflicting = readSheetMusic({
+      songs: [SONGS_HEADER, song("SSSH1989-167", "All Hail", "167", HYMNAL, "No")],
+      versions: [], drive: drive([[`${SSSH}/Standard/PDF`, "168 - All Hail.pdf", "wrong-number-file"]]),
+    });
+    expect(conflicting.songs[0].files).toEqual([]);
+  });
   it("keeps only Songs rows with a real Song ID, and never copies notes", () => {
     expect(sources.songs.map((candidate) => candidate.id)).toEqual([
       "SSSH1989-121", "SSSH1989-170", "SSSH1989-012", "SSSH1989-125", "SHR-020", "MH-211",
@@ -368,6 +382,10 @@ describe("findFile and fileLabel", () => {
 });
 
 describe("matchIndexSong", () => {
+  it("honors an explicit ID before conflicting title/number evidence and never falls back", () => {
+    expect(matchIndexSong(index, { songId: "SSSH1989-121", title: "Blessed Redeemer", number: "12" }, HYMNAL)?.id).toBe("SSSH1989-121");
+    expect(matchIndexSong(index, { songId: "MISSING-121", title: "Like a River Glorious", number: "121" }, HYMNAL)).toBeNull();
+  });
   it("matches a numbered song by its number in the church's hymnal", () => {
     expect(matchIndexSong(index, { title: "Like a River Glorious", number: "121" }, HYMNAL)?.id).toBe("SSSH1989-121");
     expect(matchIndexSong(index, { title: "Blessed Redeemer", number: "012" }, HYMNAL)?.id).toBe("SSSH1989-012");
@@ -382,8 +400,8 @@ describe("matchIndexSong", () => {
     expect(matchIndexSong(index, { title: "Unknown Song", number: null }, HYMNAL)).toBeNull();
   });
 
-  it("prefers the church's hymnal when a numbered title appears in several", () => {
-    expect(matchIndexSong(index, { title: "The Solid Rock", number: "999" }, HYMNAL)?.id).toBe("SSSH1989-125");
+  it("does not override conflicting hymn-number evidence with a title match", () => {
+    expect(matchIndexSong(index, { title: "The Solid Rock", number: "999" }, HYMNAL)).toBeNull();
   });
 });
 

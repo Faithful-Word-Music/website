@@ -1,7 +1,7 @@
 import { siteConfig } from "@/config/site";
-import { foldCopies, isSameSong, preferredCopy, resolveLibrarySong, type DirectorySong, type FoldedSong } from "@/lib/library-content/directory";
+import { foldCopies, resolveLibrarySong, type DirectorySong, type FoldedSong } from "@/lib/library-content/directory";
 import { sectionLabel, type LyricSection } from "@/lib/library-content/lyrics";
-import { songKey } from "@/lib/song-list";
+import { indexEntries, sameSong } from "@/lib/song-identity";
 
 import { serviceName, songDirectory, type ConductorData } from "./facts";
 
@@ -44,6 +44,7 @@ const clip = (text: string, max = SECTION_CHARS) => (text.length > max ? `${text
 /** How a song is named to the model: its title, and its number when it is in the church's hymnal. */
 function nameSong({ song, alsoIn }: FoldedSong<LibraryEntry>) {
   return {
+    songId: song.songId,
     title: song.title,
     ...(song.collection === hymnal() && song.hymnNumber ? { number: song.hymnNumber } : {}),
     collection: song.collection,
@@ -64,15 +65,21 @@ export interface SongHistory {
   plannedFor?: Array<{ date: string; service: string; status: string }>;
 }
 
-export function historyLookup(data: ConductorData) {
-  const listed = songDirectory(data);
-  const byKey = new Map(listed.map((song) => [song.id, song]));
-
+export function historyLookup(data: ConductorData, library: readonly LibraryEntry[] = []) {
+  const identities = data.identities ?? [];
+  const asEntries = (songs: readonly LibraryEntry[]) => indexEntries(songs.map((song) => ({
+    id: song.songId, title: song.title, hymnNumber: song.hymnNumber, collection: song.collection,
+  })));
+  const entries = [...identities, ...asEntries(library)];
+  const listed = new Map(songDirectory({ ...data, identities: entries }).map((song) => [song.id.toLowerCase(), song]));
   return (song: LibraryEntry): SongHistory | null => {
     if (!data.historyAvailable) return null;
-    const known = byKey.get(song.titleKey) ?? listed.find((candidate) => isSameSong(song, candidate, hymnal()));
+    // Direct callers may ask about one song without a complete lyric
+    // directory; the normal search path computes its shared history once.
+    const evidence = listed.has(song.songId.toLowerCase()) ? entries : [...entries, ...asEntries([song])];
+    const known = listed.get(song.songId.toLowerCase()) ?? songDirectory({ ...data, identities: evidence }).find((candidate) => candidate.id.toLowerCase() === song.songId.toLowerCase());
     const planned = known
-      ? data.upcoming.filter((service) => service.songs.some((item) => songKey(item.title) === known.id))
+      ? data.upcoming.filter((service) => service.songs.some((item) => sameSong(item, known, evidence, hymnal())))
       : [];
     const lastSung = known?.lastSung ?? null;
     return {
@@ -105,7 +112,7 @@ function unresolved(candidates: Array<FoldedSong<LibraryEntry>>, query: string) 
     ? { found: false as const, note: `No song matching "${query}" is in the song library. Do not give its lyrics from memory.` }
     : {
         found: false as const,
-        note: "More than one song matches. Ask which one is meant, or use one of these exact titles.",
+        note: "More than one song matches. Ask which arrangement is meant, then use its Song ID or hymn number.",
         possibleSongs: candidates.map(nameSong),
       };
 }
@@ -180,15 +187,19 @@ export function songLyrics(song: FoldedSong<LibraryEntry>, sections: readonly Ly
 /** Hits folded so each song appears once, as the copy the church sings from, in the order given. */
 function foldHits(hits: readonly LibraryHit[], library: readonly LibraryEntry[]) {
   const copies = new Map<string, LibraryEntry[]>();
-  for (const song of library) copies.set(song.titleKey, [...(copies.get(song.titleKey) ?? []), song]);
+  for (const song of library) {
+    const id = song.songId.toLowerCase();
+    copies.set(id, [...(copies.get(id) ?? []), song]);
+  }
 
   const seen = new Set<string>();
   const folded: Array<{ song: FoldedSong<LibraryEntry>; hit: LibraryHit }> = [];
   for (const hit of hits) {
-    if (seen.has(hit.song.titleKey)) continue;
-    seen.add(hit.song.titleKey);
-    const [song] = foldCopies(copies.get(hit.song.titleKey) ?? [hit.song], hymnal());
-    folded.push({ song: song ?? { song: preferredCopy([hit.song], hymnal()), alsoIn: [] }, hit });
+    const id = hit.song.songId.toLowerCase();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const [song] = foldCopies(copies.get(id) ?? [hit.song], hymnal());
+    folded.push({ song, hit });
   }
   return folded;
 }
@@ -203,7 +214,7 @@ export function lyricMatches(
   if (search.mode === "too-short") {
     return { phrase, songsMatching: 0, note: "That is too short to search for. Ask for more of the words." };
   }
-  const history = historyLookup(data);
+  const history = historyLookup(data, library);
   const songs = foldHits(search.hits, library);
   const shown = songs.slice(0, LYRIC_MATCHES);
 
@@ -240,7 +251,7 @@ const listSize = (limit: number | undefined) => Math.min(Math.max(1, Math.round(
 
 /** Songs by meaning, nearest first, narrowed by the history when asked. */
 function nearestSongs(hits: readonly LibraryHit[], library: readonly LibraryEntry[], data: ConductorData, options: ThemeOptions) {
-  const history = historyLookup(data);
+  const history = historyLookup(data, library);
   const cutoffDays = options.notSungForDays === undefined ? null : Math.max(1, Math.round(options.notSungForDays));
 
   const songs = foldHits(hits, library)
@@ -290,8 +301,7 @@ export function similarMatches(song: FoldedSong<LibraryEntry>, hits: readonly Li
   if (hits === null) {
     return { ...named, note: "This song's lyrics are indexed but have not been embedded yet, so it cannot be compared (Admin → AI → Refresh library index)." };
   }
-  // Another printing of the same song is not a similar song.
-  const others = hits.filter((hit) => hit.song.titleKey !== song.song.titleKey);
+  const others = hits.filter((hit) => hit.song.songId.toLowerCase() !== song.song.songId.toLowerCase());
   return {
     ...named,
     ...nearestSongs(others, library, data, options),

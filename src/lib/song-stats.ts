@@ -1,6 +1,7 @@
+import { songIdentity } from "@/lib/song-identity";
 import { churchDay, churchMonth, churchYear, dayOfWeek } from "@/lib/service-time";
 import { buildSongRecords, usageCount } from "@/lib/song-history";
-import { normalizeKey, songKey } from "@/lib/song-list";
+import { normalizeKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
 /**
@@ -124,7 +125,7 @@ export function buildSongStats(
   for (const service of ordered) {
     let found = false;
     service.songs.forEach((song, index) => {
-      if (songKey(song.title) !== id) return;
+      if (songIdentity(song) !== id) return;
       found = true;
       plays.push(service.startsAt);
       const kind = weeklyService(service);

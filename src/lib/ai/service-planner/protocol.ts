@@ -91,6 +91,8 @@ export interface PlanAiFailure {
 
 /** A suggestion for one place, already the site's own record of the song. */
 export interface SongSuggestion {
+  songId?: string;
+  collection?: string | null;
   title: string;
   number: string | null;
   key: string | null;

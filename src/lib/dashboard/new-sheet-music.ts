@@ -7,7 +7,7 @@
  */
 
 import { matchIndexSong, type IndexSong, type SheetFile, type SheetMusicIndex } from "@/lib/sheet-music";
-import { songKey, songSlug } from "@/lib/song-list";
+import { identifySong, indexEntries, songUrlSlug, type SongReference } from "@/lib/song-identity";
 
 /** "Recently" means within this many days. */
 export const NEW_SHEET_DAYS = 14;
@@ -28,7 +28,7 @@ export interface NewSheetSong {
 
 export function newSheetMusic(
   /** Every song with a page: sung before, or scheduled. */
-  songs: ReadonlyArray<{ title: string; number: string | null }>,
+  songs: ReadonlyArray<SongReference & { number: string | null }>,
   upcomingKeys: ReadonlySet<string>,
   index: SheetMusicIndex,
   hymnalCollection: string,
@@ -38,9 +38,11 @@ export function newSheetMusic(
   const since = now - NEW_SHEET_DAYS * DAY_MS;
   const seen = new Set<string>();
   const result: NewSheetSong[] = [];
+  const identities = indexEntries(index.songs);
 
   for (const song of songs) {
-    const key = songKey(song.title);
+    const identified = identifySong(song, identities, hymnalCollection);
+    const key = identified.songId;
     if (key === "" || seen.has(key)) continue;
     seen.add(key);
     const indexSong = matchIndexSong(index, song, hymnalCollection);
@@ -55,8 +57,8 @@ export function newSheetMusic(
     if (latest) {
       result.push({
         title: song.title,
-        number: song.number,
-        slug: songSlug(song.title),
+        number: indexSong.hymnNumber,
+        slug: songUrlSlug(identified),
         changedAt: latest,
         upcoming: upcomingKeys.has(key),
       });

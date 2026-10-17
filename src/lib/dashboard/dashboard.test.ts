@@ -335,6 +335,21 @@ describe("buildComingUp", () => {
   const index: SheetMusicIndex = { songs: [fullSong], types: TYPES };
   const services = [service("a", "2026-10-04T10:30:00-07:00", [{ number: "233", title: "Like a River Glorious", key: "Ab" }])];
 
+  it("carries each same-title arrangement into its own song and file links while keeping the planned key", () => {
+    const title = "All Hail the Power of Jesus' Name";
+    const arrangements = ["167", "168"].map((number) => ({
+      ...song([version(STANDARD, [file(`${number}.pdf`)])]),
+      id: `SSSH1989-${number}`, title, hymnNumber: number,
+    }));
+    const [upcoming] = buildComingUp([service("arrangements", "2026-10-04T10:30:00-07:00", [
+      { title, number: "167", key: "D" }, { title, number: "168", key: "F" },
+    ])], NOW, focusFor(["musician"]), { index: { songs: arrangements, types: TYPES }, sheetTypes: [STANDARD] });
+    expect(upcoming.slots.map((entry) => [entry?.songId, entry?.collection, entry?.key, entry?.sheet?.status === "found" ? entry.sheet.shown.href : null])).toEqual([
+      ["SSSH1989-167", "Soul-Stirring Songs and Hymns 1989", "D", "/library/songs/all-hail-the-power-of-jesus-name-sssh1989-167/sheet-music/167.pdf"],
+      ["SSSH1989-168", "Soul-Stirring Songs and Hymns 1989", "F", "/library/songs/all-hail-the-power-of-jesus-name-sssh1989-168/sheet-music/168.pdf"],
+    ]);
+  });
+
   it("offers every type a service can be printed in only to someone who prints for others", () => {
     const partial: SheetMusicIndex = {
       songs: [song([version(STANDARD, [file("standard-1.pdf")]), version(CAPO, [file("capo-chords-1.mscz", "musescore")])])],
@@ -416,11 +431,11 @@ describe("buildComingUp", () => {
       expect(first.showLabels).toBe(true);
       expect(first.slots[0]?.sheet).toEqual({
         status: "found",
-        shown: { label: "Capo (Chords)", href: "/library/songs/like-a-river-glorious/sheet-music/capo-chords-1.pdf" },
+        shown: { label: "Capo (Chords)", href: "/library/songs/like-a-river-glorious-sssh1989-233/sheet-music/capo-chords-1.pdf" },
         alternatives: [
           {
             label: "Standard (Chords)",
-            href: "/library/songs/like-a-river-glorious/sheet-music/standard-chords-1.pdf",
+            href: "/library/songs/like-a-river-glorious-sssh1989-233/sheet-music/standard-chords-1.pdf",
           },
         ],
       });

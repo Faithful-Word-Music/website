@@ -1,3 +1,4 @@
+import { songUrlSlug } from "@/lib/song-identity";
 import { siteConfig } from "@/config/site";
 import { escapeHtml } from "@/lib/html";
 import {
@@ -9,7 +10,7 @@ import {
 } from "@/lib/quarterly-report";
 import { churchDay, formatLongDate, formatShortDate } from "@/lib/service-time";
 import { countsByWeek } from "@/lib/song-history";
-import { songPath, songSlug } from "@/lib/song-list";
+import { songPath } from "@/lib/song-list";
 
 /**
  * The quarterly report as an email: HTML plus a plain-text copy.
@@ -73,8 +74,8 @@ const SANS = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helv
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap";
 
-const songUrl = (song: Pick<ReportSong, "title">) =>
-  `${siteConfig.url}${songPath(songSlug(song.title))}`;
+const songUrl = (song: Pick<ReportSong, "title" | "id">) =>
+  `${siteConfig.url}${songPath(songUrlSlug({ ...song, songId: song.id }))}`;
 
 const times = (count: number) => (count === 1 ? "once" : count === 2 ? "twice" : `${count} times`);
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;

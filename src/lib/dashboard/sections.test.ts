@@ -126,8 +126,8 @@ describe("sheet-music gaps", () => {
     // It has it: nothing to finish.
     expect(gapsFor(inKey("Eb", [...standardOnly, version(CAPO, [file("capo-chords-1.pdf")])]), STANDARD, capo())).toEqual([]);
     // The song's own setting wins over the policy, both ways.
-    expect(gapsFor(inKey("G", standardOnly), STANDARD, capo({ "like a river glorious": "always" }))).toEqual(gap);
-    expect(gapsFor(inKey("Eb", standardOnly), STANDARD, capo({ "like a river glorious": "never" }))).toEqual([]);
+    expect(gapsFor(inKey("G", standardOnly), STANDARD, capo({ "SSSH1989-233": "always" }))).toEqual(gap);
+    expect(gapsFor(inKey("Eb", standardOnly), STANDARD, capo({ "SSSH1989-233": "never" }))).toEqual([]);
     // Not asked about at all without the rules.
     expect(gapsFor(inKey("Eb", standardOnly), STANDARD)).toEqual([]);
   });
@@ -199,7 +199,8 @@ describe("quarterGlance", () => {
   it("shows the quarter just ended, not zeros, before the new quarter's first service", () => {
     const glance = quarterGlance(past, NOW);
     expect(glance).toMatchObject({ label: "Jul–Sep 2026", current: false, services: 2, differentSongs: 3 });
-    expect(glance?.mostSung).toEqual({ title: "A", slug: "a", count: 2 });
+    expect(glance?.mostSung).toMatchObject({ title: "A", count: 2 });
+    expect(glance?.mostSung?.slug).toMatch(/^a-legacy-n-/);
   });
 
   it("shows the quarter in progress once it has a service", () => {
@@ -220,14 +221,54 @@ describe("newSheetMusic", () => {
   const songs = [{ title: "Like a River Glorious", number: "233" }];
 
   it("lists songs whose files changed in the last two weeks, with their numbers", () => {
-    expect(newSheetMusic(songs, new Set(["like a river glorious"]), indexWith(recent), HYMNAL, () => true, NOW)).toEqual([
-      { title: "Like a River Glorious", number: "233", slug: "like-a-river-glorious", changedAt: "2026-09-28T12:00:00Z", upcoming: true },
+    expect(newSheetMusic(songs, new Set(["SSSH1989-233"]), indexWith(recent), HYMNAL, () => true, NOW)).toEqual([
+      { title: "Like a River Glorious", number: "233", slug: "like-a-river-glorious-sssh1989-233", changedAt: "2026-09-28T12:00:00Z", upcoming: true },
     ]);
   });
 
   it("leaves out older changes, and files the person may not open", () => {
     expect(newSheetMusic(songs, new Set(), indexWith(old), HYMNAL, () => true, NOW)).toEqual([]);
     expect(newSheetMusic(songs, new Set(), indexWith(recent), HYMNAL, () => false, NOW)).toEqual([]);
+  });
+});
+
+describe("dashboard arrangement identity", () => {
+  const title = "All Hail the Power of Jesus' Name";
+  const index: SheetMusicIndex = {
+    types: TYPES,
+    songs: ["167", "168"].map((number) => ({
+      ...song([version(STANDARD, [{ ...file(`${number}.pdf`), modifiedTime: "2026-09-28T12:00:00Z" }])]),
+      id: `SSSH1989-${number}`, title, hymnNumber: number,
+    })),
+  };
+  const refs = [
+    { title, number: "167" },
+    { songId: "SSSH1989-167", title, number: "167" },
+    { songId: "SSSH1989-168", title, number: "168" },
+  ];
+
+  it("lists changed sheet music once per resolved arrangement and links canonical IDs", () => {
+    const found = newSheetMusic(refs, new Set(["SSSH1989-168"]), index, HYMNAL, () => true, NOW);
+    expect(found.map((entry) => [entry.number, entry.slug, entry.upcoming])).toEqual([
+      ["168", "all-hail-the-power-of-jesus-name-sssh1989-168", true],
+      ["167", "all-hail-the-power-of-jesus-name-sssh1989-167", false],
+    ]);
+  });
+
+  it("keeps separate sheet music gaps for both arrangements without duplicating legacy references", () => {
+    const found = findSheetGaps([{ ...dated("2026-10-04T10:30:00-07:00", []), songs: refs.map((ref) => ({ ...ref, key: "G" })) }],
+      { ...index, songs: index.songs.map((entry) => ({ ...entry, versions: [] })) }, HYMNAL);
+    expect(found.map((entry) => entry.slug)).toEqual([
+      "all-hail-the-power-of-jesus-name-sssh1989-167",
+      "all-hail-the-power-of-jesus-name-sssh1989-168",
+    ]);
+  });
+
+  it("does not ask musicians to brush up a recently sung legacy reference with a known ID", () => {
+    const identities = index.songs.map((entry) => ({ id: entry.id, title: entry.title, number: entry.hymnNumber, collection: entry.collection }));
+    const past = [dated("2026-09-20T10:30:00-07:00", [[title, "167"]])];
+    const upcoming = [{ ...dated("2026-10-04T10:30:00-07:00", []), songs: refs.slice(1).map((ref) => ({ ...ref, key: "G" })) }];
+    expect(brushUpSongs(past, upcoming, NOW, identities).map((entry) => entry.number)).toEqual(["168"]);
   });
 });
 

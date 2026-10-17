@@ -20,7 +20,7 @@ import { loadPlanningPhilosophy } from "../planning/load";
 import { PHILOSOPHY_MAX_CHARS, PHILOSOPHY_TOPICS_MAX, planningGuidance, selectSections } from "../planning/philosophy";
 import { checkPhilosophy, replaceSection } from "../planning/revisions";
 import { emitAiStreamData } from "../service";
-import type { ConductorScreenPlan } from "./context";
+import { SONG_ADDRESS_MAX, type ConductorScreenPlan } from "./context";
 import { ACTION_EVENT, ACTIONS_PER_ANSWER, type ConductorAction, type ConductorActionKind, type ConductorActionPayloads } from "./actions";
 import { loadConductorData } from "./data";
 import {
@@ -89,7 +89,7 @@ const date = z
   .refine(isDateString, "Not a real date.")
   .describe('A date in church time, "YYYY-MM-DD".');
 const slot = z.enum(["AM", "PM"]).describe("AM is the morning service, PM the evening service (Wednesday is PM).");
-const song = z.string().trim().min(1).max(120).describe("A song's title, part of its title, or its hymnal number.");
+const song = z.string().trim().min(1).max(SONG_ADDRESS_MAX).describe("A song's title, part of its title, hymnal number, Song ID, or library address. Use Song ID to distinguish arrangements.");
 const limit = z.number().int().min(1).max(SONGS_LISTED_MAX).optional().describe("How many songs to list.");
 
 /** A period, as fields of a plain object: an intersection or a refined object is not a schema every model accepts. */
@@ -478,7 +478,7 @@ function readingTools(viewer: Viewer, screen?: ConductorTurnState["screen"]) {
 
     find_songs: tool({
       description:
-        "Find songs by title, part of a title, or hymnal number. Use it when it is unclear which song is meant, or to check that a song is known at all.",
+        "Find songs by title, part of a title, hymnal number or Song ID. Use it when it is unclear which arrangement is meant, or to check that a song is known at all.",
       inputSchema: z.object({ query: song }),
       execute: ({ query }) => answer("find_songs", (loaded) => findSongs(loaded, query)),
     }),

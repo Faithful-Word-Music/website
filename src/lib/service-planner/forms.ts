@@ -23,8 +23,11 @@ export const anchorSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}-(am|pm)$/, "Tha
 const slotSchema = z.enum(["AM", "PM"]);
 const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Please give the time as HH:MM.");
 const dateSchema = z.string().refine(isDateString, "Please give a real date.");
+const songIdSchema = text(2048, "the song ID").min(1).optional();
 
 export const songSchema = z.object({
+  songId: songIdSchema,
+  collection: optional(120, "the collection"),
   title: text(200, "the title").min(1, "Every song needs a title."),
   number: optional(20, "the hymn number"),
   key: optional(30, "the key"),
@@ -65,6 +68,8 @@ export const insertWeekSchema = z.object({
   index: z.union([z.literal(1), z.literal(2)]).optional().default(1),
   song: z
     .object({
+      songId: songIdSchema,
+      collection: optional(120, "the collection"),
       title: text(200, "the title").min(1),
       number: optional(20, "the hymn number"),
       key: optional(30, "the key"),

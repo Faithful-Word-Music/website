@@ -6,7 +6,7 @@ import { searchByTheme, similarSongs } from "@/lib/library-content/search";
 import { listLibrarySongs, listSongOpenings, songsWithAnyWord, type SectionHit } from "@/lib/library-content/store";
 import { loadServiceContext } from "@/lib/service-planner/load";
 import { isInsert, slotSongs, weekStartOf } from "@/lib/service-planner/model";
-import { songKey } from "@/lib/song-list";
+import { songIdentity } from "@/lib/song-identity";
 
 import { assembleAiContext } from "../context/assemble";
 import { failAiOperation, generateAiObject, withAiOperation } from "../service";
@@ -42,7 +42,13 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
   const isThis = (other: { date: string; slot: string }) => other.date === service.date && other.slot === service.slot;
   const inWeek = (other: { date: string; slot: string }) => weekStartOf(other.date) === weekStart && !isThis(other);
   const songsOf = (songs: ReturnType<typeof slotSongs>) =>
-    songs.map((song) => ({ title: song.title, ...(isInsert(song) ? { insert: true as const } : {}) }));
+    songs.map((song) => ({
+      ...(song.songId ? { songId: song.songId } : {}),
+      title: song.title,
+      number: song.number,
+      ...(song.collection ? { collection: song.collection } : {}),
+      ...(isInsert(song) ? { insert: true as const } : {}),
+    }));
 
   // What is stored is the latest word on a service; the history fills in what the planner does not hold.
   const week = new Map<string, WeekService & { startsAt: string }>();
@@ -114,7 +120,7 @@ async function library(viewer: Viewer, request: PlanAiRequest, context: PlanCont
     const anchors = around
       .flatMap((index) => {
         const song = request.slots[index];
-        return song ? (links.songOf.get(songKey(song.title))?.songId ?? []) : [];
+        return song ? (links.songOf.get(songIdentity(song, context.candidates, hymnal))?.songId ?? []) : [];
       })
       .slice(0, NEAR.songs);
 

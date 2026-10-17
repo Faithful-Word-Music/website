@@ -1,3 +1,4 @@
+import { identifySong, indexEntries, referenceEntries, songIdentity, songsForSlug, songUrlSlug, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import "server-only";
 
 import { unstable_cache } from "next/cache";
@@ -26,7 +27,7 @@ import {
   pastServices,
   type PlayIndex,
 } from "@/lib/song-history";
-import { datedServices, songKey, songPath, songSlug } from "@/lib/song-list";
+import { datedServices, songPath } from "@/lib/song-list";
 import { buildSongStats, type SongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap, type YearRecap } from "@/lib/year-recap";
 import type { DatedService, ServiceSlot, SongListResult, SongRecord } from "@/types/song-list";
@@ -72,7 +73,7 @@ export async function getSongHistory(published: DatedService[], now: number): Pr
   }
 
   return {
-    services: mergeServices(stored ?? [], published, now),
+    services: await identifiedServices(mergeServices(stored ?? [], published, now)),
     persistent: stored !== null,
   };
 }
@@ -97,11 +98,22 @@ export interface ScheduleData {
  * come from the visible months alone. Drafts never reach here at all.
  */
 export async function getScheduleData(): Promise<ScheduleData> {
-  const result = await getSchedule();
+  const raw = await getSchedule();
   const loadedAt = Date.now();
-  if (!result.ok) return { result, plays: null, loadedAt };
+  if (!raw.ok) return { result: raw, plays: null, loadedAt };
+  const history = await getSongHistory(raw.published, loadedAt);
+  const identities = referenceEntries([
+    ...history.services.flatMap((service) => service.songs),
+    ...raw.months.flatMap((month) => month.services.flatMap((service) => service.songs)),
+  ], await songDirectory());
+  const result = {
+    ...raw,
+    months: raw.months.map((month) => ({ ...month, services: month.services.map((service) => ({
+      ...service, songs: service.songs.map((song) => identifySong(song, identities)),
+    })) })),
+    published: raw.published.map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, identities)) })),
+  };
 
-  const history = await getSongHistory(result.published, loadedAt);
   const known = mergeServices(
     pastServices(history.services, loadedAt),
     datedServices(result.months),
@@ -109,7 +121,7 @@ export async function getScheduleData(): Promise<ScheduleData> {
   );
   const onScreen = new Set(
     result.months.flatMap((month) =>
-      month.services.flatMap((service) => service.songs.map((song) => songKey(song.title))),
+      month.services.flatMap((service) => service.songs.map((song) => songIdentity(song))),
     ),
   );
 
@@ -221,7 +233,8 @@ export type LibraryData =
 const catalogSongs = cache(async (): Promise<CatalogSong[]> => {
   if (!plannerConfigured()) return [];
   try {
-    return await listCatalogSongs(scheduleEnv());
+    const index = await getSheetMusicIndex();
+    return await listCatalogSongs(scheduleEnv(), index.ok ? indexEntries(index.index.songs) : []);
   } catch (error) {
     console.error("[song-archive] Could not read the catalog:", error instanceof Error ? error.message : "unknown error");
     return [];
@@ -233,38 +246,48 @@ const catalogSongs = cache(async (): Promise<CatalogSong[]> => {
  * service, scheduled in an upcoming published one, or added to the catalog
  * in the Service Planner.
  */
-export async function getLibraryData(): Promise<LibraryData> {
-  const [history, schedule, index, catalog] = await Promise.all([
-    loadPast(),
-    getSchedule(),
-    getSheetMusicIndex(),
-    catalogSongs(),
-  ]);
-  if (!history) return { ok: false };
-  const { past, loadedAt } = history;
+/** Canonical identities plus persisted catalog aliases, shared by every public read. */
+export const songDirectory = cache(async (): Promise<IdentityEntry[]> => {
+  const [index, catalog] = await Promise.all([getSheetMusicIndex(), catalogSongs()]);
+  const entries = index.ok ? indexEntries(index.index.songs) : [];
+  for (const song of catalog) {
+    const entry = entries.find((entry) => entry.id === song.songId);
+    const alias = song.catalogId && song.catalogId !== song.songId ? [song.catalogId] : [];
+    if (entry) entry.aliases = [...(entry.aliases ?? []), ...alias];
+    else entries.push({ id: song.songId, title: song.title, number: song.number, collection: song.collection, aliases: alias });
+  }
+  return entries;
+});
 
-  const upcoming = [
-    ...(schedule.ok
-      ? datedServices(schedule.months)
-          .filter((service) => Date.parse(service.startsAt) > loadedAt)
-          .flatMap((service) => service.songs)
-      : []),
-    ...catalog.map((song) => ({ title: song.title, number: song.number })),
-  ];
-
-  // Marked only when the song's page would offer a file to anyone.
-  const hasSheetMusic = (song: { title: string; number: string | null }) => {
-    if (!index.ok) return false;
-    const indexSong = matchIndexSong(index.index, song, siteConfig.sheetMusic.hymnalCollection);
-    return indexSong ? publicSheetMusic(songSlug(song.title), indexSong, PUBLIC_VIEWER).available : false;
-  };
-
-  return {
-    ok: true,
-    songs: buildLibrary(songRecordsOf(past), upcoming, hasSheetMusic),
-    loadedAt,
-  };
+async function identifiedServices(services: DatedService[], known?: readonly IdentityEntry[]): Promise<DatedService[]> {
+  const entries = referenceEntries(services.flatMap((service) => service.songs), known ?? await songDirectory());
+  return services.map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, entries)) }));
 }
+
+export async function getLibraryData(): Promise<LibraryData> {
+  const [history, schedule, index, catalog, entries] = await Promise.all([
+    loadPast(), getSchedule(), getSheetMusicIndex(), catalogSongs(), songDirectory(),
+  ]);
+  if (!history && !index.ok && !catalog.length && !schedule.ok) return { ok: false };
+  const loadedAt = history?.loadedAt ?? Date.now();
+  const upcoming = [
+    ...(history?.past.flatMap((service) => service.songs) ?? []),
+    ...(schedule.ok ? schedule.published.filter((service) => Date.parse(service.startsAt) > loadedAt).flatMap((service) => service.songs) : []),
+    ...catalog,
+  ];
+  const hasSheetMusic = (song: SongReference) => {
+    if (!index.ok) return false;
+    const matched = matchIndexSong(index.index, song, siteConfig.sheetMusic.hymnalCollection);
+    return matched ? publicSheetMusic(songUrlSlug(song), matched, PUBLIC_VIEWER).available : false;
+  };
+  return { ok: true, songs: buildLibrary(songRecordsOf(history?.past ?? []), upcoming, hasSheetMusic, entries), loadedAt };
+}
+
+/** More than one result is a legacy disambiguation page, never a redirect. */
+export const getSongChoices = cache(async (slug: string): Promise<LibrarySong[]> => {
+  const library = await getLibraryData();
+  return library.ok ? songsForSlug(slug, library.songs) : [];
+});
 
 /** One time a song was (or will be) sung. */
 export interface SongPlay {
@@ -274,6 +297,9 @@ export interface SongPlay {
 }
 
 export interface SongPageData {
+  songId: string;
+  collection: string | null;
+  slug: string;
   title: string;
   number: string | null;
   /** Every time it has been sung, newest first. */
@@ -295,55 +321,31 @@ export interface SongPageData {
 interface FoundSong {
   history: Awaited<ReturnType<typeof loadPast>>;
   record: SongRecord | undefined;
-  /** Services it is scheduled for, soonest first. */
-  upcoming: Array<SongPlay & { title: string; number: string | null }>;
-  title: string;
-  number: string | null;
+  upcoming: Array<SongPlay & SongReference>;
+  song: LibrarySong;
   loadedAt: number;
 }
 
-/**
- * The song at /library/songs/[slug]: sung in the archive, scheduled in a
- * published service, or added to the planner's catalog. null when the
- * address matches no song at all.
- */
 const findSong = cache(async (slug: string): Promise<FoundSong | null> => {
-  const [history, schedule, catalog] = await Promise.all([loadPast(), getSchedule(), catalogSongs()]);
+  const [choices, history, schedule, directory] = await Promise.all([getSongChoices(slug), loadPast(), getSchedule(), songDirectory()]);
+  if (choices.length !== 1) return null;
+  const song = choices[0];
   const loadedAt = history?.loadedAt ?? Date.now();
-
-  const record = history
-    ? songRecordsOf(history.past).find((candidate) => songSlug(candidate.title) === slug)
-    : undefined;
-
+  const entries = referenceEntries([
+    ...(history?.past.flatMap((service) => service.songs) ?? []),
+    ...(schedule.ok ? schedule.published.flatMap((service) => service.songs) : []),
+  ], directory);
+  const record = history ? songRecordsOf(history.past).find((record) => record.id === song.id) : undefined;
   const upcoming: FoundSong["upcoming"] = [];
-  if (schedule.ok) {
-    for (const service of schedule.published) {
-      if (Date.parse(service.startsAt) <= loadedAt) continue;
-      for (const song of service.songs) {
-        if (songSlug(song.title) !== slug) continue;
-        upcoming.push({
-          startsAt: service.startsAt,
-          slot: service.slot,
-          key: song.key,
-          title: song.title,
-          number: song.number,
-        });
-      }
+  if (schedule.ok) for (const service of schedule.published) {
+    if (Date.parse(service.startsAt) <= loadedAt) continue;
+    for (const ref of service.songs) {
+      if (songIdentity(ref, entries) !== song.id) continue;
+      upcoming.push({ ...identifySong(ref, entries), startsAt: service.startsAt, slot: service.slot });
     }
   }
   upcoming.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-
-  const listed = catalog.find((song) => songSlug(song.title) === slug);
-  if (!record && upcoming.length === 0 && !listed) return null;
-
-  return {
-    history,
-    record,
-    upcoming,
-    title: record?.title ?? upcoming[0]?.title ?? listed!.title,
-    number: record?.number ?? upcoming.find((play) => play.number)?.number ?? listed?.number ?? null,
-    loadedAt,
-  };
+  return { history, record, upcoming, song, loadedAt };
 });
 
 /** The browser-safe sheet music for a song page; links point at the file route. */
@@ -372,7 +374,7 @@ export async function getIndexSongForPage(
     song: found
       ? matchIndexSong(
           index.index,
-          { title: found.title, number: found.number },
+          found.song,
           siteConfig.sheetMusic.hymnalCollection,
         )
       : null,
@@ -391,16 +393,20 @@ export async function getIndexSongForPage(
 export const getSongPage = cache(async (slug: string): Promise<SongPageData | null> => {
   const [found, index] = await Promise.all([findSong(slug), getSheetMusicIndex()]);
   if (!found) return null;
-  const { history, record, upcoming, title, number, loadedAt } = found;
+  const { history, record, upcoming, song, loadedAt } = found;
+  const { title, number } = song;
 
   const indexSong = index.ok
-    ? matchIndexSong(index.index, { title, number }, siteConfig.sheetMusic.hymnalCollection)
+    ? matchIndexSong(index.index, song, siteConfig.sheetMusic.hymnalCollection)
     : null;
 
   return {
+    songId: song.id,
+    collection: song.collection,
+    slug: song.slug,
     title,
     number,
-    sheetMusic: indexSong ? publicSheetMusic(slug, indexSong, PUBLIC_VIEWER) : null,
+    sheetMusic: indexSong ? publicSheetMusic(song.slug, indexSong, PUBLIC_VIEWER) : null,
     plays: [...(record?.plays ?? [])].reverse(),
     upcoming: upcoming.map(({ startsAt, slot, key }) => ({ startsAt, slot, key })),
     companions:
@@ -409,7 +415,7 @@ export const getSongPage = cache(async (slug: string): Promise<SongPageData | nu
         : [],
     stats: buildSongStats(
       history?.past ?? [],
-      record?.id ?? songKey(title),
+      song.id,
       upcoming.map((play) => play.startsAt),
       loadedAt,
     ),
@@ -461,7 +467,7 @@ export async function getReportInputs(): Promise<ReportInputs | null> {
   return {
     past: pastServices(history.services, loadedAt),
     upcoming: schedule.ok
-      ? schedule.published.filter((service) => Date.parse(service.startsAt) > loadedAt)
+      ? await identifiedServices(schedule.published.filter((service) => Date.parse(service.startsAt) > loadedAt), referenceEntries(history.services.flatMap((service) => service.songs), await songDirectory()))
       : [],
     persistent: history.persistent,
     loadedAt,

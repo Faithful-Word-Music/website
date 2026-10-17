@@ -1,5 +1,7 @@
 "use client";
 
+import { songUrlSlug } from "@/lib/song-identity";
+
 import Link from "next/link";
 import { useState } from "react";
 
@@ -7,7 +9,7 @@ import { NewTabNote, songLinkGroupClasses, songLinkProps } from "@/components/so
 import { Modal } from "@/components/ui/Modal";
 import { songListContent } from "@/content/song-list";
 import { formatLongDate } from "@/lib/service-time";
-import { songPath, songSlug } from "@/lib/song-list";
+import { songPath } from "@/lib/song-list";
 import type { RecapSong } from "@/lib/year-recap";
 
 const { facts } = songListContent.yearRecap;
@@ -45,7 +47,7 @@ export function MoreSongs({ songs }: { songs: Array<RecapSong & { startsAt: stri
             {songs.map((song) => (
               <li key={song.id} className="border-b border-line last:border-b-0">
                 <Link
-                  href={songPath(songSlug(song.title))}
+                  href={songPath(songUrlSlug({ ...song, songId: song.id }))}
                   {...songLinkProps}
                   className="group grid grid-cols-[2.75rem_1fr_auto] items-baseline gap-x-3 py-2.5"
                 >

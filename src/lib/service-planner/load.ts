@@ -12,6 +12,7 @@ import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { toArchive } from "@/lib/service-archive";
 import { serviceAnchor } from "@/lib/site-search";
 import { loadPast } from "@/lib/song-archive";
+import { identifySong, indexEntries, type SongReference } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
 import type { ExportService } from "./export";
@@ -98,7 +99,7 @@ export interface WorkspaceData {
   /** Recent past services, for the repeated-pairing check in the browser. */
   recentPast: DatedService[];
   /** Other services still to come (drafts included), for "planned nearby". */
-  planned: Array<{ startsAt: string; songs: Array<{ title: string }> }>;
+  planned: Array<{ startsAt: string; songs: SongReference[] }>;
   /** Null when the Sheet Music Index cannot be read. */
   sheetMusicChecked: boolean;
   availability: ServiceAvailability | null;
@@ -127,7 +128,7 @@ export interface ServiceContext {
   /** The stored services around it, cancelled ones included. */
   plans: StoredPlan[];
   /** Other services still to come (drafts included). */
-  planned: Array<{ startsAt: string; songs: Array<{ title: string }> }>;
+  planned: Array<{ startsAt: string; songs: SongReference[] }>;
   sheetMusicChecked: boolean;
   availability: ServiceAvailability | null;
 }
@@ -155,17 +156,19 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
   const inserts = weeks;
   const service = plannerService(occurrence, plan, inserts);
 
+  const indexPromise = getSheetMusicIndex();
+  const catalogPromise = indexPromise.then((result) => listCatalogSongs(viewer.env, indexEntries(result.ok ? result.index.songs : [])));
   const [history, catalog, index, availability, capo] = await Promise.all([
     loadPast(),
-    listCatalogSongs(viewer.env),
-    getSheetMusicIndex(),
+    catalogPromise,
+    indexPromise,
     loadServiceAvailability(viewer, occurrence),
     capoRulesOrNone(viewer.env),
   ]);
   const past = history?.past ?? [];
   const planned = plans
-    .filter((item) => item !== plan && item.status !== "cancelled" && Date.parse(item.startsAt) > now)
-    .map((item) => ({ startsAt: item.startsAt, songs: slotSongs(item.slots).map(({ title, number }) => ({ title, number })) }));
+    .filter((item) => item.id !== plan?.id && item.status !== "cancelled" && Date.parse(item.startsAt) > now)
+    .map((item) => ({ startsAt: item.startsAt, songs: slotSongs(item.slots) }));
 
   const candidates = buildCandidates({
     past,
@@ -176,16 +179,25 @@ export async function loadServiceContext(viewer: Viewer, anchor: string): Promis
     hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
     capo,
   });
+  const identify = <T extends SongReference>(song: T) => identifySong(song, candidates);
+  // Enrich copies for browser/AI comparisons; stored plans and historical
+  // records retain their original evidence and performed keys.
+  const identifiedPlans = plans.map((item) => ({ ...item, slots: item.slots.map((song) => song ? identify(song) : null) }));
+  const identifiedService = {
+    ...service,
+    slots: service.slots.map((song) => song ? identify(song) : null),
+    plan: identifiedPlans.find((item) => item.id === plan?.id) ?? null,
+  };
 
   return {
     now,
-    service,
-    inserts,
+    service: identifiedService,
+    inserts: inserts.map(identify),
     locked: isLocked(service.startsAt, now),
     candidates,
-    past,
-    plans,
-    planned,
+    past: past.map((item) => ({ ...item, songs: item.songs.map(identify) })),
+    plans: identifiedPlans,
+    planned: planned.map((item) => ({ ...item, songs: item.songs.map(identify) })),
     sheetMusicChecked: index.ok,
     availability: availability?.summary ?? null,
   };
@@ -295,15 +307,25 @@ export async function loadInserts(viewer: Viewer, ahead: number): Promise<Insert
   const { planningLeadDays } = siteConfig.servicePlanner;
   const range = insertRange(today, planningLeadDays, ahead);
 
+  const indexPromise = getSheetMusicIndex();
+  const catalogPromise = indexPromise.then((result) => listCatalogSongs(viewer.env, indexEntries(result.ok ? result.index.songs : [])));
   const [plans, weeks, history, catalog, index] = await Promise.all([
     listPlans(viewer.env, range),
     listInsertWeeks(viewer.env, range.from, range.to),
     loadPast(),
-    listCatalogSongs(viewer.env),
-    getSheetMusicIndex(),
+    catalogPromise,
+    indexPromise,
   ]);
-  const services = plannerServices(range, plans, weeks);
-  const byWeek = insertsByWeek(weeks);
+  const candidates = buildCandidates({
+    past: history?.past ?? [], planned: [], catalog,
+    index: index.ok ? index.index : null,
+    hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
+  });
+  const identify = <T extends SongReference>(song: T) => identifySong(song, candidates);
+  const identifiedWeeks = weeks.map(identify);
+  const identifiedPlans = plans.map((plan) => ({ ...plan, slots: plan.slots.map((song) => song ? identify(song) : null) }));
+  const services = plannerServices(range, identifiedPlans, identifiedWeeks);
+  const byWeek = insertsByWeek(identifiedWeeks);
   // A week counts as planned once it has its insert; a second is always optional.
   const months = insertMonths(today, new Set(byWeek.keys()), planningLeadDays, ahead);
 
@@ -320,13 +342,7 @@ export async function loadInserts(viewer: Viewer, ahead: number): Promise<Insert
       })),
     })),
     nextMonth: nextInsertMonth(today, planningLeadDays, ahead),
-    candidates: buildCandidates({
-      past: history?.past ?? [],
-      planned: [],
-      catalog,
-      index: index.ok ? index.index : null,
-      hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
-    }),
+    candidates,
   };
 }
 
@@ -394,7 +410,7 @@ export async function loadExport(
       special: service.special,
       status: "archived",
       // History, as it was recorded: older services never said which song was the insert.
-      slots: service.songs.map((song) => ({ title: song.title, number: song.number, key: song.key, insert: song.insert === true })),
+      slots: service.songs.map((song) => ({ ...song, insert: song.insert === true })),
     });
   }
 

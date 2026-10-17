@@ -1,5 +1,7 @@
 "use client";
 
+import { songIdentity } from "@/lib/song-identity";
+
 import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { SongLink } from "@/components/song-list/SongLink";
@@ -7,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { songListContent } from "@/content/song-list";
 import { formatCountdown, formatShortDate, splitDateLabel } from "@/lib/service-time";
 import { songHint, type PlayIndex } from "@/lib/song-history";
-import { serviceSlots, songKey } from "@/lib/song-list";
+import { serviceSlots } from "@/lib/song-list";
 import type { Service } from "@/types/song-list";
 
 /**
@@ -117,7 +119,7 @@ export function NextServiceSpotlight({
                   );
                 }
                 const hint =
-                  plays && !isNow ? songHint(plays[songKey(song.title)], featured.startsAt!, now, { insert: song.insert }) : null;
+                  plays && !isNow ? songHint(plays[songIdentity(song)], featured.startsAt!, now, { insert: song.insert }) : null;
   
                 return (
                   <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
@@ -126,7 +128,7 @@ export function NextServiceSpotlight({
                       {song.number ? null : <span className="sr-only">No number</span>}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink title={song.title} /></span>
+                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink {...song} /></span>
                       {hint ? <SongHintText hint={hint} now={now} /> : null}
                     </span>
                     {song.key ? (

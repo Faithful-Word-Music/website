@@ -11,10 +11,13 @@ import {
 } from "@/components/song-list/Suggestions";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
+import { songIdentity } from "@/lib/song-identity";
 import { matchesSong, songKey } from "@/lib/song-list";
 
 /** A song the search box can suggest. */
 export interface SongOption {
+  songId?: string;
+  collection?: string | null;
   number: string | null;
   title: string;
 }
@@ -64,12 +67,12 @@ export function SongSearch({
     const found: Array<SongOption & { rank: number; order: number }> = [];
 
     for (const song of songs) {
-      const id = songKey(song.title);
+      const id = songIdentity(song);
       if (seen.has(id)) continue;
       if (needle !== "" && !matchesSong({ ...song, keys: [] }, { query: needle, key: "" })) continue;
       seen.add(id);
       // Titles that start with what was typed come first, then the rest.
-      found.push({ ...song, rank: needle !== "" && !id.startsWith(typedKey) ? 1 : 0, order: found.length });
+      found.push({ ...song, rank: needle !== "" && !songKey(song.title).startsWith(typedKey) ? 1 : 0, order: found.length });
     }
 
     // Once the box holds a title exactly, there is nothing left to suggest.

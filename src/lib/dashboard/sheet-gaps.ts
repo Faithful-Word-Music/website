@@ -18,10 +18,11 @@
  * Pure - no server-only import - so it can be unit tested.
  */
 
-import { capoMissing, type CapoRules } from "@/lib/capo-policy";
+import { capoMissing, resolveCapoRules, type CapoRules } from "@/lib/capo-policy";
 import { fileLabel, matchIndexSong, type IndexSong, type SheetMusicIndex } from "@/lib/sheet-music";
 import { canonicalKey } from "@/lib/song-key";
-import { songKey, songSlug } from "@/lib/song-list";
+import { identifySong, indexEntries, songUrlSlug, type SongReference } from "@/lib/song-identity";
+
 import type { DatedService } from "@/types/song-list";
 
 export type SheetGap =
@@ -50,7 +51,7 @@ export interface SongSheetGaps {
 export function gapsFor(
   song: IndexSong | null,
   mainType: { id: number; label: string } | null,
-  capo?: { title: string; rules: CapoRules; label: string },
+  capo?: SongReference & { rules: CapoRules; label: string },
 ): SheetGap[] {
   if (!song) return [{ kind: "no-entry" }];
   const gaps: SheetGap[] = [];
@@ -60,7 +61,7 @@ export function gapsFor(
     if (mainType && !song.versions.some((version) => version.typeId === mainType.id && version.files.length > 0)) {
       gaps.push({ kind: "no-main-type", type: mainType.label });
     }
-    if (capo && capoMissing(song, { title: capo.title, key: canonicalKey({ indexKeys: song.keys }) }, capo.rules)) {
+    if (capo && capoMissing(song, { ...capo, songId: song.id, key: canonicalKey({ indexKeys: song.keys }) }, capo.rules)) {
       gaps.push({ kind: "no-capo", type: capo.label });
     }
     // Each version of each type should have a PDF.
@@ -90,25 +91,28 @@ export function findSheetGaps(
   const capoLabel = index.types.find((type) => type.id === capoRules?.policy.typeId)?.label;
   const seen = new Set<string>();
   const result: SongSheetGaps[] = [];
+  const identities = indexEntries(index.songs);
+  if (capoRules) capoRules = resolveCapoRules(capoRules, identities);
   const ordered = [...upcoming]
     .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
     .slice(0, GAP_SERVICES);
 
   for (const service of ordered) {
     for (const song of service.songs) {
-      const key = songKey(song.title);
+      const identified = identifySong(song, identities, hymnalCollection);
+      const key = identified.songId;
       if (key === "" || seen.has(key)) continue;
       seen.add(key);
       const gaps = gapsFor(
         matchIndexSong(index, song, hymnalCollection),
         index.types[0] ?? null,
-        capoRules && capoLabel ? { title: song.title, rules: capoRules, label: capoLabel } : undefined,
+        capoRules && capoLabel ? { ...identified, rules: capoRules, label: capoLabel } : undefined,
       );
       if (gaps.length > 0) {
         result.push({
           title: song.title,
           number: song.number,
-          slug: songSlug(song.title),
+          slug: songUrlSlug(identified),
           firstStartsAt: service.startsAt,
           gaps,
         });

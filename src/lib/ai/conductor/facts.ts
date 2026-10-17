@@ -14,6 +14,7 @@ import { dateLabelFor, dayOfWeek, startsAtFor } from "@/lib/service-time";
 import { serviceAnchor } from "@/lib/site-search";
 import { buildCompanions, buildSongRecords, usageCount } from "@/lib/song-history";
 import { matchesSong, songKey } from "@/lib/song-list";
+import { identifySong, normalizeSongNumber, referenceEntries, songIdentity, songsForSlug, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import { buildSongStats } from "@/lib/song-stats";
 import { availableYears, buildYearRecap } from "@/lib/year-recap";
 import type { DatedService, ServiceSlot, Song } from "@/types/song-list";
@@ -52,7 +53,9 @@ export interface ConductorData {
   /** Planned services that have not happened yet, soonest first. */
   upcoming: UpcomingService[];
   /** Songs added in the planner's catalog (they may never have been sung). */
-  catalog: Array<{ title: string; number: string | null; collection: string | null; defaultKey: string | null }>;
+  catalog: Array<{ songId?: string; title: string; number: string | null; collection: string | null; defaultKey: string | null }>;
+  /** Public identity evidence from the Sheet Music Index and catalog. No file metadata. */
+  identities?: readonly IdentityEntry[];
   /** Whether `upcoming` includes drafts (the person manages service plans). */
   draftsIncluded: boolean;
   /** False when neither the archive nor the planner could be read. */
@@ -70,6 +73,8 @@ export function serviceName(service: Pick<DatedService, "date" | "slot" | "label
 
 const songLine = (song: Song, index: number) => ({
   place: index + 1,
+  ...(song.songId ? { songId: song.songId } : {}),
+  ...(song.collection ? { collection: song.collection } : {}),
   title: song.title,
   number: song.number,
   key: song.key,
@@ -108,33 +113,68 @@ const recordsBegin = (data: ConductorData) => data.past[0]?.date ?? null;
 
 export interface SongRef {
   id: string;
+  songId: string;
+  aliases?: readonly string[];
   title: string;
   number: string | null;
+  collection: string | null;
   timesSung: number;
   lastSung: string | null;
 }
 
+/** All available identity evidence; title-only rows are never invented index entries. */
+export function conductorIdentities(data: ConductorData): IdentityEntry[] {
+  const entries = new Map<string, IdentityEntry>();
+  for (const entry of data.identities ?? []) {
+    const known = entries.get(entry.id.toLowerCase());
+    entries.set(entry.id.toLowerCase(), known
+      ? { ...known, aliases: [...new Set([...(known.aliases ?? []), ...(entry.aliases ?? [])])] }
+      : entry);
+  }
+  return referenceEntries(
+    [...data.past.flatMap((service) => service.songs), ...data.upcoming.flatMap((service) => service.songs), ...data.catalog],
+    [...entries.values()],
+  );
+}
+
+const normalizedPast = (data: ConductorData, entries = conductorIdentities(data)) => {
+  return data.past.map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, entries)) }));
+};
+
+const identityMatcher = (data: ConductorData) => {
+  const entries = conductorIdentities(data);
+  return (song: SongReference, id: string) => songIdentity(song, entries).toLowerCase() === id.toLowerCase();
+};
+
 /** Every song the site knows: sung, planned or in the catalog. */
 export function songDirectory(data: ConductorData): SongRef[] {
+  const identities = conductorIdentities(data);
+  const aliases = new Map<string, string[]>();
+  for (const entry of identities) {
+    aliases.set(entry.id, [...new Set([...(aliases.get(entry.id) ?? []), ...(entry.aliases ?? [])])]);
+  }
   const byId = new Map<string, SongRef>();
-  for (const record of buildSongRecords(data.past)) {
+  for (const record of buildSongRecords(normalizedPast(data, identities))) {
     byId.set(record.id, {
       id: record.id,
+      songId: record.id,
+      aliases: aliases.get(record.id),
       title: record.title,
       number: record.number,
+      collection: identities.find((entry) => entry.id === record.id)?.collection ?? null,
       timesSung: record.plays.length,
       lastSung: churchDateOf(record.plays.at(-1)?.startsAt),
     });
   }
-  const add = (title: string, number: string | null) => {
-    const id = songKey(title);
-    if (id === "") return;
+  const add = (song: SongReference) => {
+    const id = songIdentity(song, identities);
     const known = byId.get(id);
-    if (known) known.number ??= number;
-    else byId.set(id, { id, title, number, timesSung: 0, lastSung: null });
+    if (known) known.number ??= song.number ?? null;
+    else byId.set(id, { id, songId: id, aliases: aliases.get(id), title: song.title, number: song.number ?? null, collection: song.collection ?? null, timesSung: 0, lastSung: null });
   };
-  for (const service of data.upcoming) for (const song of service.songs) add(song.title, song.number);
-  for (const song of data.catalog) add(song.title, song.number);
+  for (const entry of identities) add({ ...entry, songId: entry.id });
+  for (const service of data.upcoming) for (const song of service.songs) add(song);
+  for (const song of data.catalog) add(song);
   return [...byId.values()];
 }
 
@@ -153,12 +193,17 @@ export function resolveSong(data: ConductorData, query: string): { match: SongRe
   if (text === "") return { match: null, candidates: [] };
   const songs = songDirectory(data);
 
-  const exact = songs.find((song) => song.id === songKey(text));
-  if (exact) return { match: exact, candidates: [exact] };
+  const identified = songs.filter((song) => [song.id, ...(song.aliases ?? [])].some((id) => id.toLowerCase() === text.toLowerCase()));
+  if (identified.length === 1) return { match: identified[0], candidates: identified };
+  const addressed = songsForSlug(text, songs);
+  if (addressed.length > 0) return { match: addressed.length === 1 ? addressed[0] : null, candidates: addressed.slice(0, SONG_MATCHES) };
+
+  const exact = songs.filter((song) => songKey(song.title) === songKey(text));
+  if (exact.length > 0) return { match: exact.length === 1 ? exact[0] : null, candidates: exact.sort(byMostSung).slice(0, SONG_MATCHES) };
 
   const number = /^(?:#|no\.?\s*|hymn\s*)?(\d+[a-z]?)$/i.exec(text)?.[1]?.toLowerCase();
   if (number) {
-    const numbered = songs.filter((song) => song.number?.toLowerCase() === number);
+    const numbered = songs.filter((song) => (!song.collection || song.collection === siteConfig.sheetMusic.hymnalCollection) && song.number !== null && normalizeSongNumber(song.number) === normalizeSongNumber(number));
     if (numbered.length === 1) return { match: numbered[0], candidates: numbered };
     if (numbered.length > 1) return { match: null, candidates: numbered.sort(byMostSung).slice(0, SONG_MATCHES) };
   }
@@ -169,7 +214,7 @@ export function resolveSong(data: ConductorData, query: string): { match: SongRe
   return { match: found.length === 1 ? found[0] : null, candidates: found.slice(0, SONG_MATCHES) };
 }
 
-const publicRef = ({ title, number, timesSung, lastSung }: SongRef) => ({ title, number, timesSung, lastSung });
+const publicRef = ({ id: songId, title, number, collection, timesSung, lastSung }: SongRef) => ({ songId, title, number, ...(collection ? { collection } : {}), timesSung, lastSung });
 
 /** What a tool answers when it cannot tell which song is meant. */
 function unresolved(data: ConductorData, query: string) {
@@ -178,7 +223,7 @@ function unresolved(data: ConductorData, query: string) {
     ? { found: false as const, note: `No song matching "${query}" is in the records, the plans or the catalog.` }
     : {
         found: false as const,
-        note: "More than one song matches. Ask which one is meant, or use one of these exact titles.",
+        note: "More than one song matches. Ask which arrangement is meant, then use its Song ID or hymn number.",
         possibleSongs: candidates.map(publicRef),
       };
 }
@@ -199,21 +244,23 @@ export function findSongs(data: ConductorData, query: string) {
 /** How many of a song's latest plays are listed. */
 export const RECENT_PLAYS_LISTED = 10;
 
-const includesSong = (service: DatedService, id: string) => service.songs.some((song) => songKey(song.title) === id);
+const includesSong = (matches: ReturnType<typeof identityMatcher>, service: DatedService, id: string) => service.songs.some((song) => matches(song, id));
 
 export function songFacts(data: ConductorData, query: string) {
   const { match } = resolveSong(data, query);
   if (!match) return unresolved(data, query);
 
-  const upcoming = data.upcoming.filter((service) => includesSong(service, match.id));
-  const stats = buildSongStats(data.past, match.id, upcoming.map((service) => service.startsAt), data.now);
-  const sungIn = data.past.filter((service) => includesSong(service, match.id)).reverse();
+  const matches = identityMatcher(data);
+  const upcoming = data.upcoming.filter((service) => includesSong(matches, service, match.id));
+  const past = normalizedPast(data);
+  const stats = buildSongStats(past, match.id, upcoming.map((service) => service.startsAt), data.now);
+  const sungIn = past.filter((service) => includesSong(matches, service, match.id)).reverse();
   const last = sungIn[0] ?? null;
-  const catalogKey = data.catalog.find((song) => songKey(song.title) === match.id)?.defaultKey ?? null;
+  const catalogKey = data.catalog.find((song) => matches(song, match.id))?.defaultKey ?? null;
 
   return {
     found: true as const,
-    song: { title: match.title, number: match.number },
+    song: { songId: match.id, title: match.title, number: match.number, ...(match.collection ? { collection: match.collection } : {}) },
     timesSung: stats.count,
     servicesSungIn: stats.services,
     firstSung: churchDateOf(stats.first),
@@ -238,7 +285,8 @@ export function songFacts(data: ConductorData, query: string) {
       : null,
     usualService: stats.weekly.habit,
     usualPlaceInService: stats.placement.habit,
-    oftenSungWith: buildCompanions(data.past, match.id, siteConfig.songList.pairings).map((companion) => ({
+    oftenSungWith: buildCompanions(past, match.id, siteConfig.songList.pairings).map((companion) => ({
+      songId: companion.id,
       title: companion.title,
       number: companion.number,
       servicesTogether: companion.together,
@@ -248,13 +296,13 @@ export function songFacts(data: ConductorData, query: string) {
     recentTimesSung: sungIn.slice(0, RECENT_PLAYS_LISTED).map((service) => ({
       date: service.date,
       service: serviceName(service),
-      key: service.songs.find((song) => songKey(song.title) === match.id)?.key ?? null,
+      key: service.songs.find((song) => matches(song, match.id))?.key ?? null,
     })),
     plannedFor: upcoming.map((service) => ({
       date: service.date,
       service: serviceName(service),
       status: service.status,
-      key: service.songs.find((song) => songKey(song.title) === match.id)?.key ?? null,
+      key: service.songs.find((song) => matches(song, match.id))?.key ?? null,
     })),
     recordsBegin: recordsBegin(data),
   };
@@ -267,19 +315,20 @@ export function songUses(data: ConductorData, query: string, from: string, to: s
   const { match } = resolveSong(data, query);
   if (!match) return unresolved(data, query);
 
-  const sungIn = data.past.filter((service) => service.date >= from && service.date <= to && includesSong(service, match.id));
+  const matches = identityMatcher(data);
+  const sungIn = data.past.filter((service) => service.date >= from && service.date <= to && includesSong(matches, service, match.id));
   const keys = new Map<string, number>();
   for (const service of sungIn) {
     for (const song of service.songs) {
-      if (songKey(song.title) === match.id && song.key) keys.set(song.key, (keys.get(song.key) ?? 0) + 1);
+      if (matches(song, match.id) && song.key) keys.set(song.key, (keys.get(song.key) ?? 0) + 1);
     }
   }
   return {
     found: true as const,
-    song: { title: match.title, number: match.number },
+    song: { songId: match.id, title: match.title, number: match.number },
     from,
     to,
-    timesSung: sungIn.reduce((total, service) => total + service.songs.filter((song) => songKey(song.title) === match.id).length, 0),
+    timesSung: sungIn.reduce((total, service) => total + service.songs.filter((song) => matches(song, match.id)).length, 0),
     // An insert is sung at every service of its week on purpose, so its weeks say more than its services.
     ...(match.number === null ? { weeksSungIn: usageCount(match, sungIn) } : {}),
     keysUsed: [...keys].sort((a, b) => b[1] - a[1]).map(([key, times]) => ({ key, times })),
@@ -349,13 +398,14 @@ export function listServices(
   }
 
   // Exactly that song - the archive's own search matches any title containing the words.
+  const matches = identityMatcher(data);
   const matching = filterArchive(toArchive([...data.past, ...data.upcoming]), {
     ...NO_FILTER,
     from: filter.from,
     to: filter.to,
     type: filter.type ?? "all",
   })
-    .filter((service) => !songId || service.songs.some((song) => songKey(song.title) === songId))
+    .filter((service) => !songId || includesSong(matches, service, songId))
     .reverse();
 
   // Too many: the latest of a stretch of history, the soonest of what is still to come.
@@ -396,11 +446,12 @@ export function upcomingServices(data: ConductorData, options: { days?: number; 
   }
 
   const planned = new Map(data.upcoming.map((service) => [serviceAnchor(service.date, service.slot), service]));
+  const matches = identityMatcher(data);
   const services = serviceOccurrences(data.today, through, scheduled(data))
     .filter((occurrence) => Date.parse(occurrence.startsAt) > data.now)
     .flatMap((occurrence): Array<Record<string, unknown>> => {
       const plan = planned.get(serviceAnchor(occurrence.date, occurrence.slot));
-      if (songId) return plan && includesSong(plan, songId) ? [describeService(plan, plan.status, plan.emptyPlaces)] : [];
+      if (songId) return plan && includesSong(matches, plan, songId) ? [describeService(plan, plan.status, plan.emptyPlaces)] : [];
       return plan
         ? [describeService(plan, plan.status, plan.emptyPlaces)]
         : [{ date: occurrence.date, slot: occurrence.slot, service: serviceName(occurrence), status: unplanned(data), songs: [] }];
@@ -429,10 +480,11 @@ export const SONGS_LISTED_MAX = 25;
 const listSize = (limit: number | undefined) => Math.min(Math.max(1, Math.round(limit ?? SONGS_LISTED)), SONGS_LISTED_MAX);
 
 export function songUsage(data: ConductorData, options: { from: string; to: string; order?: "most" | "least"; limit?: number }) {
-  const inRange = data.past.filter((service) => service.date >= options.from && service.date <= options.to);
+  const inRange = normalizedPast(data).filter((service) => service.date >= options.from && service.date <= options.to);
   const order = options.order ?? "most";
   const songs = buildSongRecords(inRange)
     .map((record) => ({
+      songId: record.id,
       title: record.title,
       number: record.number,
       // Uses, not performances: the week's insert counts once for its week (usageCount).
@@ -464,13 +516,16 @@ export function songsNotSungSince(data: ConductorData, options: { days: number; 
   const days = Math.max(1, Math.round(options.days));
   const cutoff = data.now - days * DAY_MS;
   const minTimesSung = Math.max(1, Math.round(options.minTimesSung ?? 2));
-  const planned = new Set(data.upcoming.flatMap((service) => service.songs.map((song) => songKey(song.title))));
-  const seasonal = christmasSongs(data.past);
+  const identities = conductorIdentities(data);
+  const planned = new Set(data.upcoming.flatMap((service) => service.songs.map((song) => songIdentity(song, identities))));
+  const past = normalizedPast(data, identities);
+  const seasonal = christmasSongs(past);
 
-  const songs = buildSongRecords(data.past)
+  const songs = buildSongRecords(past)
     .filter((record) => record.plays.length >= minTimesSung && Date.parse(record.plays.at(-1)!.startsAt) < cutoff)
     .filter((record) => !planned.has(record.id))
     .map((record) => ({
+      songId: record.id,
       title: record.title,
       number: record.number,
       timesSung: record.plays.length,
@@ -495,7 +550,7 @@ export function songsNotSungSince(data: ConductorData, options: { days: number; 
 
 export function yearSummary(data: ConductorData, year: number) {
   const years = availableYears(data.past);
-  const recap = buildYearRecap(data.past, year, data.now);
+  const recap = buildYearRecap(normalizedPast(data), year, data.now);
   if (!recap) return { found: false as const, note: `Nothing is recorded for ${year}.`, yearsWithRecords: years };
 
   return {
@@ -508,11 +563,11 @@ export function yearSummary(data: ConductorData, year: number) {
     songsSung: recap.songsSung,
     differentSongs: recap.differentSongs,
     differentHymnsFromTheHymnal: recap.differentHymns,
-    mostUsedSongs: recap.topSongs.map(({ title, number, count, weekly }) => ({ title, number, timesUsed: count, ...(weekly ? { countedByWeek: true } : {}) })),
+    mostUsedSongs: recap.topSongs.map(({ id: songId, title, number, count, weekly }) => ({ songId, title, number, timesUsed: count, ...(weekly ? { countedByWeek: true } : {}) })),
     keys: recap.keys.map(({ key, count }) => ({ key, times: count })),
     songsUsedOnlyOnce: recap.once.length,
     longestWaitBeforeReturning: recap.longestWait
-      ? { title: recap.longestWait.title, days: recap.longestWait.days, sungAgainOn: churchDateOf(recap.longestWait.after) }
+      ? { songId: recap.longestWait.id, title: recap.longestWait.title, days: recap.longestWait.days, sungAgainOn: churchDateOf(recap.longestWait.after) }
       : null,
     yearsWithRecords: years,
   };
@@ -535,10 +590,14 @@ export function checkSongForService(data: ConductorData, query: string, date: st
     data.upcoming.find((service) => service.date === date && service.slot === slot)?.startsAt ??
     data.past.find((service) => service.date === date && service.slot === slot)?.startsAt ??
     startsAtFor(date, slot);
+  const identities = conductorIdentities(data);
   const candidate = buildCandidates({
-    past: data.past,
-    planned: data.upcoming,
-    catalog: data.catalog,
+    past: normalizedPast(data, identities),
+    planned: data.upcoming.map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, identities)) })),
+    catalog: [
+      ...identities.map((entry) => ({ ...entry, songId: entry.id, defaultKey: null })),
+      ...data.catalog.map((song) => identifySong(song, identities)),
+    ],
     index: null,
     hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
   }).find((item) => item.id === match.id);
@@ -559,7 +618,7 @@ export function checkSongForService(data: ConductorData, query: string, date: st
 
   return {
     found: true as const,
-    song: { title: match.title, number: match.number },
+    song: { songId: match.id, title: match.title, number: match.number },
     service: { date, slot, service: serviceName({ date, slot }) },
     lastSungBeforeIt: churchDateOf(facts.lastSung),
     daysBetween: facts.daysSince,
@@ -606,6 +665,8 @@ export function planCheck(workspace: WorkspaceData, screen?: ConductorScreenPlan
     past: workspace.recentPast,
     planned: workspace.planned,
     sheetMusic: workspace.sheetMusicChecked ? candidateSheetMusicCheck(candidates) : null,
+    identities: workspace.candidates,
+    hymnalCollection: siteConfig.sheetMusic.hymnalCollection,
   });
 
   return {
@@ -613,7 +674,7 @@ export function planCheck(workspace: WorkspaceData, screen?: ConductorScreenPlan
     service: { date: service.date, slot: service.slot, service: serviceName(service), status: service.status },
     places: slots.map((song, index) =>
       song
-        ? { place: index + 1, title: song.title, number: song.number, key: song.key, ...(song.insert ? { insert: true } : {}) }
+        ? songLine(song, index)
         : { place: index + 1, empty: true },
     ),
     whatThePlannerNotices: signals.map((signal) => ({ ...signal, meaning: SIGNAL_MEANING[signal.kind] })),

@@ -1,4 +1,5 @@
 import { songKey } from "@/lib/song-list";
+import { indexEntries, resolveSong, type SongReference } from "@/lib/song-identity";
 
 /**
  * Sheet music: the songs in the Sheet Music Index, with the files found in
@@ -412,12 +413,15 @@ export function readSheetMusic(sources: IndexSources): SheetMusicSources {
   const songs = parseSongs(sources.songs).map((song) => ({ ...song, files: [] as DriveFile[] }));
   const isCollection = collectionNames({ songs });
 
-  const byNumber = new Map<string, (typeof songs)[number]>();
+  const byNumber = new Map<string, Array<(typeof songs)[number]>>();
   const byTitle = new Map<string, Array<(typeof songs)[number]>>();
   const add = (key: string, song: (typeof songs)[number]) => byTitle.set(key, [...(byTitle.get(key) ?? []), song]);
   for (const song of songs) {
     const collection = song.collection?.toLowerCase() ?? "";
-    if (song.hymnNumber) byNumber.set(`${collection}|${normalizeNumber(song.hymnNumber)}`, song);
+    if (song.hymnNumber) {
+      const key = `${collection}|${normalizeNumber(song.hymnNumber)}`;
+      byNumber.set(key, [...(byNumber.get(key) ?? []), song]);
+    }
     add(`${collection}|${titleKey(song.title)}`, song);
     add(`*|${titleKey(song.title)}`, song);
   }
@@ -425,10 +429,13 @@ export function readSheetMusic(sources: IndexSources): SheetMusicSources {
   const sheets = sheetsFromDrive(sources.drive);
   for (const sheet of sheets) {
     const collection = sheet.folders.findLast(isCollection)?.toLowerCase();
-    let song = collection && sheet.number ? byNumber.get(`${collection}|${normalizeNumber(sheet.number)}`) : undefined;
-    if (!song) {
+    const numbered = collection && sheet.number ? byNumber.get(`${collection}|${normalizeNumber(sheet.number)}`) ?? [] : [];
+    let song = numbered.length === 1 ? numbered[0] : undefined;
+    // A duplicate or conflicting collection/number must not inherit another
+    // entry's files or rights through a last-write-wins map or title fallback.
+    if (!song && !(collection && sheet.number)) {
       const titled = byTitle.get(`${collection ?? "*"}|${titleKey(sheet.title)}`) ?? [];
-      if (titled.length === 1) song = titled[0];
+      if (titled.length === 1 && (!sheet.number || (titled[0].hymnNumber && normalizeNumber(titled[0].hymnNumber) === normalizeNumber(sheet.number)))) song = titled[0];
     }
     song?.files.push(sheet);
   }
@@ -614,31 +621,11 @@ export function sourceCoverage(sources: SheetMusicSources, source: readonly stri
  */
 export function matchIndexSong(
   index: SheetMusicIndex,
-  song: { title: string; number: string | null },
+  song: SongReference,
   hymnalCollection: string,
 ): IndexSong | null {
-  if (song.number) {
-    const byNumber = index.songs.find(
-      (candidate) =>
-        candidate.collection === hymnalCollection &&
-        candidate.hymnNumber !== null &&
-        normalizeNumber(candidate.hymnNumber) === normalizeNumber(song.number!),
-    );
-    if (byNumber) return byNumber;
-  }
-
-  const key = songKey(song.title);
-  if (key === "") return null;
-  const byTitle = index.songs.filter((candidate) => songKey(candidate.title) === key);
-  if (byTitle.length === 1) return byTitle[0];
-
-  // Several hymnals print the same hymn; for a numbered song, the church's
-  // own hymnal is the one meant.
-  if (song.number) {
-    const own = byTitle.filter((candidate) => candidate.collection === hymnalCollection);
-    if (own.length === 1) return own[0];
-  }
-  return null;
+  const found = resolveSong(song, indexEntries(index.songs), hymnalCollection);
+  return found ? index.songs.find((candidate) => candidate.id === found.id) ?? null : null;
 }
 
 export function findFile(song: IndexSong, slug: string): { version: SongVersion; file: SheetFile } | null {

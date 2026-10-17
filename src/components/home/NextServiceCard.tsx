@@ -75,7 +75,7 @@ export function NextServiceCard({ services, serverNow }: { services: Service[]; 
               {song && !song.number ? <span className="sr-only">No number</span> : null}
             </span>
             <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
-              {song ? <SongLink title={song.title} /> : <span className="italic text-muted">{states.pendingSong}</span>}
+              {song ? <SongLink {...song} /> : <span className="italic text-muted">{states.pendingSong}</span>}
             </span>
             {song?.key ? (
               <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">

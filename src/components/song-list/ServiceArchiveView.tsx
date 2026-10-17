@@ -145,7 +145,7 @@ function ServiceSummary({ service, highlight }: { service: ArchivedService; high
             <li key={index} className="flex items-baseline gap-2">
               <span className="w-8 shrink-0 text-right tabular-nums text-muted">{song.number ?? ""}</span>
               <span className={hit ? "font-medium text-ink" : "text-ink"}>
-                <SongLink title={song.title} />
+                <SongLink {...song} />
               </span>
               {recordedInsert(song) ? <span className="text-[0.65rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span> : null}
               <span className="ml-auto shrink-0 text-muted">{song.key ?? ""}</span>

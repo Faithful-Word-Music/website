@@ -26,8 +26,9 @@ import {
 } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer as SheetViewer } from "@/lib/sheet-music-access";
 import { assignedFiles } from "@/lib/sheet-music-type";
-import { serviceSlots, songPath, songSlug } from "@/lib/song-list";
+import { serviceSlots, songPath } from "@/lib/song-list";
 import { serviceAnchor } from "@/lib/site-search";
+import { songUrlSlug, identifySong, indexEntries, resolveSong, type SongReference } from "@/lib/song-identity";
 import type { Service, Song } from "@/types/song-list";
 
 import type { DashboardFocus } from "./focus";
@@ -79,6 +80,8 @@ export type ComingUpSheet =
   | { status: "missing" };
 
 export interface ComingUpSong {
+  songId?: string;
+  collection?: string | null;
   number: string | null;
   title: string;
   key: string | null;
@@ -109,7 +112,7 @@ export interface ComingUpService {
 }
 
 /** One chosen song of a service, with the file of the person's first type it has - or null for none. */
-export interface ServiceSheet {
+export interface ServiceSheet extends SongReference {
   number: string | null;
   title: string;
   key: string | null;
@@ -131,7 +134,7 @@ export interface ServicePacket {
 
 /** One song's sheet music for the person (see assignedFiles). */
 function sheetFor(
-  song: { number: string | null; title: string; key: string | null },
+  song: SongReference & { number: string | null; key: string | null },
   options: SheetOptions,
 ): ServiceSheet {
   const { index, sheetTypes, viewer } = options;
@@ -140,6 +143,8 @@ function sheetFor(
     ? assignedFiles(indexSong, sheetTypes, (file) => canAccessFile(indexSong, file, viewer))
     : [];
   return {
+    ...identifySong(song, indexEntries(index.songs)),
+    collection: song.collection ?? indexSong?.collection ?? null,
     number: song.number,
     title: song.title,
     key: song.key,
@@ -236,15 +241,15 @@ export function servicePacketPath(service: Pick<Service, "date" | "slot">): stri
 }
 
 /** Where one song's file is: the song page's file route, which checks access itself. */
-function fileHref(title: string, file: SheetFile): string {
-  return versionedFileHref(`${songPath(songSlug(title))}/sheet-music/${file.slug}`, file);
+function fileHref(song: SongReference, file: SheetFile): string {
+  return versionedFileHref(`${songPath(songUrlSlug(song))}/sheet-music/${file.slug}`, file);
 }
 
 function toComingUpSheet(sheet: ServiceSheet): ComingUpSheet {
   if (!sheet.found) return { status: "missing" };
   const choice = ({ version, file }: { version: SongVersion; file: SheetFile }): SheetChoice => ({
     label: version.label,
-    href: fileHref(sheet.title, file),
+    href: fileHref({ ...sheet, songId: sheet.found!.song.id }, file),
   });
   return { status: "found", shown: choice(sheet.found), alternatives: sheet.alternatives.map(choice) };
 }
@@ -267,13 +272,18 @@ export function buildComingUp(
 ): ComingUpService[] {
   const viewer = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
   const { index, sheetTypes } = options;
+  const identities = indexEntries(index?.songs ?? []);
+  const identify = <T extends SongReference>(song: T) => ({
+    ...identifySong(song, identities),
+    collection: song.collection ?? resolveSong(song, identities)?.collection ?? null,
+  });
   const sheetOptions = sheetTypes.length > 0 && index ? { index, sheetTypes, viewer } : null;
 
   return selectComingUp(services, now).map(({ service, status }) => {
     const slots = serviceSlots(service).map((song): ComingUpSong | null => {
       if (!song) return null;
       const sheet = sheetOptions ? toComingUpSheet(sheetFor(song, sheetOptions)) : null;
-      return { number: song.number, title: song.title, key: song.key, sheet };
+      return { ...identify(song), sheet };
     });
     const packet = sheetOptions ? servicePacket(service, sheetOptions) : null;
 
@@ -289,7 +299,7 @@ export function buildComingUp(
       showLabels: sheetTypes.length > 1,
       sheetMusicChecked: sheetOptions !== null,
       packetTypes: options.anyType && index ? serviceTypeOptions(service, { index, viewer }) : [],
-      plannedInserts: service.plannedInserts ?? [],
+      plannedInserts: (service.plannedInserts ?? []).map(identify),
     };
   });
 }

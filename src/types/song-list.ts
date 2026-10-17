@@ -10,6 +10,10 @@
 
 /** A single song in a service. */
 export interface Song {
+  /** Canonical index ID or durable catalog ID, when the arrangement is known. */
+  songId?: string;
+  /** Collection evidence kept for legacy references and index outages. */
+  collection?: string | null;
   /** Hymnal number, or null for songs printed without one (Psalms, choruses). */
   number: string | null;
   title: string;
@@ -106,8 +110,10 @@ export type SongListResult =
 
 /** Every time one song has been sung, gathered from the whole history. */
 export interface SongRecord {
-  /** Normalized title used to group spellings, see songKey(). */
+  /** Canonical song identity, or deterministic unresolved legacy evidence. */
   id: string;
+  songId?: string;
+  collection?: string | null;
   /** Title as most recently written. */
   title: string;
   /** Most recent hymnal number, if it has ever had one. */

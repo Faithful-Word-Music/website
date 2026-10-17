@@ -411,8 +411,8 @@ describe("occurrences with planner services", () => {
 
 describe("changes and helpers", () => {
   it("describes what an edit did, song by song", () => {
-    const before: PlanSlots = [song("A", "G"), song("B", "C"), song("C")];
-    const after: PlanSlots = [song("B", "D"), song("A", "G"), null, song("D", "F")];
+    const before: PlanSlots = [song("A", "G", "101"), song("B", "C", "102"), song("C", "G", "103")];
+    const after: PlanSlots = [song("B", "D", "102"), song("A", "G", "101"), null, song("D", "F", "104")];
     expect(diffSlots(before, after)).toEqual([
       { type: "removed", title: "C", position: 3 },
       { type: "moved", title: "B", from: 2, to: 1 },

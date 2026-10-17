@@ -1,7 +1,7 @@
 import { addDays } from "@/lib/availability/occurrences";
 import { easter, inChristmasSeason, thanksgiving } from "@/lib/church-calendar";
 import type { CandidateSong } from "@/lib/service-planner/intelligence";
-import { songKey } from "@/lib/song-list";
+import { songIdentity } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
 /**
@@ -79,7 +79,7 @@ export function christmasEligible(input: {
   const inSeason = new Set<string>();
   for (const service of input.past) {
     const target = inChristmasSeason(service.date) ? inSeason : outOfSeason;
-    for (const song of service.songs) target.add(songKey(song.title));
+    for (const song of service.songs) target.add(songIdentity(song, input.candidates));
   }
   return new Set(
     input.candidates

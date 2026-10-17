@@ -36,6 +36,7 @@ import {
 import { insertPlaces, isInsert, planSong, type PlannerService, type PlanSlots } from "@/lib/service-planner/model";
 import type { PlanEvent } from "@/lib/service-planner/store";
 import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time";
+import { songIdentity, type SongReference } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
 import { AiGenerate, SparkleIcon, type GeneratedPlan } from "./AiGenerate";
@@ -66,7 +67,7 @@ export interface WorkspaceProps {
   canUseAi: boolean;
   candidates: CandidateSong[];
   recentPast: DatedService[];
-  planned: Array<{ startsAt: string; songs: Array<{ title: string }> }>;
+  planned: Array<{ startsAt: string; songs: SongReference[] }>;
   sheetMusicChecked: boolean;
   availability: ServiceAvailability | null;
   events: Array<PlanEvent & { actorName: string | null }>;
@@ -120,9 +121,10 @@ export function Workspace(props: WorkspaceProps) {
         service: { startsAt: service.startsAt, date: service.date, slots },
         past: props.recentPast,
         planned: props.planned,
+        identities: candidates,
         sheetMusic: props.sheetMusicChecked ? candidateSheetMusicCheck(candidateMap) : null,
       }),
-    [slots, service.startsAt, service.date, props.recentPast, props.planned, props.sheetMusicChecked, candidateMap],
+    [slots, service.startsAt, service.date, props.recentPast, props.planned, props.sheetMusicChecked, candidateMap, candidates],
   );
 
   // --- editing -------------------------------------------------------------
@@ -271,8 +273,8 @@ export function Workspace(props: WorkspaceProps) {
             <ol ref={listRef} className="divide-y divide-line">
               {slots.map((song, index) => (
                 <li
-                  key={song ? `${song.title}-${index}` : `empty-${index}`}
-                  data-flip={song ? `song-${song.title}` : `empty-${index}`}
+                  key={song ? `${songIdentity(song, candidates)}-${index}` : `empty-${index}`}
+                  data-flip={song ? `song-${songIdentity(song, candidates)}` : `empty-${index}`}
                   // On a phone a song's key and buttons take a second line
                   // under its title, so the title keeps the width; from `sm`
                   // it is all one line.
@@ -309,7 +311,7 @@ export function Workspace(props: WorkspaceProps) {
                           {song.number ?? <span aria-hidden="true">·</span>}
                         </span>
                         <span className="min-w-0">
-                          <SongLink title={song.title} className="text-[0.98rem] font-medium text-ink" />
+                          <SongLink {...song} className="text-[0.98rem] font-medium text-ink" />
                           {isInsert(song) ? (
                             <span className="ml-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-gold-dark">
                               {ws.insert}

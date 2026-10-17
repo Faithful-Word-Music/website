@@ -112,7 +112,7 @@ export function PlannedInsert({ song, className }: { song: Song; className?: str
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink sm:text-base">
         {song.number ? <span className="tnum mr-2 text-sm font-medium text-muted sm:text-base">{song.number}</span> : null}
-        <SongLink title={song.title} />
+        <SongLink {...song} />
       </span>
       {song.key ? (
         <span className="tnum shrink-0 text-sm font-medium text-gold-dark sm:text-base">

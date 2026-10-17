@@ -6,6 +6,8 @@ import { getSchedule, scheduleEnv } from "@/lib/schedule";
 import { slotSongs } from "@/lib/service-planner/model";
 import { listCatalogSongs, listPlans, plannerConfigured } from "@/lib/service-planner/store";
 import { loadPast } from "@/lib/song-archive";
+import { getSheetMusicIndex } from "@/lib/sheet-music-index";
+import { identifySong, indexEntries, referenceEntries, type IdentityEntry } from "@/lib/song-identity";
 
 import type { ConductorData, UpcomingService } from "./facts";
 
@@ -39,10 +41,15 @@ export async function loadConductorData(viewer: Viewer): Promise<ConductorData> 
   const today = churchDate(now);
   const canPlan = viewer.can("manage_service_plans");
 
-  const [history, schedule, catalog, plans] = await Promise.all([
+  const index = getSheetMusicIndex();
+  const [history, schedule, catalog, plans, sheetMusic] = await Promise.all([
     quietly("the history", loadPast, null),
     getSchedule(),
-    quietly("the catalog", async () => (plannerConfigured() ? listCatalogSongs(scheduleEnv()) : []), []),
+    quietly("the catalog", async () => {
+      if (!plannerConfigured()) return [];
+      const sheetMusic = await index;
+      return listCatalogSongs(scheduleEnv(), sheetMusic.ok ? indexEntries(sheetMusic.index.songs) : []);
+    }, []),
     canPlan && plannerConfigured()
       ? quietly(
           "the plans",
@@ -50,7 +57,15 @@ export async function loadConductorData(viewer: Viewer): Promise<ConductorData> 
           null,
         )
       : null,
+    index,
   ]);
+  const known: IdentityEntry[] = [
+    ...(sheetMusic.ok ? indexEntries(sheetMusic.index.songs) : []),
+    ...catalog.flatMap((song) => song.songId ? [{
+      id: song.songId, title: song.title, number: song.number, collection: song.collection,
+      ...(song.catalogId && song.catalogId !== song.songId ? { aliases: [song.catalogId] } : {}),
+    }] : []),
+  ];
 
   const upcoming: UpcomingService[] = plans
     ? plans.map((plan) => ({
@@ -66,15 +81,25 @@ export async function loadConductorData(viewer: Viewer): Promise<ConductorData> 
     : schedule.ok
       ? schedule.published.map((service) => ({ ...service, status: "published" as const, emptyPlaces: 0 }))
       : [];
+  // Collect existing associations before creating any unresolved fallback.
+  // During an index outage, a raw upcoming number can still identify the
+  // arrangement already held explicitly in the archive or catalog.
+  const identities = referenceEntries([
+    ...(history?.past ?? []).flatMap((service) => service.songs),
+    ...upcoming.flatMap((service) => service.songs),
+    ...catalog,
+  ], known);
 
   return {
     now,
     today,
-    past: history?.past ?? [],
+    past: (history?.past ?? []).map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, identities)) })),
     upcoming: upcoming
+      .map((service) => ({ ...service, songs: service.songs.map((song) => identifySong(song, identities)) }))
       .filter((service) => Date.parse(service.startsAt) > now)
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)),
     catalog,
+    identities,
     draftsIncluded: plans !== null,
     historyAvailable: history !== null,
   };

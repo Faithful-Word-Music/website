@@ -14,18 +14,27 @@ import { siteConfig } from "@/config/site";
 import type { RosterPerson } from "@/lib/availability/board";
 import { effectiveAvailability, type ExceptionStatus } from "@/lib/availability/effective";
 import type { Occurrence } from "@/lib/availability/occurrences";
-import { capoMissing, NO_CAPO_RULES, type CapoRules } from "@/lib/capo-policy";
+import { capoMissing, NO_CAPO_RULES, resolveCapoRules, type CapoRules } from "@/lib/capo-policy";
 import { christmasSongs, inChristmasSeason } from "@/lib/church-calendar";
 import { matchIndexSong, type IndexSong, type SheetMusicIndex } from "@/lib/sheet-music";
 import { assignedFiles } from "@/lib/sheet-music-type";
 import { usageCount } from "@/lib/song-history";
 import { canonicalKey } from "@/lib/song-key";
-import { normalizeKey, songKey } from "@/lib/song-list";
+import { identifySong, indexEntries, referenceEntries, resolveSong, songIdentity, type IdentityEntry, type SongReference } from "@/lib/song-identity";
+import { normalizeKey } from "@/lib/song-list";
 import type { DatedService } from "@/types/song-list";
 
-import { isInsert, weekStartOf, type PlanSlots } from "./model";
+import { insertPlaces, isInsert, weekStartOf, type PlanSlots } from "./model";
 
 const DAY_MS = 86_400_000;
+
+/** Compare the week's insert places without treating added identity evidence as an edit. */
+export function insertPlacementIdentity(slots: PlanSlots, identities: readonly IdentityEntry[] = []): string {
+  return JSON.stringify(insertPlaces(slots).map((index) => {
+    const song = slots[index]!;
+    return [index, songIdentity(song, identities), song.key];
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // The song picker's catalog
@@ -35,8 +44,11 @@ export type SheetMusicStatus = "complete" | "partial" | "none" | "unknown";
 
 /** One song the picker can offer, with what the planner should know about it. */
 export interface CandidateSong {
-  /** songKey(): one song, however its title is punctuated. */
+  /** Canonical index/catalog ID, or unresolved legacy evidence. */
   id: string;
+  songId?: string;
+  /** Persisted catalog IDs explicitly associated with this indexed entry. */
+  aliases?: readonly string[];
   title: string;
   number: string | null;
   collection: string | null;
@@ -88,37 +100,54 @@ export function buildCandidates(input: {
   /** Musicians expected at the service being planned, for missingFor. */
   musicians?: readonly PlannerMusician[];
   /** Services still to come (drafts too), for "also planned for". */
-  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<{ title: string; number?: string | null }> }>;
-  catalog: ReadonlyArray<{ title: string; number: string | null; collection: string | null; defaultKey: string | null }>;
+  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<SongReference> }>;
+  catalog: ReadonlyArray<SongReference & { catalogId?: string; number: string | null; collection: string | null; defaultKey: string | null }>;
   index: SheetMusicIndex | null;
   hymnalCollection: string;
   /** The capo sheet music rules (src/lib/capo-policy.ts); none asked for when left out. */
   capo?: CapoRules;
 }): CandidateSong[] {
   const { past, planned, catalog, index, hymnalCollection } = input;
-  const capo = input.capo ?? NO_CAPO_RULES;
   const byId = new Map<string, CandidateSong>();
   /** The catalog's usual key, by song: the canonical key of a song the Index does not hold. */
   const catalogKeys = new Map<string, string | null>();
-  const seasonal = christmasSongs([...past]);
+  const indexed = indexEntries(index?.songs ?? []);
+  const capo = resolveCapoRules(input.capo ?? NO_CAPO_RULES, indexed);
+  const identities = referenceEntries([
+    ...past.flatMap((service) => service.songs),
+    ...planned.flatMap((service) => service.songs),
+    ...catalog,
+  ], [
+    ...catalog.map((song) => {
+      const matched = resolveSong(song, indexed, hymnalCollection);
+      return {
+        id: songIdentity(song, indexed, hymnalCollection), title: song.title,
+        aliases: song.catalogId ? [song.catalogId] : [],
+        number: matched ? matched.number : song.number,
+        collection: matched ? matched.collection : song.collection,
+      };
+    }),
+    ...indexed,
+  ], hymnalCollection);
+  const history = past.map((service) => ({
+    ...service,
+    songs: service.songs.map((song) => identifySong(song, identities, hymnalCollection)),
+  }));
+  const seasonal = christmasSongs(history);
 
-  const ensure = (title: string, number: string | null, collection: string | null): CandidateSong | null => {
-    const base = songKey(title);
-    if (base === "") return null;
-    // Keep legacy title IDs where possible, but do not collapse two tunes
-    // with the same title and different hymn numbers (e.g. 167 and 168).
-    const matching = [...byId.values()].find(
-      (candidate) => songKey(candidate.title) === base && candidate.number === number,
-    );
-    const existing = byId.get(base);
-    const id = matching?.id ?? (existing && number && existing.number && existing.number !== number
-      ? `${base}~${number}`
-      : base);
+  const ensure = (song: SongReference): CandidateSong | null => {
+    if (song.title.trim() === "") return null;
+    const id = songIdentity(song, identities, hymnalCollection);
+    const resolved = resolveSong(song, identities, hymnalCollection);
+    const number = resolved ? resolved.number : song.number ?? null;
+    const collection = resolved ? resolved.collection : song.collection ?? null;
     let entry = byId.get(id);
     if (!entry) {
       entry = {
         id,
-        title,
+        songId: id,
+        ...(resolved?.aliases?.length ? { aliases: resolved.aliases } : {}),
+        title: song.title,
         number,
         collection,
         plays: [],
@@ -141,10 +170,10 @@ export function buildCandidates(input: {
   };
 
   // Newest first, so the latest spelling and number win.
-  const ordered = [...past].sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
+  const ordered = [...history].sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
   for (const service of ordered) {
     for (const song of service.songs) {
-      const entry = ensure(song.title, song.number, null);
+      const entry = ensure(song);
       if (!entry) continue;
       entry.playCount += 1;
       if (entry.plays.length < RECENT_PLAYS) entry.plays.push({ at: service.startsAt, key: song.key });
@@ -152,28 +181,22 @@ export function buildCandidates(input: {
   }
 
   for (const song of catalog) {
-    const known = [...byId.values()].some(
-      (candidate) => songKey(candidate.title) === songKey(song.title) && candidate.number === song.number,
-    );
-    const entry = ensure(song.title, song.number, song.collection);
+    const known = byId.has(songIdentity(song, identities, hymnalCollection));
+    const entry = ensure(song);
     if (!entry) continue;
     catalogKeys.set(entry.id, song.defaultKey);
+    if (song.catalogId && song.catalogId !== entry.id) entry.aliases = [...new Set([...(entry.aliases ?? []), song.catalogId])];
     if (!known) entry.isNew = true;
   }
 
   for (const song of index?.songs ?? []) {
-    const number = song.collection === hymnalCollection ? song.hymnNumber : null;
-    ensure(song.title, number, song.collection);
+    ensure({ ...song, songId: song.id, number: song.hymnNumber });
   }
 
   for (const service of planned) {
     for (const song of service.songs) {
-      for (const candidate of byId.values()) {
-        if (songKey(candidate.title) === songKey(song.title) &&
-            (song.number === undefined || candidate.number === song.number)) {
-          candidate.upcoming.push(service.startsAt);
-        }
-      }
+      const candidate = byId.get(songIdentity(song, identities, hymnalCollection));
+      if (candidate) candidate.upcoming.push(service.startsAt);
     }
   }
 
@@ -185,7 +208,7 @@ export function buildCandidates(input: {
     entry.defaultKey = canonicalKey({ indexKeys: indexSong?.keys, catalogKey: catalogKeys.get(entry.id) });
     if (indexSong) {
       const missing = missingSheetMusic(indexSong, input.musicians ?? [], {
-        song: { title: entry.title, key: entry.defaultKey },
+        song: { title: entry.title, songId: entry.id, key: entry.defaultKey },
         rules: capo,
       });
       entry.missingFor = missing.none;
@@ -195,7 +218,7 @@ export function buildCandidates(input: {
     entry.collection ??= indexSong?.collection ?? null;
   }
 
-  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...byId.values()].sort((a, b) => a.title.localeCompare(b.title) || (a.number ?? "").localeCompare(b.number ?? "", undefined, { numeric: true }) || a.id.localeCompare(b.id));
 }
 
 /**
@@ -311,7 +334,7 @@ export interface SheetMusicFinding {
   key: string | null;
 }
 
-export type SheetMusicCheck = (song: { title: string; number: string | null }) => SheetMusicFinding;
+export type SheetMusicCheck = (song: SongReference) => SheetMusicFinding;
 
 /** Who is missing a song's sheet music, and how. */
 export interface MissingSheetMusic {
@@ -334,7 +357,7 @@ export interface MissingSheetMusic {
 export function missingSheetMusic(
   song: IndexSong,
   musicians: readonly PlannerMusician[],
-  capo?: { song: { title: string; key: string | null }; rules: CapoRules },
+  capo?: { song: SongReference & { key: string | null }; rules: CapoRules },
 ): MissingSheetMusic {
   const relevant = musicians.filter((person) => person.typeIds.length > 0);
   const none = relevant.filter((person) => assignedFiles(song, person.typeIds, () => true).length === 0);
@@ -355,11 +378,12 @@ export function indexSheetMusicCheck(
   musicians: readonly PlannerMusician[],
   capo: CapoRules = NO_CAPO_RULES,
 ): SheetMusicCheck {
+  capo = resolveCapoRules(capo, indexEntries(index.songs));
   return (song) => {
     const indexSong = matchIndexSong(index, song, hymnalCollection);
     if (!indexSong) return { inIndex: false, hasFiles: false, missing: [], everyone: false, capo: [], key: null };
     const key = canonicalKey({ indexKeys: indexSong.keys });
-    const missing = missingSheetMusic(indexSong, musicians, { song: { title: song.title, key }, rules: capo });
+    const missing = missingSheetMusic(indexSong, musicians, { song: { ...song, songId: indexSong.id, key }, rules: capo });
     return {
       inIndex: true,
       hasFiles: sheetMusicStatus(indexSong) !== "none",
@@ -373,10 +397,9 @@ export function indexSheetMusicCheck(
 
 /** The sheet music check from the picker's candidates, which carry it to the browser. */
 export function candidateSheetMusicCheck(candidates: ReadonlyMap<string, CandidateSong>): SheetMusicCheck {
+  const entries = [...candidates.values()];
   return (song) => {
-    const candidate = [...candidates.values()].find(
-      (item) => songKey(item.title) === songKey(song.title) && item.number === song.number,
-    ) ?? candidates.get(songKey(song.title));
+    const candidate = resolveSong(song, entries);
     return {
       inIndex: candidate?.inIndex ?? false,
       hasFiles: candidate?.sheetMusic === "complete" || candidate?.sheetMusic === "partial",
@@ -392,9 +415,12 @@ export function serviceSignals(input: {
   service: { startsAt: string; date: string; slots: PlanSlots };
   past: readonly DatedService[];
   /** Other services still to come (drafts included), with their songs. */
-  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<{ title: string }> }>;
+  planned: ReadonlyArray<{ startsAt: string; songs: ReadonlyArray<SongReference> }>;
   /** The sheet music check for a song; null when the Sheet Music Index cannot be read. */
   sheetMusic: SheetMusicCheck | null;
+  /** Known arrangements for resolving old references without assigning ambiguous titles. */
+  identities?: readonly IdentityEntry[];
+  hymnalCollection?: string;
   recentDays?: number;
 }): PlanningSignal[] {
   const { service, past, planned, sheetMusic } = input;
@@ -402,10 +428,18 @@ export function serviceSignals(input: {
   const start = Date.parse(service.startsAt);
   const songs = service.slots.filter((song) => song !== null);
   const signals: PlanningSignal[] = [];
+  const hymnalCollection = input.hymnalCollection ?? siteConfig.sheetMusic.hymnalCollection;
+  // Direct callers may have only service records. Numbered and explicit
+  // references provide local evidence; duplicate titles still stay ambiguous.
+  const identities = referenceEntries(
+    [...songs, ...past.flatMap((other) => other.songs), ...planned.flatMap((other) => other.songs)],
+    input.identities ?? [], hymnalCollection,
+  );
+  const identity = (song: SongReference) => songIdentity(song, identities, hymnalCollection);
 
   const seen = new Set<string>();
   for (const song of songs) {
-    const id = songKey(song.title);
+    const id = identity(song);
     if (seen.has(id)) signals.push({ kind: "duplicate", title: song.title });
     seen.add(id);
   }
@@ -413,18 +447,18 @@ export function serviceSignals(input: {
   const earlier = [...past]
     .filter((other) => Date.parse(other.startsAt) < start)
     .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
-  const seasonal = christmasSongs([...past]);
+  const seasonal = christmasSongs(past.map((other) => ({ ...other, songs: other.songs.map((song) => identifySong(song, identities, hymnalCollection)) })));
   const inSeason = inChristmasSeason(service.date);
   const findings: Array<{ song: (typeof songs)[number]; finding: SheetMusicFinding }> = [];
 
   for (const id of seen) {
-    const song = songs.find((candidate) => songKey(candidate.title) === id)!;
+    const song = songs.find((candidate) => identity(candidate) === id)!;
 
     // The week's insert is meant to be sung in each of the week's services:
     // repeating it within its own week is the plan, not something to flag.
     const sameWeek = (startsAt: string) => isInsert(song) && weekStartOf(startsAt.slice(0, 10)) === weekStartOf(service.date);
 
-    const last = earlier.find((other) => other.songs.some((sung) => songKey(sung.title) === id));
+    const last = earlier.find((other) => other.songs.some((sung) => identity(sung) === id));
     if (last && !sameWeek(last.startsAt)) {
       const days = Math.floor((start - Date.parse(last.startsAt)) / DAY_MS);
       if (days <= recentDays) signals.push({ kind: "recently-sung", title: song.title, at: last.startsAt, days });
@@ -434,7 +468,7 @@ export function serviceSignals(input: {
       .filter((other) => other.startsAt !== service.startsAt)
       .filter((other) => Math.abs(Date.parse(other.startsAt) - start) <= recentDays * DAY_MS)
       .filter((other) => !sameWeek(other.startsAt))
-      .find((other) => other.songs.some((planned) => songKey(planned.title) === id));
+      .find((other) => other.songs.some((planned) => identity(planned) === id));
     if (nearby) signals.push({ kind: "planned-nearby", title: song.title, at: nearby.startsAt });
 
     if (!inSeason && seasonal.has(id)) signals.push({ kind: "out-of-season", title: song.title });
@@ -470,11 +504,11 @@ export function serviceSignals(input: {
       const together = earlier.find(
         (other) =>
           Date.parse(other.startsAt) > start - PAIR_WINDOW_DAYS * DAY_MS &&
-          other.songs.some((sung) => songKey(sung.title) === ids[a]) &&
-          other.songs.some((sung) => songKey(sung.title) === ids[b]),
+          other.songs.some((sung) => identity(sung) === ids[a]) &&
+          other.songs.some((sung) => identity(sung) === ids[b]),
       );
       if (together) {
-        const titleOf = (id: string) => songs.find((song) => songKey(song.title) === id)!.title;
+        const titleOf = (id: string) => songs.find((song) => identity(song) === id)!.title;
         signals.push({ kind: "repeated-pair", titles: [titleOf(ids[a]), titleOf(ids[b])], at: together.startsAt });
       }
     }

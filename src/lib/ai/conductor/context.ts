@@ -61,9 +61,11 @@ export interface ConductorPageContext {
 
 const ANCHOR = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])-(am|pm)$/;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** A 2048-character unresolved identity plus a readable title. */
+export const SONG_ADDRESS_MAX = 2304;
 
 const isAnchor = (value: string | undefined): value is string => value !== undefined && ANCHOR.test(value);
-const isSlug = (value: string | undefined): value is string => value !== undefined && value.length <= 120 && SLUG.test(value);
+const isSlug = (value: string | undefined): value is string => value !== undefined && value.length <= SONG_ADDRESS_MAX && SLUG.test(value);
 const isYear = (value: number) => Number.isInteger(value) && value >= 2000 && value <= 2100;
 
 /** The context of the page at `pathname`. Unknown pages are simply "other". */
@@ -101,7 +103,7 @@ export function pageContextFor(pathname: string): ConductorPageContext {
 const contextSchema = z.object({
   area: z.enum(CONDUCTOR_AREAS),
   service: z.string().regex(ANCHOR).optional(),
-  song: z.string().max(120).regex(SLUG).optional(),
+  song: z.string().max(SONG_ADDRESS_MAX).regex(SLUG).optional(),
   year: z.number().int().min(2000).max(2100).optional(),
   // Checked on its own (planSchema): a bad plan never costs the rest of the page.
   plan: z.unknown().optional(),
@@ -137,7 +139,7 @@ export function normalizePageContext(value: unknown): ConductorPageContext | nul
 function placeLine(song: PlanSlots[number], index: number): string {
   if (!song) return `${index + 1}. (empty)`;
   const what = song.number ? `hymn ${JSON.stringify(song.number)}` : "insert";
-  return `${index + 1}. ${JSON.stringify(song.title)} (${what})${song.key ? `, key ${JSON.stringify(song.key)}` : ""}`;
+  return `${index + 1}. ${JSON.stringify(song.title)} (${what})${song.songId ? `, Song ID ${JSON.stringify(song.songId)}` : ""}${song.collection ? `, collection ${JSON.stringify(song.collection)}` : ""}${song.key ? `, key ${JSON.stringify(song.key)}` : ""}`;
 }
 
 const AREA_NAMES: Record<ConductorArea, string | null> = {
@@ -173,7 +175,7 @@ export function describePageContext(context: ConductorPageContext | null): strin
   }
   if (context.song) {
     lines.push(
-      `The song on that page has the address "${context.song}" (search for "${context.song.replace(/-/g, " ")}"). "This song" and "it" mean that song: look it up with the tools before saying anything about it.`,
+      `The song on that page has the address "${context.song}" (search for "${context.song}"). "This song" and "it" mean that song: look it up with the tools before saying anything about it.`,
     );
   }
   if (context.year) lines.push(`The year on that page is ${context.year}.`);

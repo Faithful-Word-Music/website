@@ -1,3 +1,4 @@
+import { songIdentity } from "@/lib/song-identity";
 import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -49,7 +50,6 @@ import { brushUpSongs, quarterGlance } from "@/lib/dashboard/repertoire";
 import { findSheetGaps } from "@/lib/dashboard/sheet-gaps";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { buildSongRecords } from "@/lib/song-history";
-import { songKey } from "@/lib/song-list";
 
 export const metadata: Metadata = {
   title: dashboardContent.eyebrow,
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
             ...packetTypes,
           }
         : null;
-  const upcomingKeys = new Set(music.upcoming.flatMap((service) => service.songs.map((song) => songKey(song.title))));
+  const upcomingKeys = new Set(music.upcoming.flatMap((service) => service.songs.map((song) => songIdentity(song))));
   const recentSheets = music.index
     ? newSheetMusic(
         [...music.upcoming.flatMap((service) => service.songs), ...buildSongRecords(music.past)],

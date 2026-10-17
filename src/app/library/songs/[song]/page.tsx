@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
@@ -13,7 +13,7 @@ import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
-import { getSongPage, type SongPlay } from "@/lib/song-archive";
+import { getSongChoices, getSongPage, type SongPlay } from "@/lib/song-archive";
 import type { Companion } from "@/lib/song-history";
 import { churchYear, formatChurchTime, formatDayDate } from "@/lib/service-time";
 import { songPath } from "@/lib/song-list";
@@ -41,7 +41,7 @@ export async function generateMetadata({
 }: PageProps<"/library/songs/[song]">): Promise<Metadata> {
   const { song } = await params;
   const data = await getSongPage(song);
-  if (!data) return { title: songPage.notFoundTitle };
+  if (!data) return { title: (await getSongChoices(song)).length > 1 ? "Choose a song arrangement" : songPage.notFoundTitle, robots: { index: false } };
 
   const description = `${data.title}: sung ${data.plays.length} ${
     data.plays.length === 1 ? "time" : "times"
@@ -50,7 +50,8 @@ export async function generateMetadata({
   return {
     title: `${data.title} | ${songListContent.archive.title}`,
     description,
-    alternates: { canonical: songPath(song) },
+    alternates: { canonical: songPath(data.slug) },
+    openGraph: { url: songPath(data.slug) },
   };
 }
 
@@ -61,7 +62,21 @@ export async function generateMetadata({
 export default async function SongPage({ params }: PageProps<"/library/songs/[song]">) {
   const { song } = await params;
   const data = await getSongPage(song);
-  if (!data) notFound();
+  if (!data) {
+    const choices = await getSongChoices(song);
+    if (choices.length < 2) notFound();
+    return (
+      <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
+        <BackLink fallback="/library" skipSongPages />
+        <SectionHeading as="h1" title={choices[0].title} className="mt-6" />
+        <p className="mt-4 text-muted">Choose the arrangement you want to open.</p>
+        <ul className="mt-6 space-y-4">
+          {choices.map((choice) => <li key={choice.id}><SongLink {...choice} /> <span className="text-sm text-muted">{choice.number ? `#${choice.number} · ` : ""}{choice.collection ?? choice.songId}</span></li>)}
+        </ul>
+      </Container>
+    );
+  }
+  if (song !== data.slug) permanentRedirect(songPath(data.slug));
 
   const { title, number, plays, upcoming, companions, stats, sheetMusic, loadedAt } = data;
 
@@ -96,7 +111,7 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
         ) : null}
 
         {/* For people who look after the sheet music only; nothing for anyone else. */}
-        <SongCapoSetting title={title} number={number} className="mt-10" />
+        <SongCapoSetting title={title} number={number} songId={data.songId} collection={data.collection} className="mt-10" />
 
         {sheetMusic ? (
           <h2 id="singing" className="mt-12 font-display text-2xl text-ink">
@@ -171,7 +186,7 @@ function Companions({ companions }: { companions: Companion[] }) {
               className="flex items-baseline justify-between gap-4 px-5 py-3 sm:px-6"
             >
               <span className="min-w-0">
-                <SongLink title={companion.title} className="block text-ink" />
+                <SongLink {...companion} className="block text-ink" />
                 {companion.number ? (
                   <span className="tnum block text-xs text-muted">
                     {songPage.numberEyebrow.replace("{number}", companion.number)}

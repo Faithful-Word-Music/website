@@ -1,10 +1,13 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { applySchema, getSql } from "@/lib/db";
 import { toChurchIso } from "@/lib/service-time";
 import { songKey } from "@/lib/song-list";
-import type { ServiceSlot } from "@/types/song-list";
+import { resolveSong, type IdentityEntry } from "@/lib/song-identity";
+import type { ServiceSlot, Song } from "@/types/song-list";
 
 import {
   planSong,
@@ -38,8 +41,9 @@ import {
  *                          exactly one insert. Its rows are copied across once
  *                          per environment (copyWeekInserts) and it is then
  *                          left alone: never read, never written, never dropped
- *   catalog_songs          songs added in the planner, so a song can exist
- *                          before it has ever been sung
+ *   catalog_songs_v2       songs added in the planner, with durable identity
+ *   catalog_songs          legacy catalog retained for older deployments;
+ *                          copied repeatably per environment, never changed
  *
  * No authorization happens here: the server actions in
  * src/app/service-planner/actions.ts check manage_service_plans first.
@@ -135,6 +139,24 @@ const SCHEMA = [
      created_at  timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (clerk_env, title_key)
    )`,
+  `CREATE TABLE IF NOT EXISTS catalog_songs_v2 (
+     ${ENV},
+     song_id          text        NOT NULL,
+     indexed_song_id  text,
+     legacy_title_key text,
+     title_key        text        NOT NULL,
+     title            text        NOT NULL,
+     number           text,
+     collection       text,
+     default_key      text,
+     created_by       text,
+     created_at       timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, song_id),
+     UNIQUE (clerk_env, legacy_title_key)
+   )`,
+  `ALTER TABLE catalog_songs_v2 ADD COLUMN IF NOT EXISTS indexed_song_id text`,
+  `ALTER TABLE week_inserts ADD COLUMN IF NOT EXISTS song_id text`,
+  `ALTER TABLE week_inserts ADD COLUMN IF NOT EXISTS collection text`,
 ];
 
 export class PlannerUnavailableError extends Error {
@@ -232,12 +254,14 @@ function readSlots(value: PlanSlots | string): PlanSlots {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
     if (!item || typeof item !== "object" || typeof (item as { title?: unknown }).title !== "string") return null;
-    const song = item as { title: string; number?: unknown; key?: unknown };
+    const song = item as { title: string; number?: unknown; key?: unknown; songId?: unknown; collection?: unknown };
     // Whether it is an insert is read off the song, never taken from what was stored with it.
     return planSong({
       title: song.title,
       number: typeof song.number === "string" && song.number !== "" ? song.number : null,
       key: typeof song.key === "string" && song.key !== "" ? song.key : null,
+      ...(typeof song.songId === "string" && song.songId.trim() ? { songId: song.songId } : {}),
+      ...(typeof song.collection === "string" || song.collection === null ? { collection: song.collection } : {}),
     });
   });
 }
@@ -546,16 +570,18 @@ export async function scheduledServices(
 export async function listInsertWeeks(env: ClerkEnv, from: string, to: string): Promise<InsertWeek[]> {
   const sql = await copyWeekInserts(env);
   const rows = (await sql.query(
-    `SELECT to_char(week_start, 'YYYY-MM-DD') AS week_start, insert_index, title, number, key FROM week_inserts
+    `SELECT to_char(week_start, 'YYYY-MM-DD') AS week_start, insert_index, title, number, key, song_id, collection FROM week_inserts
       WHERE clerk_env = $1 AND week_start BETWEEN $2::date AND $3::date ORDER BY week_start, insert_index`,
     [env, from, to],
-  )) as Array<{ week_start: string; insert_index: number; title: string; number: string | null; key: string | null }>;
+  )) as Array<{ week_start: string; insert_index: number; title: string; number: string | null; key: string | null; song_id?: string | null; collection?: string | null }>;
   return rows.map((row) => ({
     weekStart: row.week_start,
     index: row.insert_index === 2 ? 2 : 1,
     title: row.title,
     number: row.number,
     key: row.key,
+    ...(row.song_id ? { songId: row.song_id } : {}),
+    ...(row.collection != null ? { collection: row.collection } : {}),
   }));
 }
 
@@ -567,24 +593,25 @@ export async function listInsertWeeks(env: ClerkEnv, from: string, to: string): 
 export async function setWeekInserts(
   env: ClerkEnv,
   weekStart: string,
-  inserts: ReadonlyArray<{ title: string; number: string | null; key: string | null }>,
+  inserts: ReadonlyArray<Pick<Song, "title" | "number" | "key" | "songId" | "collection">>,
   actor: string,
 ): Promise<void> {
   const sql = await copyWeekInserts(env);
   await sql.query(
     `WITH wanted AS (
        SELECT * FROM jsonb_to_recordset($3::jsonb)
-         AS item(insert_index smallint, title text, number text, key text, title_key text)
+         AS item(insert_index smallint, title text, number text, key text, title_key text, song_id text, collection text)
      ), removed AS (
        DELETE FROM week_inserts
         WHERE clerk_env = $1 AND week_start = $2::date
           AND insert_index NOT IN (SELECT insert_index FROM wanted)
      )
-     INSERT INTO week_inserts (clerk_env, week_start, insert_index, title, number, key, title_key, updated_by)
-     SELECT $1, $2::date, insert_index, title, number, key, title_key, $4 FROM wanted
+     INSERT INTO week_inserts (clerk_env, week_start, insert_index, title, number, key, title_key, song_id, collection, updated_by)
+     SELECT $1, $2::date, insert_index, title, number, key, title_key, song_id, collection, $4 FROM wanted
      ON CONFLICT (clerk_env, week_start, insert_index)
      DO UPDATE SET title = EXCLUDED.title, number = EXCLUDED.number, key = EXCLUDED.key,
-                   title_key = EXCLUDED.title_key, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+                   title_key = EXCLUDED.title_key, song_id = EXCLUDED.song_id, collection = EXCLUDED.collection,
+                   updated_by = EXCLUDED.updated_by, updated_at = now()`,
     [
       env,
       weekStart,
@@ -595,6 +622,8 @@ export async function setWeekInserts(
           number: song.number,
           key: song.key,
           title_key: songKey(song.title),
+          song_id: song.songId ?? null,
+          collection: song.collection ?? null,
         })),
       ),
       actor,
@@ -607,19 +636,87 @@ export async function setWeekInserts(
 // ---------------------------------------------------------------------------
 
 export interface CatalogSong {
+  songId: string;
+  /** Original durable catalog ID, retained as an alias after index association. */
+  catalogId: string;
   title: string;
   number: string | null;
   collection: string | null;
   defaultKey: string | null;
 }
 
-export async function listCatalogSongs(env: ClerkEnv): Promise<CatalogSong[]> {
+/**
+ * Older Production code still writes catalog_songs. Copy only this caller's
+ * environment on every access, so additions made after Preview starts are
+ * picked up later. One atomic INSERT and both uniqueness constraints protect
+ * concurrent callers; no claim flag can permanently hide a late legacy row.
+ *
+ * The full namespaced digest is stored as a UUID-shaped catalog ID. The
+ * legacy key is retained separately, so later title edits cannot change the
+ * identity or cause the old spelling to be re-imported as a second record.
+ */
+async function copyCatalogSongs(env: ClerkEnv) {
   const sql = await plannerSql();
-  const rows = (await sql.query(
-    `SELECT title, number, collection, default_key FROM catalog_songs WHERE clerk_env = $1 ORDER BY title_key`,
+  await sql.query(
+    `INSERT INTO catalog_songs_v2
+       (clerk_env, song_id, legacy_title_key, title_key, title, number, collection, default_key, created_by, created_at)
+     SELECT clerk_env, 'catalog-' || (md5('faithful-word-catalog-v2:' || clerk_env || ':' || title_key)::uuid)::text,
+            title_key, title_key, title, number, collection, default_key, created_by, created_at
+       FROM catalog_songs
+      WHERE clerk_env = $1
+     ON CONFLICT (clerk_env, legacy_title_key) DO NOTHING`,
     [env],
-  )) as Array<{ title: string; number: string | null; collection: string | null; default_key: string | null }>;
+  );
+  return sql;
+}
+
+/**
+ * Only old title-key rows may acquire an index association from legacy
+ * evidence. New catalog UUIDs describe deliberate independent entries, even
+ * when their titles happen to match an index entry. Existing associations
+ * are never overwritten and survive an unavailable or edited index.
+ */
+async function associateMigratedCatalogSongs(
+  sql: Awaited<ReturnType<typeof plannerSql>>,
+  env: ClerkEnv,
+  entries: readonly IdentityEntry[],
+): Promise<void> {
+  if (entries.length === 0) return;
+  const rows = (await sql.query(
+    `SELECT song_id, title, number, collection FROM catalog_songs_v2
+      WHERE clerk_env = $1 AND legacy_title_key IS NOT NULL AND indexed_song_id IS NULL`,
+    [env],
+  )) as Array<{ song_id: string; title: string; number: string | null; collection: string | null }>;
+  const links = rows.flatMap((row) => {
+    const matched = resolveSong(row, entries);
+    return matched ? [{ catalogId: row.song_id, indexId: matched.id }] : [];
+  });
+  if (links.length === 0) return;
+  await sql.query(
+    `UPDATE catalog_songs_v2 AS catalog
+        SET indexed_song_id = links.indexed_song_id
+       FROM unnest($2::text[], $3::text[]) AS links(song_id, indexed_song_id)
+      WHERE catalog.clerk_env = $1 AND catalog.song_id = links.song_id
+        AND catalog.legacy_title_key IS NOT NULL AND catalog.indexed_song_id IS NULL`,
+    [env, links.map((link) => link.catalogId), links.map((link) => link.indexId)],
+  );
+}
+
+export async function associateCatalogSongs(env: ClerkEnv, entries: readonly IdentityEntry[]): Promise<void> {
+  const sql = await copyCatalogSongs(env);
+  await associateMigratedCatalogSongs(sql, env, entries);
+}
+
+export async function listCatalogSongs(env: ClerkEnv, entries: readonly IdentityEntry[] = []): Promise<CatalogSong[]> {
+  const sql = await copyCatalogSongs(env);
+  await associateMigratedCatalogSongs(sql, env, entries);
+  const rows = (await sql.query(
+    `SELECT song_id, indexed_song_id, title, number, collection, default_key FROM catalog_songs_v2 WHERE clerk_env = $1 ORDER BY title_key, song_id`,
+    [env],
+  )) as Array<{ song_id: string; indexed_song_id?: string | null; title: string; number: string | null; collection: string | null; default_key: string | null }>;
   return rows.map((row) => ({
+    songId: row.indexed_song_id ?? row.song_id,
+    catalogId: row.song_id,
     title: row.title,
     number: row.number,
     collection: row.collection,
@@ -627,15 +724,20 @@ export async function listCatalogSongs(env: ClerkEnv): Promise<CatalogSong[]> {
   }));
 }
 
-/** Adds a song to the catalog; false when a song with that title is already there. */
-export async function createCatalogSong(env: ClerkEnv, song: CatalogSong, actor: string): Promise<boolean> {
-  const sql = await plannerSql();
+/** Adds one identity; different songs may share a title. null means that ID already exists. */
+export async function createCatalogSong(
+  env: ClerkEnv,
+  song: Pick<CatalogSong, "title" | "number" | "collection" | "defaultKey"> & { songId?: string },
+  actor: string,
+): Promise<CatalogSong | null> {
+  const sql = await copyCatalogSongs(env);
+  const songId = song.songId || `catalog-${randomUUID()}`;
   const rows = (await sql.query(
-    `INSERT INTO catalog_songs (clerk_env, title_key, title, number, collection, default_key, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (clerk_env, title_key) DO NOTHING
-     RETURNING title_key`,
-    [env, songKey(song.title), song.title, song.number, song.collection, song.defaultKey, actor],
-  )) as Array<{ title_key: string }>;
-  return rows.length > 0;
+    `INSERT INTO catalog_songs_v2 (clerk_env, song_id, title_key, title, number, collection, default_key, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (clerk_env, song_id) DO NOTHING
+     RETURNING song_id`,
+    [env, songId, songKey(song.title), song.title, song.number, song.collection, song.defaultKey, actor],
+  )) as Array<{ song_id: string }>;
+  return rows[0] ? { ...song, songId: rows[0].song_id, catalogId: rows[0].song_id } : null;
 }

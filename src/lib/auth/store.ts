@@ -984,7 +984,7 @@ export async function setCapoPolicy(env: ClerkEnv, policy: CapoPolicy, actor: st
   );
 }
 
-/** Each song with its own capo setting, by songKey(). */
+/** Stored identity overrides and legacy title keys (the column name is retained). */
 async function songCapoRules(env: ClerkEnv): Promise<CapoRules["overrides"]> {
   const sql = await db(env);
   const rows = (await sql.query(`SELECT title_key, capo_rule FROM song_settings WHERE clerk_env = $1`, [env])) as Array<{
@@ -995,10 +995,10 @@ async function songCapoRules(env: ClerkEnv): Promise<CapoRules["overrides"]> {
 }
 
 /** Sets one song's capo setting; "global" puts it back on the policy. */
-export async function setSongCapoRule(env: ClerkEnv, titleKey: string, rule: SongCapoRule, actor: string): Promise<void> {
+export async function setSongCapoRule(env: ClerkEnv, titleKey: string, rule: SongCapoRule, actor: string, legacyKey?: string): Promise<void> {
   const sql = await db(env);
   if (rule === "global") {
-    await sql.query(`DELETE FROM song_settings WHERE clerk_env = $1 AND title_key = $2`, [env, titleKey]);
+    await sql.query(`DELETE FROM song_settings WHERE clerk_env = $1 AND title_key = ANY($2::text[])`, [env, [titleKey, ...(legacyKey ? [legacyKey] : [])]]);
     return;
   }
   await sql.query(
@@ -1012,7 +1012,17 @@ export async function setSongCapoRule(env: ClerkEnv, titleKey: string, rule: Son
 /** The policy and every song's own setting, as the checks take them. */
 export async function getCapoRules(env: ClerkEnv): Promise<CapoRules> {
   const [policy, overrides] = await Promise.all([getCapoPolicy(env), songCapoRules(env)]);
-  return { policy, overrides };
+  const { getSheetMusicIndex } = await import("@/lib/sheet-music-index");
+  const { indexEntries } = await import("@/lib/song-identity");
+  const { resolveCapoRules } = await import("@/lib/capo-policy");
+  const index = await getSheetMusicIndex();
+  const entries = index.ok ? indexEntries(index.index.songs) : [];
+  const { listCatalogSongs } = await import("@/lib/service-planner/store");
+  const catalog = await listCatalogSongs(env, entries).catch(() => []);
+  return resolveCapoRules({ policy, overrides }, [
+    ...entries,
+    ...catalog.map((song) => ({ id: song.songId, title: song.title, number: song.number, collection: song.collection })),
+  ]);
 }
 
 /**

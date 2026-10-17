@@ -1,4 +1,4 @@
-import { songKey } from "@/lib/song-list";
+import { songIdentity } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
 /**
@@ -77,7 +77,7 @@ export function christmasSongs(services: DatedService[]): Set<string> {
   for (const service of services) {
     const season = inChristmasSeason(service.date);
     for (const song of service.songs) {
-      const id = songKey(song.title);
+      const id = songIdentity(song);
       if (id !== "") (season ? inSeason : outOfSeason).add(id);
     }
   }

@@ -14,6 +14,8 @@ export type ArchiveSort = "mostSung" | "recent" | "longestAgo" | "title" | "numb
 
 export interface SongSummary {
   id: string;
+  songId?: string;
+  collection?: string | null;
   title: string;
   number: string | null;
   /** Times sung within the period. */
@@ -61,6 +63,8 @@ export function summarize(
 
     summaries.push({
       id: record.id,
+      songId: record.id,
+      collection: record.collection,
       title: record.title,
       number: record.number,
       count: countOf(record, plays),

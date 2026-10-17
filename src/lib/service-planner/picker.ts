@@ -28,9 +28,10 @@ export function matchRank(candidate: Pick<CandidateSong, "title" | "number" | "i
   }
   const key = songKey(typed);
   if (key === "") return null;
-  if (candidate.id === key) return 1;
-  if (candidate.id.startsWith(key)) return 2;
-  if (candidate.id.includes(key)) return 3;
+  const title = songKey(candidate.title);
+  if (title === key) return 1;
+  if (title.startsWith(key)) return 2;
+  if (title.includes(key)) return 3;
   return null;
 }
 
@@ -60,7 +61,7 @@ export function pickerResults(candidates: readonly CandidateSong[], query: strin
     return pool
       .map((candidate) => ({ candidate, rank: matchRank(candidate, query) }))
       .filter((item): item is { candidate: CandidateSong; rank: number } => item.rank !== null)
-      .sort((a, b) => a.rank - b.rank || b.candidate.playCount - a.candidate.playCount || a.candidate.id.localeCompare(b.candidate.id))
+      .sort((a, b) => a.rank - b.rank || b.candidate.playCount - a.candidate.playCount || a.candidate.title.localeCompare(b.candidate.title) || a.candidate.id.localeCompare(b.candidate.id))
       .slice(0, PICKER_LIMIT)
       .map(({ candidate }) => candidate);
   }
@@ -73,7 +74,7 @@ export function pickerResults(candidates: readonly CandidateSong[], query: strin
   if (options.only === "inserts") {
     // Every insert the church has sung, the longest rested first, then the ones it has not.
     return [...inSeason]
-      .sort((a, b) => Number(b.playCount > 0) - Number(a.playCount > 0) || lastSung(a).localeCompare(lastSung(b)) || a.id.localeCompare(b.id))
+      .sort((a, b) => Number(b.playCount > 0) - Number(a.playCount > 0) || lastSung(a).localeCompare(lastSung(b)) || a.title.localeCompare(b.title) || a.id.localeCompare(b.id))
       .slice(0, PICKER_LIMIT);
   }
 

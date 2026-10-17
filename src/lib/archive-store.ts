@@ -41,6 +41,8 @@ const SCHEMA = [
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS label text`,
   `ALTER TABLE services ADD COLUMN IF NOT EXISTS kind text`,
   `ALTER TABLE service_songs ADD COLUMN IF NOT EXISTS is_insert boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE service_songs ADD COLUMN IF NOT EXISTS song_id text`,
+  `ALTER TABLE service_songs ADD COLUMN IF NOT EXISTS collection text`,
 ];
 
 interface ServiceRow {
@@ -70,7 +72,8 @@ export async function loadStoredServices(): Promise<DatedService[] | null> {
            s.kind,
            COALESCE(
              json_agg(
-               json_build_object('number', ss.number, 'title', ss.title, 'key', ss.key, 'insert', ss.is_insert)
+               json_build_object('number', ss.number, 'title', ss.title, 'key', ss.key, 'insert', ss.is_insert,
+                                 'songId', ss.song_id, 'collection', ss.collection)
                ORDER BY ss.position
              ) FILTER (WHERE ss.service_id IS NOT NULL),
              '[]'
@@ -178,6 +181,8 @@ export async function saveServices(services: DatedService[], now: number): Promi
         key: song.key,
         title_key: songKey(song.title),
         is_insert: song.insert === true,
+        song_id: song.songId ?? null,
+        collection: song.collection ?? null,
       }));
       const idOf = `(SELECT id FROM services WHERE service_date = $1::date AND slot = $2)`;
 
@@ -195,10 +200,10 @@ export async function saveServices(services: DatedService[], now: number): Promi
           service.slot,
         ]),
         txn.query(
-          `INSERT INTO service_songs (service_id, position, number, title, key, title_key, is_insert)
-           SELECT ${idOf}, x.position, x.number, x.title, x.key, x.title_key, x.is_insert
+          `INSERT INTO service_songs (service_id, position, number, title, key, title_key, is_insert, song_id, collection)
+           SELECT ${idOf}, x.position, x.number, x.title, x.key, x.title_key, x.is_insert, x.song_id, x.collection
              FROM jsonb_to_recordset($3::jsonb)
-               AS x(position int, number text, title text, key text, title_key text, is_insert boolean)`,
+               AS x(position int, number text, title text, key text, title_key text, is_insert boolean, song_id text, collection text)`,
           [service.date, service.slot, JSON.stringify(songs)],
         ),
       ];

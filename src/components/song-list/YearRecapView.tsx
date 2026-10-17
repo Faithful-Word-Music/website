@@ -1,3 +1,4 @@
+import { songUrlSlug } from "@/lib/song-identity";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -8,7 +9,7 @@ import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
 import { plural } from "@/lib/plural";
 import { churchMonth, formatDayDate, formatLongDate } from "@/lib/service-time";
-import { songPath, songSlug } from "@/lib/song-list";
+import { songPath } from "@/lib/song-list";
 import { ONCE_EXAMPLES, type RecapSong, type YearRecap } from "@/lib/year-recap";
 
 const { yearRecap: copy } = songListContent;
@@ -27,7 +28,7 @@ export function formatGap(days: number): string {
   return `${Math.round(days / 365.25)} years`;
 }
 
-const songHref = (song: RecapSong) => songPath(songSlug(song.title));
+const songHref = (song: RecapSong) => songPath(songUrlSlug({ ...song, songId: song.id }));
 
 /** The opening sentence: the year's size in words, in the display face. */
 export function RecapLead({ recap }: { recap: YearRecap }) {

@@ -127,6 +127,18 @@ describe("songHint", () => {
 });
 
 describe("buildCompanions", () => {
+  it("keeps arrangements independent even with the same title and counts old numbered records separately", () => {
+    const one = service("2026-01-04", "AM", ["All Hail", "All Hail"]);
+    one.songs[0].number = "167";
+    one.songs[1].number = "168";
+    const records = buildSongRecords([one]);
+    expect(records).toHaveLength(2);
+    expect(records.map((record) => record.plays.length)).toEqual([1, 1]);
+    const explicit = service("2026-02-01", "AM", ["All Hail", "Renamed"]);
+    Object.assign(explicit.songs[0], { songId: "SSSH1989-167", number: "167" });
+    Object.assign(explicit.songs[1], { songId: "SSSH1989-167", number: "167" });
+    expect(buildSongRecords([explicit])).toHaveLength(1);
+  });
   const rules = { minTogether: 3, minShare: 0.33, limit: 3 };
   const idOf = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const titles = (services: DatedService[], title: string) =>

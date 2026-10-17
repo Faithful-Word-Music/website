@@ -48,7 +48,7 @@ import { addDays, type Occurrence } from "@/lib/availability/occurrences";
 import { dayOfWeek } from "@/lib/service-time";
 import { FRESH_DAYS } from "@/lib/song-history";
 import { serviceAnchor } from "@/lib/site-search";
-import { songKey } from "@/lib/song-list";
+import { sameSong, songIdentity, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import type { ServiceSlot, Song } from "@/types/song-list";
 
 export type PlanStatus = "draft" | "published" | "cancelled";
@@ -56,7 +56,7 @@ export type ServiceKind = "regular" | "special";
 export type InsertMode = "week" | "custom";
 
 /** One song in a planned service. The key belongs to this service, not the song. */
-export interface PlanSong {
+export interface PlanSong extends SongReference {
   title: string;
   number: string | null;
   key: string | null;
@@ -103,6 +103,8 @@ export interface InsertWeek {
   weekStart: string;
   /** 1 is the week's insert; 2 is the optional second. There is never a 2 without a 1. */
   index: InsertIndex;
+  songId?: string;
+  collection?: string | null;
   title: string;
   number: string | null;
   key: string | null;
@@ -162,8 +164,12 @@ export function recordedInsert(song: Pick<Song, "number" | "insert">): boolean {
 }
 
 /** A song as a place in a service. The only way one is made, so `insert` always follows the number. */
-export function planSong(song: { title: string; number: string | null; key: string | null }): PlanSong {
-  return { title: song.title, number: song.number, key: song.key, insert: song.number === null };
+export function planSong(song: Pick<Song, "title" | "number" | "key" | "songId" | "collection">): PlanSong {
+  return {
+    title: song.title, number: song.number, key: song.key, insert: song.number === null,
+    ...(song.songId !== undefined ? { songId: song.songId } : {}),
+    ...(song.collection !== undefined ? { collection: song.collection } : {}),
+  };
 }
 
 /** Where a service's inserts stand, from 0, in order. */
@@ -177,7 +183,7 @@ export function emptySlots(count: number = defaultSongs): PlanSlots {
 }
 
 /** One of a week's inserts, as a place in a service. */
-export function insertSong(week: Pick<InsertWeek, "title" | "number" | "key">): PlanSong {
+export function insertSong(week: Pick<InsertWeek, "title" | "number" | "key" | "songId" | "collection">): PlanSong {
   return planSong(week);
 }
 
@@ -230,12 +236,12 @@ export function startingSlots(date: string, slot: ServiceSlot, inserts: readonly
 }
 
 /** Whether a stored service still shows its week's inserts as they are now: the same songs, keys and order. */
-export function followsWeek(slots: PlanSlots, inserts: readonly InsertWeek[]): boolean {
+export function followsWeek(slots: PlanSlots, inserts: readonly InsertWeek[], identities: readonly IdentityEntry[] = []): boolean {
   const current = insertPlaces(slots).map((index) => slots[index]!);
   const wanted = insertSongs(inserts);
   return (
     current.length === wanted.length &&
-    current.every((song, order) => songKey(song.title) === songKey(wanted[order].title) && song.key === wanted[order].key)
+    current.every((song, order) => sameSong(song, wanted[order], identities) && song.key === wanted[order].key)
   );
 }
 
@@ -257,8 +263,9 @@ export function insertUpdateFor(
   plan: Pick<StoredPlan, "date" | "slot" | "status" | "insertMode" | "slots" | "startsAt">,
   week: readonly InsertWeek[],
   now: number,
+  identities: readonly IdentityEntry[] = [],
 ): InsertUpdate {
-  if (plan.insertMode !== "week" || followsWeek(plan.slots, week)) return "leave";
+  if (plan.insertMode !== "week" || followsWeek(plan.slots, week, identities)) return "leave";
   return weekInsertChange(plan, now);
 }
 
@@ -287,9 +294,8 @@ function weekInsertChange(plan: Pick<PlannerService, "date" | "slot" | "status" 
 }
 
 /** Whether a service has any of these inserts among its songs, wherever it stands. */
-export function carriesInsert(slots: PlanSlots, inserts: readonly Pick<InsertWeek, "title">[]): boolean {
-  const wanted = new Set(inserts.map((insert) => songKey(insert.title)));
-  return slots.some((song) => song !== null && wanted.has(songKey(song.title)));
+export function carriesInsert(slots: PlanSlots, inserts: readonly SongReference[], identities: readonly IdentityEntry[] = []): boolean {
+  return slots.some((song) => song !== null && inserts.some((insert) => sameSong(song, insert, identities)));
 }
 
 /**
@@ -305,15 +311,16 @@ export function withWeekInsert(
   inserts: readonly InsertWeek[],
   weekStart: string,
   index: InsertIndex,
-  song: { title: string; number: string | null; key: string | null } | null,
+  song: Pick<Song, "title" | "number" | "key" | "songId" | "collection"> | null,
+  identities: readonly IdentityEntry[] = [],
 ): InsertWeek[] | null {
   const ordered = [...inserts].sort((a, b) => a.index - b.index);
   const at = Math.min(index, ordered.length + 1) - 1;
   const others = ordered.filter((_, position) => position !== at);
-  if (song && others.some((other) => songKey(other.title) === songKey(song.title))) return null;
+  if (song && others.some((other) => sameSong(other, song, identities))) return null;
 
   const next = song
-    ? [...ordered.slice(0, at), { title: song.title, number: song.number, key: song.key }, ...ordered.slice(at + 1)]
+    ? [...ordered.slice(0, at), planSong(song), ...ordered.slice(at + 1)]
     : others;
   return next.slice(0, MAX_WEEK_INSERTS).map((item, position) => ({
     weekStart,
@@ -321,6 +328,8 @@ export function withWeekInsert(
     title: item.title,
     number: item.number,
     key: item.key,
+    ...(item.songId !== undefined ? { songId: item.songId } : {}),
+    ...(item.collection !== undefined ? { collection: item.collection } : {}),
   }));
 }
 
@@ -387,7 +396,12 @@ export function parseAnchor(anchor: string): { date: string; slot: ServiceSlot }
 export function slotSongs(slots: PlanSlots): Song[] {
   return slots
     .filter((song): song is PlanSong => song !== null)
-    .map((song) => ({ number: song.number, title: song.title, key: song.key, ...(isInsert(song) ? { insert: true } : {}) }));
+    .map((song) => ({
+      number: song.number, title: song.title, key: song.key,
+      ...(song.songId !== undefined ? { songId: song.songId } : {}),
+      ...(song.collection !== undefined ? { collection: song.collection } : {}),
+      ...(isInsert(song) ? { insert: true } : {}),
+    }));
 }
 
 /** Where a service's empty places sit, for Service.pendingPositions. */
@@ -410,11 +424,11 @@ export type SongChange =
  * The difference between two versions of a service's places, song by song.
  * Positions are 1-based, as people count them.
  */
-export function diffSlots(before: PlanSlots, after: PlanSlots): SongChange[] {
+export function diffSlots(before: PlanSlots, after: PlanSlots, identities: readonly IdentityEntry[] = []): SongChange[] {
   const index = (slots: PlanSlots) => {
     const map = new Map<string, { song: PlanSong; position: number }>();
     slots.forEach((song, position) => {
-      if (song) map.set(songKey(song.title), { song, position: position + 1 });
+      if (song) map.set(songIdentity(song, identities), { song, position: position + 1 });
     });
     return map;
   };

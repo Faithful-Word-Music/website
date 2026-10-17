@@ -105,6 +105,11 @@ describe("the capo policy", () => {
 });
 
 describe("capo sheet music missing", () => {
+  it("does not share an override between explicit arrangement IDs", () => {
+    const rules: CapoRules = { policy: { ...DEFAULT_CAPO_POLICY, typeId: CAPO }, overrides: { "SSSH1989-167": "never", "all hail": "never" } };
+    expect(songNeedsCapo({ title: "All Hail", songId: "SSSH1989-167", key: "Ab" }, rules)).toBe(false);
+    expect(songNeedsCapo({ title: "All Hail", songId: "SSSH1989-168", key: "Ab" }, rules)).toBe(true);
+  });
   const rules: CapoRules = { policy: { ...DEFAULT_CAPO_POLICY, typeId: CAPO }, overrides: {} };
   const inKey = (key: string | null) => ({ title: "The Solid Rock", key });
 

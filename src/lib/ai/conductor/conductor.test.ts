@@ -131,7 +131,7 @@ describe("page context", () => {
     const service = describePageContext({ area: "service-planner", service: "2026-10-11-pm" })!;
     expect(service).toContain("Sunday, October 11, 2026");
     expect(service).toContain("date 2026-10-11, slot PM");
-    expect(describePageContext({ area: "library", song: "blessed-assurance" })).toContain('"blessed assurance"');
+    expect(describePageContext({ area: "library", song: "blessed-assurance" })).toContain('search for "blessed-assurance"');
     expect(describePageContext({ area: "other" })).toBeNull();
     expect(describePageContext(null)).toBeNull();
   });
@@ -149,9 +149,9 @@ describe("page context", () => {
       ...planner,
       plan: {
         slots: [
-          { title: "Amazing Grace", number: "244", key: "G", insert: false },
+          { title: "Amazing Grace", number: "244", collection: null, key: "G", insert: false },
           null,
-          { title: "Psalm 120", number: null, key: null, insert: true },
+          { title: "Psalm 120", number: null, collection: null, key: null, insert: true },
         ],
         unsaved: true,
       },
@@ -619,7 +619,7 @@ describe("Conductor's instructions", () => {
   it("adds the page, and says when drafts are out of reach", () => {
     const text = conductorInstructions({ now, context: { area: "library", song: "blessed-assurance" }, canPlan: false });
     expect(text).toContain("The page behind you");
-    expect(text).toContain("blessed assurance");
+    expect(text).toContain("blessed-assurance");
     expect(text).toContain("not drafts");
   });
 });

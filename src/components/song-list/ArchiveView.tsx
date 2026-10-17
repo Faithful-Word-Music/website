@@ -250,7 +250,7 @@ function ArchiveRow({
         {row.number ?? <span aria-hidden="true">·</span>}
       </td>
       <td className="py-3 pr-2 sm:pr-3">
-        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base"><SongLink title={row.title} /></span>
+        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base"><SongLink {...row} /></span>
         {/* Below 860px the keys column folds under the title: the least
             important detail, so the one that gives up its column. */}
         {keyText ? (

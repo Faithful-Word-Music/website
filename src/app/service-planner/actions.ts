@@ -2,6 +2,7 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 
+import { siteConfig } from "@/config/site";
 import { servicePlannerContent } from "@/content/service-planner";
 import { firstIssue } from "@/lib/auth/forms";
 import { withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
@@ -17,6 +18,8 @@ import { notifyBestEffort } from "@/lib/notifications/send";
 import { plural } from "@/lib/plural";
 import { SCHEDULE_TAG } from "@/lib/schedule";
 import { dayOfWeek } from "@/lib/service-time";
+import { getSheetMusicIndex } from "@/lib/sheet-music-index";
+import { identifySong, indexEntries, referenceEntries, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import { startsAtAt } from "@/lib/service-planner/format";
 import {
   insertWeekSchema,
@@ -26,10 +29,10 @@ import {
   specialServiceSchema,
   statusSchema,
 } from "@/lib/service-planner/forms";
+import { buildCandidates, insertPlacementIdentity } from "@/lib/service-planner/intelligence";
 import {
   diffSlots,
   emptySlots,
-  insertPlaces,
   insertRestoreFor,
   insertSongs,
   insertUpdateFor,
@@ -39,6 +42,7 @@ import {
   placeInserts,
   planSong,
   startingSlots,
+  slotSongs,
   withWeekInsert,
   type InsertWeek,
   type PlanSlots,
@@ -51,6 +55,7 @@ import {
   ensurePlan,
   getPlan,
   listInsertWeeks,
+  listCatalogSongs,
   listPlans,
   publishPlans,
   savePlan,
@@ -112,14 +117,12 @@ async function weekFor(viewer: Viewer, date: string): Promise<InsertWeek[]> {
   return listInsertWeeks(viewer.env, weekStart, weekStart);
 }
 
-/** Where a service's inserts are and what they are - to tell whether a save changed any of them. */
-function insertsOf(slots: PlanSlots): string {
-  return JSON.stringify(
-    insertPlaces(slots).map((index) => {
-      const song = slots[index]!;
-      return [index, song.title, song.key];
-    }),
-  );
+/** The same index and durable catalog associations used by the editor. */
+async function knownSongs(viewer: Viewer, refs: readonly SongReference[] = []): Promise<IdentityEntry[]> {
+  const index = await getSheetMusicIndex();
+  const catalog = await listCatalogSongs(viewer.env, indexEntries(index.ok ? index.index.songs : []));
+  const candidates = buildCandidates({ past: [], planned: [], catalog, index: index.ok ? index.index : null, hymnalCollection: siteConfig.sheetMusic.hymnalCollection });
+  return referenceEntries(refs, candidates);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,13 +152,15 @@ export async function saveService(
     if ((current?.revision ?? null) !== revision) return { ok: false, error: MESSAGES.conflict };
 
     const week = current ? [] : await weekFor(viewer, where.date);
-    const before = current?.slots ?? startingSlots(where.date, where.slot, week);
+    const previous = current?.slots ?? startingSlots(where.date, where.slot, week);
+    const identities = await knownSongs(viewer, [...previous, ...parsed.data.slots].filter((song) => song !== null));
+    const before = previous.map((song) => song ? identifySong(song, identities) : null);
     // Each song is made here from its title, number and key: whether it is an insert is not the browser's to say.
-    const slots: PlanSlots = parsed.data.slots.map((song) => (song ? planSong(song) : null));
+    const slots: PlanSlots = parsed.data.slots.map((song) => (song ? planSong(identifySong(song, identities)) : null));
     // A service follows its week's inserts until one of its own is changed here: moved, replaced
     // (by another insert, or by a hymn, which is then no insert at all), removed or added to.
-    const insertMode =
-      current?.insertMode === "custom" || insertsOf(before) !== insertsOf(slots) ? "custom" : "week";
+    const insertChanged = insertPlacementIdentity(before, identities) !== insertPlacementIdentity(slots, identities);
+    const insertMode = current?.insertMode === "custom" || insertChanged ? "custom" : "week";
 
     const kind = current?.kind ?? occurrence.kind;
     const saved = await savePlan(
@@ -396,10 +401,13 @@ export async function setInsertWeek(input: unknown): Promise<ActionResult<{ upda
     if (dayOfWeek(weekStart) !== 0) return { ok: false, error: MESSAGES.notSunday };
     if (song && !isInsert(song)) return { ok: false, error: MESSAGES.insertNumbered };
 
-    const week = withWeekInsert(await listInsertWeeks(viewer.env, weekStart, weekStart), weekStart, index, song);
+    const previous = await listInsertWeeks(viewer.env, weekStart, weekStart);
+    const identities = await knownSongs(viewer, [...previous, ...(song ? [song] : [])]);
+    const identify = <T extends SongReference>(item: T) => identifySong(item, identities);
+    const week = withWeekInsert(previous.map(identify), weekStart, index, song ? identify(song) : null);
     if (!week) return { ok: false, error: MESSAGES.insertTwice };
     await setWeekInserts(viewer.env, weekStart, week, viewer.userId);
-    const { updated, returned } = await passInsertOn(viewer, weekStart, week);
+    const { updated, returned } = await passInsertOn(viewer, weekStart, week, insertUpdateFor, identities);
     // Nothing is said of the insert itself - only of the published song lists it took back (passInsertOn).
 
     // The song list shows a planned insert on services not posted yet, and loses the ones returned to draft.
@@ -478,16 +486,21 @@ async function passInsertOn(
   weekStart: string,
   week: readonly InsertWeek[],
   decide: typeof insertUpdateFor = insertUpdateFor,
+  identities?: readonly IdentityEntry[],
 ): Promise<{ updated: number; returned: number }> {
   const now = Date.now();
   const plans = await listPlans(viewer.env, { from: weekStart, to: addDays(weekStart, 6) });
+  const references = [...week, ...plans.flatMap((plan) => slotSongs(plan.slots))];
+  const known = identities ? referenceEntries(references, identities) : await knownSongs(viewer, references);
+  const identifiedWeek = week.map((song) => identifySong(song, known));
   let updated = 0;
   const withdrawn: StoredPlan[] = [];
 
-  for (const plan of plans) {
-    const what = decide(plan, week, now);
+  for (const stored of plans) {
+    const plan = { ...stored, slots: stored.slots.map((song) => song ? identifySong(song, known) : null) };
+    const what = decide(plan, identifiedWeek, now);
     if (what === "leave") continue;
-    const slots = placeInserts(plan.slots, insertSongs(week));
+    const slots = placeInserts(plan.slots, insertSongs(identifiedWeek));
     const saved = await savePlan(
       viewer.env,
       { ...plan, slots, insertMode: "week" },
@@ -514,7 +527,7 @@ async function passInsertOn(
 /** Adds a new song to the catalog, so it can be planned (and has a Library page) before it is ever sung. */
 export async function createSong(
   input: unknown,
-): Promise<ActionResult<{ title: string; number: string | null; key: string | null }>> {
+): Promise<ActionResult<SongReference & { number: string | null; key: string | null }>> {
   return withPermission(PERMISSION, async (viewer) => {
     const parsed = newSongSchema.safeParse(input);
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
@@ -527,7 +540,7 @@ export async function createSong(
     refreshPlanner();
     return {
       ok: true,
-      value: { title: song.title, number: song.number, key: song.defaultKey },
+      value: { songId: created.songId, collection: created.collection, title: created.title, number: created.number, key: created.defaultKey },
       message: copy.newSong.created,
     };
   });

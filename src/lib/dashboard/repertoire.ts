@@ -20,7 +20,8 @@ import {
   type Quarter,
 } from "@/lib/quarterly-report";
 import { buildSongRecords, usageCount } from "@/lib/song-history";
-import { songKey, songSlug } from "@/lib/song-list";
+import { referenceEntries, songIdentity, songUrlSlug, type IdentityEntry } from "@/lib/song-identity";
+
 import type { DatedService } from "@/types/song-list";
 
 const DAY_MS = 86_400_000;
@@ -48,9 +49,11 @@ export function brushUpSongs(
   past: readonly DatedService[],
   upcoming: readonly DatedService[],
   now: number,
+  identities: readonly IdentityEntry[] = [],
 ): BrushUpSong[] {
+  identities = referenceEntries([...past, ...upcoming].flatMap((service) => service.songs).filter((song) => song.songId), identities);
   const lastSung = new Map<string, string>();
-  for (const record of buildSongRecords([...past])) {
+  for (const record of buildSongRecords([...past], identities)) {
     const last = record.plays[record.plays.length - 1];
     if (last) lastSung.set(record.id, last.startsAt);
   }
@@ -62,7 +65,7 @@ export function brushUpSongs(
     const at = Date.parse(service.startsAt);
     if (at <= now || at > horizon) continue;
     for (const song of service.songs) {
-      const key = songKey(song.title);
+      const key = songIdentity(song, identities);
       if (key === "" || seen.has(key)) continue;
       seen.add(key);
       const last = lastSung.get(key) ?? null;
@@ -70,7 +73,7 @@ export function brushUpSongs(
       songs.push({
         title: song.title,
         number: song.number,
-        slug: songSlug(song.title),
+        slug: songUrlSlug({ ...song, songId: key }),
         startsAt: service.startsAt,
         lastSung: last,
       });
@@ -112,7 +115,7 @@ export function quarterGlance(past: readonly DatedService[], now: number): Quart
 
   const records = buildSongRecords(services);
   const top = records
-    .map((record) => ({ title: record.title, count: usageCount(record, record.plays) }))
+    .map((record) => ({ ...record, title: record.title, count: usageCount(record, record.plays) }))
     .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))[0];
 
   return {
@@ -121,6 +124,6 @@ export function quarterGlance(past: readonly DatedService[], now: number): Quart
     current: sameQuarter(quarter, thisQuarter),
     services: services.length,
     differentSongs: records.length,
-    mostSung: top && top.count > 1 ? { title: top.title, slug: songSlug(top.title), count: top.count } : null,
+    mostSung: top && top.count > 1 ? { title: top.title, slug: songUrlSlug({ ...top, songId: top.id }), count: top.count } : null,
   };
 }

@@ -3,7 +3,7 @@ import { inChristmasSeason, seasonDates } from "@/lib/church-calendar";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
 import { isInsert, planSong, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
 import { dayOfWeek } from "@/lib/service-time";
-import { songKey } from "@/lib/song-list";
+import { identifySong, sameSong, songIdentity, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import type { DatedService, ServiceSlot } from "@/types/song-list";
 
 import { openPlaces } from "./locks";
@@ -78,7 +78,7 @@ export interface WeekService {
   service: string;
   /** sung: it has happened. planned: published. draft: still being planned. */
   status: "sung" | "planned" | "draft";
-  songs: Array<{ title: string; insert?: true }>;
+  songs: Array<SongReference & { insert?: true }>;
 }
 
 /** What the server read for a request (run.ts). */
@@ -178,10 +178,11 @@ export interface PlanBrief {
 /** A song the editor holds that the catalog does not know: it can be kept, and nothing is known of it. */
 function unknownSong(song: PlanSong): CandidateSong {
   return {
-    id: songKey(song.title),
+    id: songIdentity(song),
+    songId: songIdentity(song),
     title: song.title,
     number: song.number,
-    collection: null,
+    collection: song.collection ?? null,
     plays: [],
     playCount: 0,
     upcoming: [],
@@ -274,10 +275,10 @@ export function buildShortlist(input: {
 /** A candidate as the model is shown it: the song and the facts, looking from the service being planned. */
 export function describeCandidate(
   song: CandidateSong,
-  input: { startsAt: string; hymnal: string; week: readonly WeekService[]; openings: ReadonlyMap<string, string> },
+  input: { startsAt: string; hymnal: string; week: readonly WeekService[]; openings: ReadonlyMap<string, string>; identities?: readonly IdentityEntry[] },
 ): PlanCandidate {
   const facts = candidateFacts(song, input.startsAt);
-  const inWeek = input.week.filter((service) => service.songs.some((item) => songKey(item.title) === song.id)).map((service) => service.service);
+  const inWeek = input.week.filter((service) => service.songs.some((item) => sameSong(item, song, input.identities ?? [song], input.hymnal))).map((service) => service.service);
   const planned = [...new Set(facts.upcoming.map((at) => churchDate(Date.parse(at))))].slice(0, 3);
   const opening = input.openings.get(song.id);
   return {
@@ -303,12 +304,12 @@ export function buildBrief(
   library: LibraryFindings,
   hymnal: string,
 ): PlanBrief {
-  const slots: PlanSlots = request.slots.map((song) => (song ? planSong(song) : null));
+  const slots: PlanSlots = request.slots.map((song) => (song ? planSong(identifySong(song, context.candidates, hymnal)) : null));
   const { date, startsAt } = context.service;
   const instruction = request.instruction.trim();
   const strategy = request.mode === "generate" ? (request.strategy ?? "improve") : "improve";
   const known = new Map(context.candidates.map((song) => [song.id, song]));
-  const idOf = (song: PlanSong) => songKey(song.title);
+  const idOf = (song: PlanSong) => songIdentity(song, context.candidates, hymnal);
 
   const christmasOnly = inChristmasSeason(date)
     ? christmasEligible({ candidates: context.candidates, past: context.past, nativity: library.nativity })
@@ -372,9 +373,9 @@ export function buildBrief(
     week: context.week,
     instruction,
     candidates: shortlist
-      .map((song) => describeCandidate(song, { startsAt, hymnal, week: context.week, openings: library.openings }))
+      .map((song) => describeCandidate(song, { startsAt, hymnal, week: context.week, openings: library.openings, identities: context.candidates }))
       // By title, so the order says nothing about which to choose.
-      .sort((a, b) => a.id.localeCompare(b.id)),
+      .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id)),
     recordsBegin: [...context.past].sort((a, b) => a.date.localeCompare(b.date))[0]?.date ?? null,
     lyricsIndexed: library.lyricsIndexed,
     ...(request.mode === "replace" ? { target: (request.target ?? 0) + 1 } : {}),

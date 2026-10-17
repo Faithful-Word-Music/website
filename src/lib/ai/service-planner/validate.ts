@@ -1,6 +1,6 @@
 import { candidateFacts } from "@/lib/service-planner/intelligence";
 import { isInsert, planSong, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
-import { songKey } from "@/lib/song-list";
+import { songIdentity } from "@/lib/song-identity";
 
 import type { PlanBrief } from "./brief";
 import { SUGGESTIONS, type GeneratedPlan, type SuggestedSongs } from "./prompt";
@@ -41,7 +41,7 @@ export type AppliedPlan =
 /** The key a song newly put into this service takes: the planner's own suggestion, never the model's. */
 function newSong(brief: PlanBrief, id: string): PlanSong {
   const song = brief.songs.get(id)!;
-  return planSong({ title: song.title, number: song.number, key: candidateFacts(song, brief.startsAt).suggestedKey });
+  return planSong({ songId: song.id, title: song.title, number: song.number, collection: song.collection, key: candidateFacts(song, brief.startsAt).suggestedKey });
 }
 
 export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan {
@@ -69,7 +69,7 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
   if (problems.length > 0) return { ok: false, problems };
 
   // The songs the answer could not touch, then the ones it chose: no song twice.
-  const used = new Set(brief.slots.flatMap((song, index) => (song && !open.has(index) ? [songKey(song.title)] : [])));
+  const used = new Set(brief.slots.flatMap((song, index) => (song && !open.has(index) ? [songIdentity(song)] : [])));
   for (const [index, id] of chosen) {
     if (used.has(id)) problems.push(`"${id}" (place ${index + 1}) would be in the service twice.`);
     used.add(id);
@@ -79,7 +79,7 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
   const standing = new Map<string, { song: PlanSong; index: number }>();
   for (const index of brief.open) {
     const song = brief.slots[index];
-    if (song && !standing.has(songKey(song.title))) standing.set(songKey(song.title), { song, index });
+    if (song && !standing.has(songIdentity(song))) standing.set(songIdentity(song), { song, index });
   }
   // No insert the service did not have. One may go only where an insert stood - or be an insert that was
   // already here, moved - and there may be no more of them than there were places for.
@@ -102,7 +102,7 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
 
   /** An insert the answer left in its own place. */
   const keptInPlace = (index: number, id: string) =>
-    insertPlaces.has(index) && songKey(brief.slots[index]!.title) === id;
+    insertPlaces.has(index) && songIdentity(brief.slots[index]!) === id;
 
   if (brief.christmasOnly) {
     for (const [index, id] of chosen) {
@@ -122,7 +122,7 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
     // A song put where an insert stood is an insert if it has no hymnal number, and an ordinary song if
     // it has one: nothing here decides which.
     slots[index] = kept ? kept.song : newSong(brief, id);
-    if (!before || songKey(before.title) !== id) changed.push(index);
+    if (!before || songIdentity(before) !== id) changed.push(index);
   }
   return { ok: true, slots, changed: changed.sort((a, b) => a - b) };
 }
@@ -139,7 +139,7 @@ const REASON_CHARS = 240;
  * fails is dropped; an answer with none left is refused.
  */
 export function applySuggestions(brief: PlanBrief, answer: SuggestedSongs): AppliedSuggestions {
-  const inService = new Set(brief.slots.flatMap((song) => (song ? [songKey(song.title)] : [])));
+  const inService = new Set(brief.slots.flatMap((song) => (song ? [songIdentity(song)] : [])));
   const problems: string[] = [];
   const seen = new Set<string>();
   const suggestions: SongSuggestion[] = [];
@@ -157,8 +157,10 @@ export function applySuggestions(brief: PlanBrief, answer: SuggestedSongs): Appl
       const facts = candidateFacts(song, brief.startsAt);
       const words = reason.replace(/\s+/g, " ").trim();
       suggestions.push({
+        songId: song.id,
         title: song.title,
         number: song.number,
+        collection: song.collection,
         key: facts.suggestedKey,
         reason: words.length > REASON_CHARS ? `${words.slice(0, REASON_CHARS - 1).trimEnd()}…` : words,
         lastSung: facts.lastSung,

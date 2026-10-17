@@ -1,5 +1,5 @@
 import { isInsert, type PlanSlots, type PlanSong } from "@/lib/service-planner/model";
-import { songKey } from "@/lib/song-list";
+import { songIdentity } from "@/lib/song-identity";
 
 /**
  * AI locks: which songs of the service being planned Generate with AI must
@@ -18,7 +18,7 @@ import { songKey } from "@/lib/song-list";
  * Each insert is unlocked by itself. Unlocking one does not ask for it to be
  * changed: with no instruction it is still held where it is (openPlaces).
  *
- * What the person chose is kept by song (songKey), so a lock follows its song
+ * What the person chose is kept by song identity, so a lock follows its song
  * when the song is moved up or down.
  */
 
@@ -27,7 +27,7 @@ export type LockChoices = Readonly<Record<string, boolean>>;
 
 export function isAiLocked(song: PlanSong | null, choices: LockChoices): boolean {
   if (!song) return false;
-  return choices[songKey(song.title)] ?? isInsert(song);
+  return choices[songIdentity(song)] ?? isInsert(song);
 }
 
 /** Each place of the service, locked or not - what a request to generate carries. */
@@ -37,7 +37,7 @@ export function lockedPlaces(slots: PlanSlots, choices: LockChoices): boolean[] 
 
 /** `choices` with one song's lock turned the other way. */
 export function toggleAiLock(song: PlanSong, choices: LockChoices): LockChoices {
-  return { ...choices, [songKey(song.title)]: !isAiLocked(song, choices) };
+  return { ...choices, [songIdentity(song)]: !isAiLocked(song, choices) };
 }
 
 /**
@@ -52,8 +52,8 @@ export function locksAfterGeneration(choices: LockChoices, slots: PlanSlots, cha
   for (const index of changed) {
     const song = slots[index];
     if (!song) continue;
-    if (isInsert(song)) delete next[songKey(song.title)];
-    else next[songKey(song.title)] = false;
+    if (isInsert(song)) delete next[songIdentity(song)];
+    else next[songIdentity(song)] = false;
   }
   return next;
 }

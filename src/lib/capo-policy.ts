@@ -21,7 +21,7 @@
 import { keySignature } from "@/lib/key-signature";
 import type { IndexSong } from "@/lib/sheet-music";
 import { fileOfType } from "@/lib/sheet-music-type";
-import { songKey } from "@/lib/song-list";
+import { normalizeSongTitle, resolveSong, songIdentity, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 
 /** The most flats or sharps a key signature holds. */
 export const MAX_ACCIDENTALS = 7;
@@ -48,7 +48,7 @@ export function isSongCapoRule(value: unknown): value is SongCapoRule {
 /** The policy and every song's own setting, as the checks take them. */
 export interface CapoRules {
   policy: CapoPolicy;
-  /** By songKey(); a song not here follows the policy. */
+  /** By canonical identity; unresolved old title keys remain readable. */
   overrides: Readonly<Record<string, Exclude<SongCapoRule, "global">>>;
 }
 
@@ -91,24 +91,35 @@ export function capoRequired(
   return capoRequiredByKey(key, policy);
 }
 
-/** A song's own setting, by its title. */
-export function songCapoRule(title: string, rules: CapoRules): SongCapoRule {
-  return rules.overrides[songKey(title)] ?? "global";
+/** A song's own setting; an explicit identity never inherits a title override. */
+export function songCapoRule(song: string | SongReference, rules: CapoRules): SongCapoRule {
+  const id = typeof song === "string" ? normalizeSongTitle(song) : songIdentity(song);
+  return rules.overrides[id] ?? "global";
+}
+
+/** A legacy title override is applied to an indexed song only if unambiguous. */
+export function resolveCapoRules(rules: CapoRules, entries: readonly IdentityEntry[]): CapoRules {
+  const overrides = { ...rules.overrides };
+  for (const [key, rule] of Object.entries(rules.overrides)) {
+    const entry = resolveSong({ title: key }, entries);
+    if (entry && !(entry.id in overrides)) overrides[entry.id] = rule;
+  }
+  return { ...rules, overrides };
 }
 
 /** Whether this song (in its own key) needs capo sheet music. */
-export function songNeedsCapo(song: { title: string; key: string | null }, rules: CapoRules): boolean {
-  return capoRequired(song.key, rules.policy, songCapoRule(song.title, rules));
+export function songNeedsCapo(song: SongReference & { key: string | null }, rules: CapoRules): boolean {
+  return capoRequired(song.key, rules.policy, songCapoRule(song, rules));
 }
 
 /**
  * Whether a song needs capo sheet music and has none: no PDF of the capo
- * type. `song` is the song as the site names it (its own setting is kept
- * under that title) with its own key; `indexSong` its Index entry. False when
+ * type. `song` is the service's display reference with its own key;
+ * `indexSong` supplies the authoritative identity. False when
  * there is no capo type to ask for.
  */
-export function capoMissing(indexSong: IndexSong, song: { title: string; key: string | null }, rules: CapoRules): boolean {
+export function capoMissing(indexSong: IndexSong, song: SongReference & { key: string | null }, rules: CapoRules): boolean {
   const { typeId } = rules.policy;
-  if (typeId === null || !songNeedsCapo(song, rules)) return false;
+  if (typeId === null || !songNeedsCapo({ ...song, songId: indexSong.id }, rules)) return false;
   return fileOfType(indexSong, typeId, () => true) === null;
 }

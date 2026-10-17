@@ -10,6 +10,7 @@ import {
   candidateFacts,
   candidateSheetMusicCheck,
   indexSheetMusicCheck,
+  insertPlacementIdentity,
   missingSheetMusic,
   serviceAvailability,
   serviceSignals,
@@ -116,12 +117,135 @@ describe("candidates", () => {
   });
 });
 
+describe("arrangement identity", () => {
+  const title = "All Hail the Power of Jesus' Name";
+  const arrangements = {
+    ...index,
+    songs: [
+      { ...index.songs[0], id: "SSSH1989-167", title, hymnNumber: "167", keys: "G" },
+      { ...index.songs[0], id: "SSSH1989-168", title, hymnNumber: "168", keys: "Ab" },
+      { ...index.songs[0], id: "OTHER-168", title, collection: "Other Hymnal", hymnNumber: "168", keys: "D" },
+    ],
+  };
+  const reference = (number: string, songId?: string) => ({ title, number, key: number === "167" ? "G" : "Ab", songId });
+  const serviceWith = (date: string, songs: DatedService["songs"]): DatedService => ({ ...sung(date, []), songs });
+  const candidates = buildCandidates({
+    past: [
+      serviceWith("2026-10-04", [reference("167")]),
+      serviceWith("2026-09-27", [reference("168")]),
+      serviceWith("2026-09-20", [{ title, number: null, key: "G" }]),
+    ],
+    planned: [
+      { startsAt: "2026-10-18T10:30:00-07:00", songs: [reference("168", "SSSH1989-168")] },
+      { startsAt: "2026-10-21T19:00:00-07:00", songs: [{ title }] },
+    ],
+    catalog: [],
+    index: arrangements,
+    hymnalCollection: HYMNAL,
+  });
+
+  it("keeps collection-local numbers and ambiguous history independent", () => {
+    expect(candidates.find((song) => song.id === "SSSH1989-167")).toMatchObject({ playCount: 1, number: "167", upcoming: [], defaultKey: "G" });
+    expect(candidates.find((song) => song.id === "SSSH1989-168")).toMatchObject({ playCount: 1, number: "168", upcoming: ["2026-10-18T10:30:00-07:00"], defaultKey: "Ab" });
+    expect(candidates.find((song) => song.id === "OTHER-168")).toMatchObject({ playCount: 0, number: "168", collection: "Other Hymnal", defaultKey: "D" });
+    expect(candidates.filter((song) => !song.inIndex)).toHaveLength(1);
+  });
+
+  it("does not give ambiguous titles or unknown explicit IDs another arrangement's sheet music", () => {
+    const check = candidateSheetMusicCheck(new Map(candidates.map((candidate) => [candidate.id, candidate])));
+    expect(check({ title, number: null }).inIndex).toBe(false);
+    expect(check({ title, number: "167", songId: "missing-index-id" }).inIndex).toBe(false);
+    expect(check({ title: "Former title", number: "167", songId: "SSSH1989-168" }).key).toBe("Ab");
+  });
+
+  it("recognizes duplicate IDs despite edited titles, while distinct arrangements can coexist", () => {
+    const signals = serviceSignals({
+      service: { date: "2026-10-11", startsAt: "2026-10-11T10:30:00-07:00", slots: [
+        { ...reference("167", "SSSH1989-167"), insert: false },
+        { ...reference("168", "SSSH1989-168"), insert: false },
+        { ...reference("167", "SSSH1989-167"), title: "Older spelling", insert: false },
+      ] },
+      past: [], planned: [], sheetMusic: null,
+    });
+    expect(signals).toEqual([{ kind: "duplicate", title: "Older spelling" }]);
+  });
+
+  it("does not borrow another arrangement's recent play, planned appearance or pairing", () => {
+    const signals = serviceSignals({
+      service: { date: "2026-10-11", startsAt: "2026-10-11T10:30:00-07:00", slots: [
+        { ...reference("168", "SSSH1989-168"), insert: false },
+        { title: "Amazing Grace", number: "330", key: "G", songId: "S-1", insert: false },
+      ] },
+      past: [serviceWith("2026-10-04", [reference("167"), { title: "Amazing Grace", number: "330", key: "G" }])],
+      planned: [{ startsAt: "2026-10-18T10:30:00-07:00", songs: [reference("167")] }],
+      sheetMusic: null,
+      identities: [...candidates, { id: "S-1", title: "Amazing Grace", number: "330", collection: HYMNAL }],
+      hymnalCollection: HYMNAL,
+    });
+    expect(signals).toEqual([{ kind: "recently-sung", title: "Amazing Grace", at: "2026-10-04T10:30:00-07:00", days: 7 }]);
+  });
+
+  it("keeps explicit identities while the index is unavailable", () => {
+    const found = buildCandidates({
+      past: [serviceWith("2026-10-04", [reference("167", "SSSH1989-167"), reference("168", "SSSH1989-168")])],
+      planned: [], catalog: [], index: null, hymnalCollection: HYMNAL,
+    });
+    expect(found.map((song) => [song.id, song.playCount])).toEqual([["SSSH1989-167", 1], ["SSSH1989-168", 1]]);
+  });
+
+  it("resolves raw history and planned songs from canonical historical evidence during an index outage", () => {
+    const raw = { ...reference("168"), collection: HYMNAL };
+    const associated = { ...reference("168", "SSSH1989-168"), collection: HYMNAL };
+    for (const songs of [[raw, associated], [associated, raw]]) {
+      const found = buildCandidates({
+        past: [serviceWith("2026-10-04", songs), serviceWith("2026-09-27", [reference("167", "SSSH1989-167")])],
+        planned: [{ startsAt: "2026-10-18T10:30:00-07:00", songs: [raw] }],
+        catalog: [], index: null, hymnalCollection: HYMNAL,
+      });
+      expect(found.map((song) => [song.id, song.playCount, song.upcoming])).toEqual([
+        ["SSSH1989-167", 1, []],
+        ["SSSH1989-168", 2, ["2026-10-18T10:30:00-07:00"]],
+      ]);
+    }
+  });
+
+  it("uses indexed metadata for an explicitly identified catalog song with a stale number", () => {
+    const found = buildCandidates({
+      past: [], planned: [], index: arrangements, hymnalCollection: HYMNAL,
+      catalog: [{ songId: "SSSH1989-168", title: "Old spelling", number: "167", collection: HYMNAL, defaultKey: "G" }],
+    });
+    expect(found.find((song) => song.id === "SSSH1989-168")).toMatchObject({ number: "168", defaultKey: "Ab" });
+  });
+
+  it("keeps an explicitly identified unnumbered index entry unnumbered despite stale stored metadata", () => {
+    const found = buildCandidates({
+      past: [serviceWith("2026-10-04", [{ title: "Psalm 120", songId: "PS-120", collection: HYMNAL, number: "167", key: "G" }])],
+      planned: [], catalog: [], hymnalCollection: HYMNAL,
+      index: { ...index, songs: [{ ...index.songs[0], id: "PS-120", title: "Psalm 120", hymnNumber: null, collection: null, keys: "D" }] },
+    });
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ id: "PS-120", songId: "PS-120", number: null, collection: null, inIndex: true, defaultKey: "D", playCount: 1 });
+  });
+
+  it("retains the persisted catalog UUID association when reading old plans", () => {
+    const catalogId = "catalog-00000000-0000-4000-8000-000000000001";
+    const found = buildCandidates({
+      past: [serviceWith("2026-10-04", [reference("168", catalogId)])],
+      planned: [], index: arrangements, hymnalCollection: HYMNAL,
+      catalog: [{ songId: "SSSH1989-168", catalogId, title, number: "168", collection: HYMNAL, defaultKey: "Ab" }],
+    });
+    expect(found.filter((song) => song.playCount > 0).map((song) => song.id)).toEqual(["SSSH1989-168"]);
+    const check = candidateSheetMusicCheck(new Map(found.map((song) => [song.id, song])));
+    expect(check({ title, number: "168", songId: catalogId }).key).toBe("Ab");
+  });
+});
+
 describe("serviceSignals", () => {
   const slots = [
     // Hymns from the hymnal: each has its number. (A song without one is an insert, which is not flagged for repeating in its own week.)
-    { title: "Amazing Grace", number: "236", key: "G", insert: false },
+    { title: "Amazing Grace", number: "330", key: "G", insert: false },
     { title: "Victory in Jesus", number: "100", key: "Bb", insert: false },
-    { title: "Amazing Grace", number: "236", key: "G", insert: false },
+    { title: "Amazing Grace", number: "330", key: "G", insert: false },
     { title: "O Come All Ye Faithful", number: "401", key: "G", insert: false },
     null,
   ];
@@ -262,8 +386,8 @@ describe("capo sheet music", () => {
   });
 
   it("follows the song's own setting over the policy", () => {
-    const always: CapoRules = { ...rules, overrides: { "like a river glorious": "always" } };
-    const never: CapoRules = { ...rules, overrides: { "like a river glorious": "never" } };
+    const always: CapoRules = { ...rules, overrides: { "S-1": "always" } };
+    const never: CapoRules = { ...rules, overrides: { "S-1": "never" } };
     expect(missing(songIn("G", [STANDARD]), always).capo).toEqual(["Gil"]);
     expect(missing(songIn("Eb", [STANDARD]), never).capo).toEqual([]);
   });
@@ -293,6 +417,14 @@ describe("serviceAvailability", () => {
 });
 
 describe("the week's insert", () => {
+  it("compares an unchanged legacy insert with its identified editor copy", () => {
+    const identities = [{ id: "PS-120", title: "Psalm 120", number: null, collection: "Psalms" }];
+    const insert = { title: "Psalm 120", number: null, key: "D", insert: true };
+    expect(insertPlacementIdentity([null, null, insert], identities)).toBe('[[2,"PS-120","D"]]');
+    expect(insertPlacementIdentity([null, null, { ...insert, songId: "PS-120" }], identities)).toBe('[[2,"PS-120","D"]]');
+    expect(insertPlacementIdentity([null, null, { ...insert, songId: "PS-120-OTHER" }], identities)).toBe('[[2,"PS-120-OTHER","D"]]');
+  });
+
   it("is not flagged for being sung in each of its week's services", () => {
     const insert = { title: "Psalm 120", number: null, key: "D", insert: true };
     const signals = serviceSignals({

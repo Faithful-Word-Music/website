@@ -56,7 +56,7 @@ function describeKey(key: string): string {
  * this asks /api/account/song-capo once it knows who is looking, and shows
  * nothing to anyone else. The route checks the permission again.
  */
-export function SongCapoSetting({ title, number, className }: { title: string; number: string | null; className?: string }) {
+export function SongCapoSetting({ title, number, songId, collection, className }: { title: string; number: string | null; songId: string; collection?: string | null; className?: string }) {
   const { me } = useAccount();
   const allowed = Boolean(me?.permissions.includes("manage_sheet_music"));
   const [state, setState] = useState<CapoState | null>(null);
@@ -66,7 +66,7 @@ export function SongCapoSetting({ title, number, className }: { title: string; n
   useEffect(() => {
     if (!allowed) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ title, ...(number ? { number } : {}) });
+    const query = new URLSearchParams({ title, songId, ...(number ? { number } : {}), ...(collection ? { collection } : {}) });
     fetch(`/api/account/song-capo?${query}`, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : null))
       .then((data: unknown) => {
@@ -79,7 +79,7 @@ export function SongCapoSetting({ title, number, className }: { title: string; n
         // Offline, or left the page: the control simply does not appear.
       });
     return () => controller.abort();
-  }, [allowed, title, number]);
+  }, [allowed, title, number, songId, collection]);
 
   if (!allowed || !state) return null;
 
@@ -89,7 +89,7 @@ export function SongCapoSetting({ title, number, className }: { title: string; n
         const response = await fetch("/api/account/song-capo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, number, rule: choice }),
+          body: JSON.stringify({ title, number, songId, collection, rule: choice }),
         });
         const saved = parseState(await response.json().catch(() => null));
         if (!saved) return { ok: false, error: feedbackContent.failed };

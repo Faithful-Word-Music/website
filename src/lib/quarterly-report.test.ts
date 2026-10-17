@@ -57,7 +57,7 @@ describe("buildQuarterlyReport", () => {
     ...sundays("2025-10-05", 26, (week) => [
       ["1", "Holy, Holy, Holy", "D"],
       week % 4 === 0 ? ["3", "Amazing Grace", "G"] : [null, "Psalm 23", "F"],
-      ["50", week % 2 ? "It Is Well" : "Blessed Assurance", "C"],
+      [week % 2 ? "50" : "60", week % 2 ? "It Is Well" : "Blessed Assurance", "C"],
       ...(week % 5 === 0 ? [["95", "Doxology", "G"] as [string, string, string]] : []),
     ]),
     service("2025-12-25", "AM", [["5", "Joy to the World", "D"]]),
@@ -202,7 +202,7 @@ describe("renderQuarterlyReport", () => {
     service("2025-10-05", "AM", [["1", "Holy, Holy, Holy", "D"]]),
     service("2026-07-05", "AM", [[null, "<script>alert(1)</script>", "G"], ["2", "It Is Well", "C"]]),
     service("2026-07-08", "PM", [[null, "<script>alert(1)</script>", "G"]]),
-    service("2026-07-12", "AM", ["A", "B", "C", "D", "E", "F", "G", "H"].map((letter): [string, string, string] => ["9", `Song ${letter}`, "F"])),
+    service("2026-07-12", "AM", ["A", "B", "C", "D", "E", "F", "G", "H"].map((letter): [string, string, string] => [`${letter.charCodeAt(0)}`, `Song ${letter}`, "F"])),
   ];
   const email = renderQuarterlyReport(buildQuarterlyReport(history, [], at("2026-10-01")));
   // The same quarter with an insert sung in four separate weeks (its Sunday and

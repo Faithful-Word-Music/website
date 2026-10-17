@@ -1,7 +1,8 @@
+import { songIdentity } from "@/lib/song-identity";
 import { SORT_PRESETS, sortSummaries, summarize } from "@/lib/archive-view";
 import { churchMonth, churchYear } from "@/lib/service-time";
 import { buildSongRecords, countsByWeek, usageCount } from "@/lib/song-history";
-import { normalizeKey, songKey } from "@/lib/song-list";
+import { normalizeKey } from "@/lib/song-list";
 import type { DatedService, ServiceSlot } from "@/types/song-list";
 
 /**
@@ -140,7 +141,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
   for (const service of all) {
     const at = Date.parse(service.startsAt);
     for (const song of service.songs) {
-      const id = songKey(song.title);
+      const id = songIdentity(song);
       if (id === "") continue;
       const before = lastSung.get(id);
       if (before !== undefined && yearOf(service) === year) {
@@ -172,7 +173,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
     services: services.length,
     songsSung: services.reduce((sum, service) => sum + service.songs.length, 0),
     differentSongs: summaries.length,
-    differentHymns: new Set(summaries.flatMap((summary) => summary.number ?? [])).size,
+    differentHymns: summaries.filter((summary) => summary.number !== null).length,
     topSongs: summaries.slice(0, TOP_SONGS).map((summary) => ({
       id: summary.id,
       title: summary.title,
@@ -195,7 +196,7 @@ export function buildYearRecap(history: DatedService[], year: number, now: numbe
     firstSong:
       opening && firstSong
         ? {
-            id: songKey(firstSong.title),
+            id: songIdentity(firstSong),
             title: firstSong.title,
             number: firstSong.number,
             startsAt: opening.startsAt,

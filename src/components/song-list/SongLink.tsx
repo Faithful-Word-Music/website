@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
-import { songPath, songSlug } from "@/lib/song-list";
+import { songPath } from "@/lib/song-list";
+
+import { songUrlSlug, type SongReference } from "@/lib/song-identity";
 
 const base =
   "underline decoration-dotted decoration-gold/55 decoration-1 underline-offset-4 transition-[text-decoration-color,color] print:no-underline";
@@ -36,9 +38,10 @@ export function NewTabNote() {
 }
 
 /** A song title that opens that song's page. */
-export function SongLink({ title, className }: { title: string; className?: string }) {
+export function SongLink({ className, ...song }: SongReference & { className?: string }) {
+  const { title } = song;
   return (
-    <Link href={songPath(songSlug(title))} {...songLinkProps} className={cn(songLinkClasses, className)}>
+    <Link href={songPath(songUrlSlug(song))} {...songLinkProps} className={cn(songLinkClasses, className)}>
       {title}
       <NewTabNote />
     </Link>

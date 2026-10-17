@@ -139,11 +139,11 @@ describe("songLyrics", () => {
     expect("lyrics" in result).toBe(false);
   });
 
-  it("names a song from another book by its book, and the other books a song is in", () => {
-    expect(lyricsOf(found("his eye is on the sparrow"), SECTIONS, data()).song).toEqual({
+  it("names a song from another book by its own identity and book", () => {
+    expect(lyricsOf(found("OS-014"), SECTIONS, data()).song).toEqual({
+      songId: "OS-014",
       title: "His Eye Is on the Sparrow",
       collection: "Other Songs",
-      alsoIn: ["Songs & Hymns of Revival"],
     });
   });
 
@@ -161,7 +161,7 @@ describe("songLyrics", () => {
 });
 
 describe("lyricMatches", () => {
-  it("lists each song once with the section the words are in", () => {
+  it("lists each indexed arrangement once with the section the words are in", () => {
     const result = matchesOf(
       { mode: "phrase", hits: [hit(SPARROW_COPY, null, SECTIONS[0]), hit(SPARROW, null, SECTIONS[0]), hit(BEULAH, null, null)] },
       "land of corn",
@@ -169,9 +169,10 @@ describe("lyricMatches", () => {
       data(),
     );
     expect(result.matched).toBe("the exact phrase");
-    expect(result.songsMatching).toBe(2);
-    expect(result.songs?.[0]).toMatchObject({ title: "His Eye Is on the Sparrow", collection: "Other Songs", foundIn: { section: "Verse 1" }, timesSung: 0 });
-    expect(result.songs?.[1]).toMatchObject({ title: "Beulah Land", foundIn: { note: expect.stringContaining("one section into the next") } });
+    expect(result.songsMatching).toBe(3);
+    expect(result.songs?.[0]).toMatchObject({ songId: "SHR-198", title: "His Eye Is On The Sparrow", collection: "Songs & Hymns of Revival", foundIn: { section: "Verse 1" }, timesSung: 0 });
+    expect(result.songs?.[1]).toMatchObject({ songId: "OS-014", title: "His Eye Is on the Sparrow", collection: "Other Songs" });
+    expect(result.songs?.[2]).toMatchObject({ title: "Beulah Land", foundIn: { note: expect.stringContaining("one section into the next") } });
   });
 
   it("says when it fell back to the words in any order, when nothing matched, and when there is too little to search", () => {
@@ -199,7 +200,7 @@ describe("themeMatches", () => {
       "How Beautiful Heaven Must Be",
       "Sweet By and By",
       "Beulah Land",
-      "His Eye Is on the Sparrow",
+      "His Eye Is On The Sparrow",
     ]);
     expect(result.songs[0]).toMatchObject({ closeness: 0.61, closestSection: { section: "Refrain" }, timesSung: 1, lastSung: "2026-09-27" });
     expect(result.howToRead).toContain("not a verdict");
@@ -209,7 +210,7 @@ describe("themeMatches", () => {
   it("keeps only songs not sung lately and not already planned", () => {
     const result = themesOf(hits, "heaven", LIBRARY, data(), { notSungForDays: 60 });
     // Sweet By and By was sung yesterday, When We All Get to Heaven last week, Beulah Land is planned.
-    expect(result.songs.map((song) => song.title)).toEqual(["How Beautiful Heaven Must Be", "His Eye Is on the Sparrow"]);
+    expect(result.songs.map((song) => song.title)).toEqual(["How Beautiful Heaven Must Be", "His Eye Is On The Sparrow"]);
     expect(result).toMatchObject({ onlySongsNotSungForDays: 60, plannedSongsLeftOut: true });
   });
 
@@ -239,9 +240,9 @@ describe("themeMatches", () => {
 });
 
 describe("similarMatches", () => {
-  it("leaves out the song's own copies", () => {
-    const result = similarOf(found("his eye is on the sparrow"), [hit(SPARROW_COPY, 0.99), hit(SWEET, 0.5)], LIBRARY, data());
-    expect(result.songs.map((song) => song.title)).toEqual(["Sweet By and By"]);
+  it("leaves out the same Song ID and keeps other independently indexed arrangements", () => {
+    const result = similarOf(found("OS-014"), [hit(SPARROW, 1), hit(SPARROW_COPY, 0.99), hit(SWEET, 0.5)], LIBRARY, data());
+    expect(result.songs.map((song) => song.songId)).toEqual(["SHR-198", "SSSH1989-041"]);
   });
 
   it("says when the song has no lyrics, or has not been embedded yet", () => {

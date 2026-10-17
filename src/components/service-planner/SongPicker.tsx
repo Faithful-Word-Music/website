@@ -16,14 +16,14 @@ import type { SongSuggestion } from "@/lib/ai/service-planner/protocol";
 import { candidateFacts, type CandidateSong } from "@/lib/service-planner/intelligence";
 import { pickerResults } from "@/lib/service-planner/picker";
 import { formatAgo, formatShortDate } from "@/lib/service-time";
+import { songIdentity, type SongReference } from "@/lib/song-identity";
 
 import { SparkleIcon } from "./AiGenerate";
 import type { PlanAiOutcome } from "./ai-request";
 
 const copy = servicePlannerContent;
 
-export interface ChosenSong {
-  title: string;
+export interface ChosenSong extends SongReference {
   number: string | null;
   key: string | null;
 }
@@ -102,7 +102,7 @@ export function SongPicker({
   }, [activeIndex]);
 
   function choose({ candidate, facts }: (typeof results)[number]) {
-    onChoose({ title: candidate.title, number: candidate.number, key: facts.suggestedKey });
+    onChoose({ songId: candidate.id, title: candidate.title, number: candidate.number, collection: candidate.collection, key: facts.suggestedKey });
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -304,10 +304,10 @@ function AiSuggestions({
           <p className="px-3 text-xs font-semibold uppercase tracking-[0.14em] text-gold-dark">{words.heading}</p>
           <ul className="mt-1">
             {suggestions.map((song) => (
-              <li key={song.title}>
+              <li key={songIdentity(song)}>
                 <button
                   type="button"
-                  onClick={() => onChoose({ title: song.title, number: song.number, key: song.key })}
+                  onClick={() => onChoose({ songId: song.songId, title: song.title, number: song.number, collection: song.collection, key: song.key })}
                   className="flex w-full flex-col gap-1 rounded-lg px-3 py-3 text-left transition-colors hover:bg-gold/5"
                 >
                   <span className="flex flex-wrap items-baseline gap-2">

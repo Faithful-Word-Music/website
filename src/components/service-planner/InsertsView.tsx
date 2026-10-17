@@ -27,7 +27,8 @@ import {
   type InsertWeek,
   type PlannerService,
 } from "@/lib/service-planner/model";
-import { normalizeKey, songKey } from "@/lib/song-list";
+import { resolveSong } from "@/lib/song-identity";
+import { normalizeKey } from "@/lib/song-list";
 
 import { MonthTransition } from "./MonthTransition";
 import { Chevron } from "./Panel";
@@ -73,7 +74,7 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
    * saved in another: offered, never applied - the saved key is the plan.
    */
   const currentKeyOf = (insert: InsertWeek): string | null => {
-    const current = candidates.find((candidate) => candidate.id === songKey(insert.title))?.defaultKey ?? null;
+    const current = resolveSong(insert, candidates)?.defaultKey ?? null;
     return current && (!insert.key || normalizeKey(insert.key) !== normalizeKey(current)) ? current : null;
   };
 
@@ -99,7 +100,7 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
                 setInsertWeek({
                   weekStart: week.weekStart,
                   index: insert.index,
-                  song: { title: insert.title, number: insert.number, key },
+                  song: { songId: insert.songId, collection: insert.collection, title: insert.title, number: insert.number, key },
                 }),
               )
             }
