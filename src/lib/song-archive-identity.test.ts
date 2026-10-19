@@ -13,7 +13,7 @@ vi.mock("next/cache", () => ({ unstable_cache: (fn: unknown) => fn }));
 vi.mock("@/lib/archive-store", () => ({ loadStoredServices: async () => data.stored, saveServices: vi.fn() }));
 vi.mock("@/lib/schedule", () => ({ getSchedule: async () => ({ ok: true, months: data.months, published: data.published }), scheduleEnv: () => "development", publishedHistory: vi.fn() }));
 vi.mock("@/lib/service-planner/store", () => ({ listCatalogSongs: async () => data.catalog, plannerConfigured: () => true, listPlans: async () => [] }));
-vi.mock("@/lib/sheet-music-index", () => ({ getSheetMusicIndex: async () => data.index ? { ok: true, index: data.index } : { ok: false, reason: "unavailable" }, openDriveFile: data.open }));
+vi.mock("@/lib/sheet-music-index", () => ({ SHEET_MUSIC_TAG: "sheet-music-index", getSheetMusicIndex: async () => data.index ? { ok: true, index: data.index } : { ok: false, reason: "unavailable" }, openDriveFile: data.open }));
 vi.mock("@/lib/auth/session", () => ({ getViewer: async () => data.viewer }));
 
 const title = "All Hail the Power of Jesus' Name";

@@ -1,6 +1,7 @@
 import { identifySong, indexEntries, referenceEntries, songIdentity, songsForSlug, songUrlSlug, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
@@ -17,7 +18,7 @@ import {
   versionedFileHref,
 } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
-import { getSheetMusicIndex, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
+import { getSheetMusicIndex, SHEET_MUSIC_TAG, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
 import {
   buildCompanions,
   buildPlayIndex,
@@ -35,13 +36,17 @@ import type { DatedService, ServiceSlot, SongListResult, SongRecord } from "@/ty
 /** Cache tag for the stored archive; the nightly sync invalidates it. */
 export const ARCHIVE_TAG = "song-archive";
 
+/** Cache tag for the Service Planner's catalog songs; adding a song invalidates it. */
+export const CATALOG_TAG = "catalog-songs";
+
 /**
- * The stored archive, cached for an hour. The underlying data changes once a
- * night, when the sync runs and invalidates the tag.
+ * The stored archive. The underlying data changes once a night, when the sync
+ * runs and invalidates the tag, so the time limit is only a backstop
+ * (siteConfig.songList.dataRevalidateSeconds).
  */
 const getStoredServices = unstable_cache(loadStoredServices, ["song-archive-services"], {
   tags: [ARCHIVE_TAG],
-  revalidate: 3600,
+  revalidate: siteConfig.songList.dataRevalidateSeconds,
 });
 
 export interface SongHistory {
@@ -226,6 +231,33 @@ export type LibraryData =
   | { ok: false };
 
 /**
+ * The catalog as the public pages read it, shared across requests so that
+ * re-rendering a page does not wake the database. Keyed by environment (the
+ * argument). Only used when the Sheet Music Index was read, so the catalog's
+ * links to it are complete; adding a song (CATALOG_TAG) or refreshing the
+ * sheet music clears it.
+ */
+const getCachedCatalog = unstable_cache(
+  // `indexVersion` is only part of the key: when the Index's songs change, the
+  // catalog is linked to them afresh, as it was when it was read every time.
+  async (env: ReturnType<typeof scheduleEnv>, indexVersion: string): Promise<CatalogSong[]> => {
+    void indexVersion;
+    const index = await getSheetMusicIndex();
+    if (!index.ok) throw new Error("The Sheet Music Index is unavailable");
+    return listCatalogSongs(env, indexEntries(index.index.songs));
+  },
+  ["catalog-songs"],
+  { tags: [CATALOG_TAG, SHEET_MUSIC_TAG], revalidate: siteConfig.songList.dataRevalidateSeconds },
+);
+
+/** A short fingerprint of what the catalog is linked by: each Index song's ID, title, number and collection. */
+function indexVersionOf(songs: Parameters<typeof indexEntries>[0]): string {
+  const hash = createHash("sha256");
+  for (const { id, title, hymnNumber, collection } of songs) hash.update(`${id}\u0000${title}\u0000${hymnNumber ?? ""}\u0000${collection ?? ""}\u0001`);
+  return hash.digest("base64url");
+}
+
+/**
  * Songs added in the Service Planner's catalog - new songs that may not have
  * been sung yet. Empty (never an error) when the planner cannot be read.
  * Read once per request.
@@ -234,7 +266,9 @@ const catalogSongs = cache(async (): Promise<CatalogSong[]> => {
   if (!plannerConfigured()) return [];
   try {
     const index = await getSheetMusicIndex();
-    return await listCatalogSongs(scheduleEnv(), index.ok ? indexEntries(index.index.songs) : []);
+    // Without the Index, read directly (as before) rather than keep a partial answer.
+    if (!index.ok) return await listCatalogSongs(scheduleEnv(), []);
+    return await getCachedCatalog(scheduleEnv(), indexVersionOf(index.index.songs));
   } catch (error) {
     console.error("[song-archive] Could not read the catalog:", error instanceof Error ? error.message : "unknown error");
     return [];

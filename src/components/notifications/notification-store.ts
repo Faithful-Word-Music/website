@@ -21,16 +21,24 @@ import type { NotificationPage } from "@/lib/notifications/service";
  * here: the installed app's icon badge does (PushSync.tsx).
  *
  * Kept fresh without a socket: asked again when a page is opened, when the
- * tab is looked at again, and every two minutes while it is in view
- * (useNotificationSync) - unless the count came in within the last few
- * seconds - and at once when a push arrives or is tapped, which the service
- * worker tells every open page (PushSync.tsx).
+ * tab is looked at again, and every two minutes while it is in view and
+ * someone is using it (useNotificationSync) - unless the count came in within
+ * the last few seconds - and at once when a push arrives or is tapped, which
+ * the service worker tells every open page (PushSync.tsx).
+ *
+ * A tab left open with nobody using it stops asking after IDLE_MS, and asks
+ * again as soon as someone does: each ask wakes the database, which is billed
+ * for every few minutes it stays awake. Tabs of the same person share the
+ * count they get (BroadcastChannel), so several tabs ask about as often as one.
  */
 
 const ENDPOINT = "/api/account/notifications";
 const POLL_MS = 120_000;
 /** Opening a page or coming back to the tab asks nothing when the count is this fresh. */
 export const FRESH_MS = 15_000;
+/** No touch, click, key or scroll for this long, and the poll stops until there is. */
+export const IDLE_MS = 10 * 60_000;
+const CHANNEL = "fw-notifications-unread";
 
 export interface NotificationState {
   /** Whose these are; null when signed out. */
@@ -65,12 +73,22 @@ let state: NotificationState = EMPTY;
 let inFlight = 0;
 /** When `unread` last came from the server. */
 let countedAt = 0;
+/**
+ * How new the count held is: no server read behind it began after this. A
+ * count from another tab (or from a request that began earlier) only
+ * replaces it when its read began later.
+ */
+let countedFrom = 0;
 /** The count being asked for now, and for whom: a second reason to ask joins it. */
 let counting: { userId: string; done: Promise<void> } | null = null;
+/** When someone last touched, clicked, typed or scrolled in this tab. */
+let lastActivity = Date.now();
+/** Shares counts with this person's other tabs; null where unsupported or not yet open. */
+let channel: BroadcastChannel | null = null;
 const listeners = new Set<() => void>();
 
 function set(next: Partial<NotificationState>) {
-  if (next.counted) countedAt = Date.now();
+  if (next.counted) countedAt = countedFrom = Date.now();
   state = { ...state, ...next };
   listeners.forEach((listener) => listener());
 }
@@ -83,6 +101,8 @@ function subscribe(listener: () => void) {
 }
 
 const getSnapshot = () => state;
+/** The state as it stands, outside React (tests). */
+export const notificationSnapshot = getSnapshot;
 const getServerSnapshot = () => EMPTY;
 
 /** True while what came back is still for the person who asked. */
@@ -103,6 +123,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T | null> {
 export function setNotificationUser(userId: string | null) {
   if (state.userId === userId) return;
   state = { ...EMPTY, userId };
+  countedFrom = 0;
   listeners.forEach((listener) => listener());
 }
 
@@ -131,12 +152,75 @@ export async function refreshUnread(options: { ifStale?: boolean } = {}) {
 }
 
 async function askUnread(userId: string) {
+  const startedAt = Date.now();
   const data = await request<{ unread: number }>(`${ENDPOINT}/unread`);
   if (!data || !stillFor(userId)) return;
-  const changed = data.unread !== state.unread;
-  set({ unread: data.unread, counted: true });
+  // A newer count arrived while this one was on its way: keep that.
+  if (countedFrom > startedAt) return;
+  applyCount(data.unread);
+  countedFrom = startedAt;
+  try {
+    channel?.postMessage({ userId, unread: data.unread, at: startedAt } satisfies UnreadMessage);
+  } catch {
+    // Another tab just asks for itself.
+  }
+}
+
+/** A count from the server: shown, and a list already on show follows if it moved. */
+function applyCount(unread: number) {
+  const changed = unread !== state.unread;
+  set({ unread, counted: true });
   // Something arrived (or was read elsewhere): a list already on show follows.
   if (changed && state.loaded && !state.loading) void loadNotifications();
+}
+
+/** What one tab tells this person's other tabs: the count, whose it is, and when its read began. */
+export interface UnreadMessage {
+  userId: string;
+  unread: number;
+  at: number;
+}
+
+/**
+ * A count another tab got. Taken only when it is this tab's person, nothing
+ * here is waiting on the server, and its read began after the count held
+ * here - so an old or crossed message never puts back a stale number.
+ */
+export function receiveUnread(message: unknown) {
+  if (!message || typeof message !== "object") return;
+  const { userId, unread, at } = message as Partial<UnreadMessage>;
+  if (typeof userId !== "string" || typeof unread !== "number" || typeof at !== "number") return;
+  if (!Number.isInteger(unread) || unread < 0) return;
+  if (state.userId === null || state.userId !== userId) return;
+  if (inFlight > 0 || at <= countedFrom) return;
+  applyCount(unread);
+  countedFrom = at;
+}
+
+/** Someone touched, clicked, typed or scrolled: after an idle spell, a fresh count. */
+export function noteActivity(now = Date.now()) {
+  const wasIdle = now - lastActivity >= IDLE_MS;
+  lastActivity = now;
+  if (wasIdle && state.userId) void refreshUnread({ ifStale: true });
+}
+
+/** The poll's turn: asks only while the tab is in view and someone is using it. */
+export function pollUnread(now = Date.now()) {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  if (now - lastActivity >= IDLE_MS) return;
+  void refreshUnread({ ifStale: true });
+}
+
+/** Opens the channel to this browser's other tabs; returns how to close it. */
+export function openUnreadChannel(): () => void {
+  if (channel || typeof BroadcastChannel === "undefined") return () => undefined;
+  const opened = new BroadcastChannel(CHANNEL);
+  opened.onmessage = (event: MessageEvent) => receiveUnread(event.data);
+  channel = opened;
+  return () => {
+    if (channel === opened) channel = null;
+    opened.close();
+  };
 }
 
 /** Loads the newest page, replacing what was there. */
@@ -180,7 +264,7 @@ export function hydrateNotifications(userId: string, page: NotificationPage) {
   // page may have been rendered before that landed. What was just done here wins.
   const local = inFlight > 0 ? new Map(state.items.map((item) => [item.id, item.readAt])) : null;
   const items = local ? page.items.map((item) => (local.has(item.id) ? { ...item, readAt: local.get(item.id) ?? null } : item)) : page.items;
-  if (!local) countedAt = Date.now();
+  if (!local) countedAt = countedFrom = Date.now();
   state = {
     ...state,
     userId,
@@ -289,19 +373,30 @@ export function useNotificationSync(userId: string | null) {
   }, [userId, pathname]);
 
   // Coming back to the tab fires both events: the second joins the first.
+  // Coming back counts as using it, so the poll carries on from there.
   useEffect(() => {
     if (!userId) return;
     const visible = () => document.visibilityState === "visible";
     const onReturn = () => {
-      if (visible()) void refreshUnread({ ifStale: true });
+      if (!visible()) return;
+      noteActivity();
+      void refreshUnread({ ifStale: true });
     };
-    const timer = setInterval(onReturn, POLL_MS);
+    const onActivity = () => noteActivity();
+    const activity = ["pointerdown", "keydown", "touchstart", "scroll"] as const;
+    const options = { passive: true, capture: true };
+    noteActivity();
+    const closeChannel = openUnreadChannel();
+    const timer = setInterval(() => pollUnread(), POLL_MS);
     document.addEventListener("visibilitychange", onReturn);
     window.addEventListener("focus", onReturn);
+    activity.forEach((type) => window.addEventListener(type, onActivity, options));
     return () => {
       clearInterval(timer);
+      closeChannel();
       document.removeEventListener("visibilitychange", onReturn);
       window.removeEventListener("focus", onReturn);
+      activity.forEach((type) => window.removeEventListener(type, onActivity, options));
     };
   }, [userId]);
 }

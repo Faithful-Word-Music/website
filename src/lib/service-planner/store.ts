@@ -657,6 +657,25 @@ export interface CatalogSong {
  */
 async function copyCatalogSongs(env: ClerkEnv) {
   const sql = await plannerSql();
+  // Nothing writes the old table any more, so once this server has copied it
+  // for an environment there is nothing left to copy. Callers at the same
+  // moment share one copy; a failed one is forgotten and tried again. Each new
+  // server instance copies once more, which changes nothing (DO NOTHING).
+  let copying = catalogCopies.get(env);
+  if (!copying) {
+    copying = copyLegacyCatalog(sql, env);
+    catalogCopies.set(env, copying);
+    copying.catch(() => {
+      if (catalogCopies.get(env) === copying) catalogCopies.delete(env);
+    });
+  }
+  await copying;
+  return sql;
+}
+
+const catalogCopies = new Map<ClerkEnv, Promise<void>>();
+
+async function copyLegacyCatalog(sql: Awaited<ReturnType<typeof plannerSql>>, env: ClerkEnv): Promise<void> {
   await sql.query(
     `INSERT INTO catalog_songs_v2
        (clerk_env, song_id, legacy_title_key, title_key, title, number, collection, default_key, created_by, created_at)
@@ -667,7 +686,6 @@ async function copyCatalogSongs(env: ClerkEnv) {
      ON CONFLICT (clerk_env, legacy_title_key) DO NOTHING`,
     [env],
   );
-  return sql;
 }
 
 /**

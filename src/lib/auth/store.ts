@@ -1,7 +1,9 @@
 import "server-only";
 
 import type { NeonQueryFunction } from "@neondatabase/serverless";
+import { unstable_cache } from "next/cache";
 
+import { siteConfig } from "@/config/site";
 import { NO_CAPO_RULES, parseCapoPolicy, type CapoPolicy, type CapoRules, type SongCapoRule } from "@/lib/capo-policy";
 import { applySchema, getSql } from "@/lib/db";
 import { ANYWHERE } from "@/lib/sheet-music";
@@ -896,6 +898,31 @@ export async function listSheetMusicTypes(env: ClerkEnv): Promise<SheetMusicType
 }
 
 /**
+ * Cache tag for the sheet music types as every page sorts files by them.
+ * Every change under Admin -> Configuration invalidates it
+ * (revalidateSheetMusicTypes in src/app/admin/actions.ts).
+ */
+export const SHEET_MUSIC_TYPES_TAG = "sheet-music-types";
+
+/**
+ * The types as the pages sort files by them, shared across requests so that
+ * re-rendering a page does not wake the database. Keyed by environment (the
+ * argument). Only what sorting needs is kept - not how many people have each.
+ */
+const getCachedSiteTypes = unstable_cache(
+  async (env: ClerkEnv): Promise<ConfiguredType[]> =>
+    (await listSheetMusicTypes(env)).map(({ id, label, legacyKey, legacyVariant, sources }) => ({
+      id,
+      label,
+      legacyKey,
+      legacyVariant,
+      sources,
+    })),
+  ["site-sheet-music-types"],
+  { tags: [SHEET_MUSIC_TYPES_TAG], revalidate: siteConfig.songList.dataRevalidateSeconds },
+);
+
+/**
  * The types for the public pages, which must never fail over them: the
  * defaults when accounts are not set up here or the list cannot be read.
  */
@@ -903,7 +930,7 @@ export async function sheetMusicTypesForSite(): Promise<ConfiguredType[]> {
   const config = currentClerkConfig();
   if (config.status !== "ready") return defaultTypes();
   try {
-    return await listSheetMusicTypes(config.env);
+    return await getCachedSiteTypes(config.env);
   } catch (error) {
     console.error(
       "[sheet-music] Could not read the sheet music types; using the defaults:",

@@ -59,6 +59,7 @@ import {
   renameSheetMusicType,
   setCapoPolicy,
   type OptionList,
+  SHEET_MUSIC_TYPES_TAG,
 } from "@/lib/auth/store";
 import { siteConfig } from "@/config/site";
 import { aiContent } from "@/content/ai";
@@ -617,6 +618,8 @@ export async function moveOptionAction(list: unknown, id: unknown, direction: un
 // ---------------------------------------------------------------------------
 
 function revalidateSheetMusicTypes() {
+  // The types every page sorts sheet music by, cached across requests.
+  updateTag(SHEET_MUSIC_TYPES_TAG);
   revalidatePath("/admin/configuration");
   revalidatePath("/admin/users", "layout");
   revalidatePath("/dashboard");

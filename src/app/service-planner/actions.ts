@@ -19,6 +19,7 @@ import { plural } from "@/lib/plural";
 import { SCHEDULE_TAG } from "@/lib/schedule";
 import { dayOfWeek } from "@/lib/service-time";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
+import { CATALOG_TAG } from "@/lib/song-archive";
 import { identifySong, indexEntries, referenceEntries, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import { startsAtAt } from "@/lib/service-planner/format";
 import {
@@ -358,6 +359,8 @@ export async function createSpecialService(input: unknown): Promise<ActionResult
 
     // Special services show in Availability as soon as they exist.
     refreshPlanner();
+    // A draft's insert mode reaches the song list (plannedInserts in src/lib/schedule.ts).
+    updateTag(SCHEDULE_TAG);
     revalidatePath("/availability");
     return { ok: true, value: { anchor: `${date}-${slot.toLowerCase()}` }, message: copy.special.created };
   });
@@ -372,6 +375,7 @@ export async function deleteSpecialService(input: unknown): Promise<ActionResult
     const deleted = await deleteDraftSpecial(viewer.env, where.date, where.slot);
     if (!deleted) return { ok: false, error: MESSAGES.notFound };
     refreshPlanner();
+    updateTag(SCHEDULE_TAG);
     revalidatePath("/availability");
     return { ok: true, value: null };
   });
@@ -535,6 +539,7 @@ export async function createSong(
     const created = await createCatalogSong(viewer.env, song, viewer.userId);
     if (!created) return { ok: false, error: copy.newSong.exists };
     // Its Library page exists at once.
+    updateTag(CATALOG_TAG);
     revalidatePath("/library");
     revalidatePath("/library/songs", "layout");
     refreshPlanner();

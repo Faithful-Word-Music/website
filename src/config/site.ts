@@ -72,6 +72,16 @@ export const siteConfig = {
      */
     historyRevalidateSeconds: 3600,
 
+    /**
+     * How long (seconds) the database reads behind those pages - the stored
+     * schedule, the archive, the catalog and the sheet music types - are
+     * reused. Every write that changes them clears them at once by tag
+     * (SCHEDULE_TAG, ARCHIVE_TAG, CATALOG_TAG, SHEET_MUSIC_TYPES_TAG), so this
+     * is only a backstop. Kept long so that re-rendering a public page does
+     * not wake the database: Neon bills for every few minutes it is awake.
+     */
+    dataRevalidateSeconds: 86400,
+
     /** The retired sheet's visible tabs read by the one-time import. Goes with it. */
     maxMonths: 2,
 

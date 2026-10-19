@@ -17,8 +17,8 @@ const INSERT_HORIZON_DAYS = 400;
 /**
  * Cache tag for the planner rows behind the public schedule. Every planner
  * change that can reach the song list invalidates it (refreshEverything in
- * src/app/service-planner/actions.ts, and the sheet import cron), so the hour
- * below only bounds a change made some other way.
+ * src/app/service-planner/actions.ts, and the sheet import cron), so the time
+ * limit below (siteConfig.songList.dataRevalidateSeconds) is only a backstop.
  */
 export const SCHEDULE_TAG = "schedule";
 
@@ -88,7 +88,7 @@ export async function loadScheduleRows(env: ClerkEnv, fromWeek: string): Promise
 
 const getScheduleRows = unstable_cache(loadScheduleRows, ["schedule-rows"], {
   tags: [SCHEDULE_TAG],
-  revalidate: siteConfig.songList.historyRevalidateSeconds,
+  revalidate: siteConfig.songList.dataRevalidateSeconds,
 });
 
 /**

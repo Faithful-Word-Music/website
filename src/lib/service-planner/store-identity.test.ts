@@ -21,14 +21,14 @@ describe("catalog identity storage", () => {
     expect(schema.join("\n")).not.toMatch(/(?:ALTER|DROP|TRUNCATE) TABLE catalog_songs\b/);
   });
 
-  it("copies each environment repeatably so old production's late additions survive", async () => {
+  it("copies each environment once per server instance, not on every read", async () => {
     const { listCatalogSongs } = await import("./store");
     await listCatalogSongs("development");
     await listCatalogSongs("development");
     await listCatalogSongs("production");
     const copies = db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
-    expect(copies).toHaveLength(3);
-    expect(copies.map(([, params]) => params)).toEqual([["development"], ["development"], ["production"]]);
+    expect(copies).toHaveLength(2);
+    expect(copies.map(([, params]) => params)).toEqual([["development"], ["production"]]);
     for (const [sql] of copies) {
       expect(sql).toContain("INSERT INTO catalog_songs_v2");
       expect(sql).toContain("WHERE clerk_env = $1");
@@ -38,14 +38,30 @@ describe("catalog identity storage", () => {
     }
   });
 
-  it("uses one atomic copy statement under concurrent initial reads", async () => {
+  it("shares one atomic copy between concurrent initial reads", async () => {
     const { listCatalogSongs } = await import("./store");
     await Promise.all([listCatalogSongs("production"), listCatalogSongs("production")]);
     const copies = db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
-    expect(copies).toHaveLength(2);
-    expect(copies[0][0]).toBe(copies[1][0]);
+    expect(copies).toHaveLength(1);
     expect(copies[0][0]).toContain("ON CONFLICT (clerk_env, legacy_title_key) DO NOTHING");
     expect(copies[0][0]).toMatch(/md5\([^)]*clerk_env[^)]*title_key/);
+  });
+
+  it("tries a failed copy again on the next read, and is only done once it succeeds", async () => {
+    let failCopy = true;
+    db.query.mockImplementation(async (sql: string) => {
+      if (/FROM catalog_songs\s/.test(sql) && failCopy) {
+        failCopy = false;
+        throw new Error("connection lost");
+      }
+      return [];
+    });
+    const { listCatalogSongs } = await import("./store");
+    await expect(listCatalogSongs("development")).rejects.toThrow("connection lost");
+    await listCatalogSongs("development");
+    await listCatalogSongs("development");
+    const copies = db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
+    expect(copies).toHaveLength(2);
   });
 
   it("creates two same-title records with different durable UUIDs and retains supplied identities", async () => {
