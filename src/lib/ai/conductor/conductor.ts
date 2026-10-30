@@ -22,7 +22,7 @@ import { philosophyOutline } from "../planning/philosophy";
 import { streamAiText } from "../service";
 import { countRecentAiUsage } from "../store";
 import { CONVERSATION_EVENT } from "./actions";
-import { normalizePageContext } from "./context";
+import { normalizePageContext, screenFor } from "./context";
 import { conductorInstructions } from "./instructions";
 import { CONDUCTOR_LIMITS } from "./limits";
 import { conductorTools, conductorToolStatus, type ConductorTurnState } from "./tools";
@@ -116,8 +116,10 @@ export async function answerConductor(input: {
 
   const canPlan = viewer.can("manage_service_plans");
   const page = normalizePageContext(input.context);
-  // The planner's unsaved work is for those who plan: anyone else is told the page, never a plan.
-  const context = page && !canPlan && page.plan ? { ...page, plan: undefined } : page;
+  // The planner's unsaved work is for those who plan: anyone else is told the page, never a plan. What else
+  // the screen reports is kept only where the person may see it (the philosophy's edits, for its editors).
+  const screen = screenFor(page?.screen, { plan: canPlan, philosophy: viewer.can("manage_planning_philosophy") });
+  const context = page ? { ...page, plan: canPlan ? page.plan : undefined, screen } : page;
 
   const conversationId = conversation.id;
   const turn: ConductorTurnState = {

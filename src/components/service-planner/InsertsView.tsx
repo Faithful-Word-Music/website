@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { applyInsertToPublished, restoreWeekInserts, setInsertWeek } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -62,6 +63,16 @@ export function InsertsView({ months, candidates, now }: { months: InsertMonthRo
   const { pending, result, clear, run: runAction, stateOf } = useAction();
   /** The week the last action was for: its row shows the outcome. */
   const [acted, setActed] = useState<string | null>(null);
+
+  // Conductor, asked over this page, is told each week shown and its inserts.
+  useConductorScreen("inserts", {
+    weeks: months.flatMap((month) =>
+      month.weeks.map((week) => ({
+        weekStart: week.weekStart,
+        inserts: week.inserts.map((insert) => insert.title),
+      })),
+    ),
+  });
 
   /** Only the week's button that was pressed shows working and done. */
   function run(weekStart: string, index: InsertIndex, button: WeekButton, action: () => Promise<ActionResult<unknown>>) {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { ActionMessage } from "@/components/account/fields";
 import { Notice } from "@/components/account/Notices";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -84,6 +85,8 @@ export function AiGenerate({
   // The two ways only differ over an ordinary song in an open place: without one, both simply fill what is empty.
   const choice = openNow.some((index) => slots[index] !== null && !isInsert(slots[index]!));
   const fresh = choice && strategy === "fresh";
+  // Conductor, asked while this is open, is told what is typed here.
+  useConductorScreen("aiGenerate", { instruction, strategy: fresh ? "fresh" : "improve" });
 
   const generate = () => {
     const controller = new AbortController();

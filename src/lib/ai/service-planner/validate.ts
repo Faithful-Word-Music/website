@@ -4,6 +4,7 @@ import { songIdentity } from "@/lib/song-identity";
 
 import type { PlanBrief } from "./brief";
 import { SUGGESTIONS, type GeneratedPlan, type SuggestedSongs } from "./prompt";
+import { describeUse } from "./repeats";
 import type { SongSuggestion } from "./protocol";
 
 /**
@@ -28,7 +29,9 @@ import type { SongSuggestion } from "./protocol";
  *     (An insert already there may be moved.) With every insert locked or
  *     held, that is any insert at all;
  *   - in the Christmas season, puts in a song not established as a Christmas
- *     song (an insert kept in its own place is the one exception).
+ *     song (an insert kept in its own place is the one exception);
+ *   - puts in a song used too recently (repeats.ts). Such a song is never
+ *     offered, so this only backs up the shortlist.
  *
  * Each problem is said in words the model can act on, for the one second try
  * (plan.ts).
@@ -104,6 +107,11 @@ export function applyPlan(brief: PlanBrief, answer: GeneratedPlan): AppliedPlan 
   const keptInPlace = (index: number, id: string) =>
     insertPlaces.has(index) && songIdentity(brief.slots[index]!) === id;
 
+  for (const [index, id] of chosen) {
+    const use = brief.blocked.get(id);
+    if (use) problems.push(`"${id}" (place ${index + 1}) was ${describeUse(use)}: no song may be used within ${brief.repeatGapDays} days of this service.`);
+  }
+
   if (brief.christmasOnly) {
     for (const [index, id] of chosen) {
       const exempt = keptInPlace(index, id);
@@ -151,6 +159,7 @@ export function applySuggestions(brief: PlanBrief, answer: SuggestedSongs): Appl
     else if (!brief.offered.has(songId)) problems.push(`"${songId}" is not the id of a candidate.`);
     else if (!forInsert && isInsert(brief.songs.get(songId)!)) problems.push(`"${songId}" is an insert, and this is not an insert's place.`);
     else if (brief.christmasOnly && !brief.christmasOnly.has(songId)) problems.push(`"${songId}" is not established as a Christmas song.`);
+    else if (brief.blocked.has(songId)) problems.push(`"${songId}" was ${describeUse(brief.blocked.get(songId)!)}: no song may be used within ${brief.repeatGapDays} days of this service.`);
     else if (!seen.has(songId) && suggestions.length < SUGGESTIONS) {
       seen.add(songId);
       const song = brief.songs.get(songId)!;

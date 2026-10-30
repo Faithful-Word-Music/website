@@ -99,7 +99,7 @@ texts with no vector from the current model → embedAiValues() → library_embe
 | `src/lib/ai/conductor/session.ts` | The conversation's reducer and how it is stored (pure) |
 | `src/lib/ai/conductor/drawer.ts` | The panel's width: default, bounds, clamping, storage (pure) |
 | `src/lib/ai/conductor/markdown.ts` | The little Markdown answers use, parsed to data (pure) |
-| `src/components/conductor/` | `conductor-store.ts`, `planner-draft.ts` (the planner's service as on screen), `ConductorChat`, `ConductorDock` (launcher, drawer, sheet), `ConductorWorkspace` (the page), `ConductorMarkdown`, `ConductorMark` |
+| `src/components/conductor/` | `conductor-store.ts`, `planner-draft.ts` (the planner's service as on screen), `screen-context.ts` (what other screens report), `ConductorChat`, `ConductorDock` (launcher, drawer, sheet), `ConductorWorkspace` (the page), `ConductorMarkdown`, `ConductorMark` |
 | `src/content/conductor.ts` | Every word of Conductor's interface |
 | `src/content/ai.ts` | Failure wording by code, and Admin → AI |
 
@@ -398,7 +398,8 @@ The same week's other services (sung, planned, draft) are listed with their song
 - **One retry.** A refused answer goes back once with what was wrong (`withCorrections()`); a second failure is "AI's answer could not be used, so nothing was changed." A provider failure (budget, key, timeout) is not retried.
 - **Keys are the site's.** A kept or moved song keeps its key; a new one gets `candidateFacts().suggestedKey`. The model is never shown a key and never returns one.
 - The model's only free text is a two or three sentence summary (and a sentence per suggestion), shown above the songs and never stored. It is told it knows nothing of tempo, style, difficulty or harmony, that times sung is familiarity and not affection, and that `timesSung: 0` means "not in these records".
-- **The 14-day notice is not a rule here.** The model gets dates and days, and the philosophy. `recentDays` is not in the prompt (a test holds that), and the planner's own check keeps appearing after a generation as before.
+- **The 14-day notice is not a rule here.** `recentDays` is not in the prompt (a test holds that), and the planner's own check keeps appearing after a generation as before.
+- **AI's own repeat rule is enforced, not asked for** (`src/lib/ai/service-planner/repeats.ts`). A song sung, or in another service's plan (published or draft), within `servicePlanner.aiRepeatGapDays` (28) either side of the service - `aiChristmasRepeatGapDays` (6) in the Christmas season - is left out of the shortlist and refused by `validate.ts`. Never blocked: a song already in an open place, an insert, or one the direction names by title or hymn number. The model is shown `NEARBY` (every service from 8 weeks before to 5 weeks after, with its songs) and each candidate's `nearbyUses`, and the shortlist leans toward rested songs (`SHORTLIST`) so the same familiar few do not crowd the rest.
 
 ### Seasons
 
@@ -610,6 +611,8 @@ It is deliberately not the page's content: nothing is scraped from the DOM. The 
 
 - The server rebuilds every song from its title, number and key (`normalizePageContext`, the same `songSchema` and `planSong` a save uses); a plan that is not one is dropped and the rest of the page kept.
 - Only for someone holding `manage_service_plans` (`conductor.ts`); anyone else is told the page and never a plan.
+
+**The rest of the screen, as each screen reports it.** Beside the plan, a component reports what it shows with `useConductorScreen(part, value)` (`components/conductor/screen-context.ts`) while it is mounted, and the store sends every reported part as `context.screen`. The parts and their shapes are `SCREEN_PARTS` (`src/lib/ai/conductor/context.ts`): the editor's details, Checks and last AI proposal, Generate with AI's typed instruction, the song picker (search and what it lists, AI's suggestions with reasons), the planner's list of services, the Inserts page, and the philosophy editor's unsaved sections. Each part is checked on its own and cut to size; planner parts go only to `manage_service_plans`, the philosophy's to `manage_planning_philosophy` (`screenFor`). A new screen with unsaved work Conductor should know about adds a part there and reports it.
 - The places are listed at the end of the instructions with whether they are unsaved, and `check_service_plan` for that service checks them, so its notices match the workspace's.
 - Other tools still know that service as last saved; Conductor is told the screen is what the person means.
 - It is the screen as it was when the question was asked. Nothing is saved by asking, and Conductor still cannot change a plan. Unsaved changes to any other service, or in another tab, are not known.

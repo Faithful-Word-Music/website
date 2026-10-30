@@ -16,8 +16,9 @@ import type { PlanBrief } from "./brief";
  *
  * Nothing here mentions the Service Planner's "sung recently" notice
  * (siteConfig.servicePlanner.recentDays). That is a check the planner shows a
- * person, not the Director's policy: the model gets the dates and decides by
- * the philosophy.
+ * person. AI's own repeat rule (aiRepeatGapDays, repeats.ts) is enforced
+ * before the model sees anything - such songs are not candidates - and the
+ * model is told only that they were removed, and the services around this one.
  *
  * The part that is the same for every request comes first, so a provider that
  * caches a repeated beginning can reuse it.
@@ -48,14 +49,15 @@ THE WEEK'S INSERTS
 
 WHAT YOU KNOW
 
-Only what this message gives you. About each candidate: how many times this church has sung it in its records, when it was last sung and how many days before this service that is, how often in the year before, where else it is planned, whether it is in another service of this week, and how its lyrics begin.
+Only what this message gives you. About each candidate: how many times this church has sung it in its records, when it was last sung and how many days before this service that is, how often in the year before, its uses in the services around this one (nearbyUses: sung, planned, or in a draft plan, and how many days before or after this service), whether it is in another service of this week, and how its lyrics begin.
 
 - timesSung is evidence that a song is familiar. It is not evidence that it is loved or popular. timesSung 0 means it is not in these records, which begin on the date given; it does not mean the congregation has never sung it.
-- The days since a song was sung are a fact, not a rule. There is no minimum gap unless the philosophy states one.
+- REPEATS: every song sung, or planned for another service (published or a draft), within the days NEARBY gives either side of this service has already been removed from CANDIDATES - unless it is already in an open place, is an insert, or DIRECTION names it. Among the rest, follow the philosophy on repetition and vary from the services in NEARBY: prefer songs not used recently over ones that were, and do not lean on the same few familiar songs from one service to the next.
 - You have no information about any song's tempo, energy, style, difficulty, harmony, key or arrangement. Do not state or imply any. Judge what a song is about from its title and the lyrics given, and say no more than those support.
 - Keys are not yours to choose; the site sets them.
 - SEASON gives the dates the philosophy's seasonal guidance turns on, and which of them this service falls in.
 - THIS WEEK lists the other services of the same week, so that this one can differ from them as the philosophy asks.
+- NEARBY lists the services of the weeks before and after this one, with their songs: the rotation this service joins.
 
 YOUR SUMMARY
 
@@ -98,6 +100,18 @@ function facts(brief: PlanBrief, memory: MemoryContext): string[] {
     }),
     block("PLACES", brief.places),
     block("THIS WEEK", brief.week.length > 0 ? brief.week : "No other service of this week has songs yet."),
+    block("NEARBY", {
+      noRepeatWithinDays: brief.repeatGapDays,
+      services:
+        brief.nearby.length > 0
+          ? brief.nearby.map((service) => ({
+              date: service.date,
+              service: service.service,
+              status: service.status,
+              songs: service.songs.map((song) => `${song.title}${song.number ? ` (${song.number})` : ""}${song.insert ? " [insert]" : ""}`),
+            }))
+          : "No other service near this one has songs yet.",
+    }),
     block(
       "RECORDS",
       `${brief.recordsBegin ? `The records of what has been sung begin ${brief.recordsBegin}.` : "There are no records of what has been sung."}${

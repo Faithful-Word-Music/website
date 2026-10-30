@@ -11,7 +11,7 @@ import {
   type ConductorAction as ProposedAction,
   type ConductorActionChoice,
 } from "@/lib/ai/conductor/actions";
-import { pageContextFor, type ConductorPageContext } from "@/lib/ai/conductor/context";
+import { pageContextFor, type ConductorPageContext, type ConductorScreenInput } from "@/lib/ai/conductor/context";
 import { CONDUCTOR_ENDPOINT } from "@/lib/ai/conductor/protocol";
 import {
   CONDUCTOR_ACTIVE_KEY,
@@ -31,6 +31,7 @@ import type { AiErrorCode } from "@/lib/ai/errors";
 import { parseStreamLine, splitStreamLines } from "@/lib/ai/stream";
 
 import { plannerDraftFor } from "./planner-draft";
+import { screenSnapshot } from "./screen-context";
 
 /**
  * Conductor in this browser: THE conversation that is open, and the list of
@@ -252,13 +253,15 @@ function claim(userId: string | null) {
 // ---------------------------------------------------------------------------
 
 /**
- * The page a question is asked from, and - over a service in the planner -
- * that service as it stands on screen at this moment, saved or not.
+ * The page a question is asked from; over a service in the planner, that
+ * service as it stands on screen at this moment, saved or not; and whatever
+ * else the screens open now report (screen-context.ts).
  */
-function contextFor(pathname: string): ConductorPageContext {
+function contextFor(pathname: string): ConductorPageContext & { screen?: ConductorScreenInput } {
   const context = pageContextFor(pathname);
   const plan = plannerDraftFor(context.service);
-  return plan ? { ...context, plan } : context;
+  const screen = screenSnapshot();
+  return { ...context, ...(plan ? { plan } : {}), ...(screen ? { screen } : {}) };
 }
 
 /**

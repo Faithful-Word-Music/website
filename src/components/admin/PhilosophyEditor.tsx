@@ -9,6 +9,7 @@ import { SectionLabel } from "@/components/account/ProfileView";
 import { ArrowIcon, IconButton } from "@/components/admin/OptionListEditor";
 import { Pill } from "@/components/admin/StatusPill";
 import { ConductorMarkdown } from "@/components/conductor/ConductorMarkdown";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { copyText } from "@/components/song-list/share-actions";
 import { ActionBar } from "@/components/ui/ActionBar";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -70,6 +71,8 @@ export function PhilosophyEditor({
     [draft],
   );
   const [rows, setRows] = useState(initial);
+  /** The order of the saved sections, as last saved: what "reordered" is measured from. */
+  const [baseOrder, setBaseOrder] = useState(() => initial.map((row) => row.key));
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState(false);
@@ -79,11 +82,24 @@ export function PhilosophyEditor({
   const changed = rows.filter(isChanged).length;
   const reordered =
     rows.filter((row) => row.saved && !row.removed).map((row) => row.key).join("|") !==
-    initial.filter((row) => rows.some((item) => item.key === row.key && !item.removed)).map((row) => row.key).join("|");
+    baseOrder.filter((key) => rows.some((item) => item.key === key && !item.removed)).join("|");
   const dirty = changed > 0 || reordered;
   const length = composePhilosophy({ title: draft.title, sections: kept }).length;
   const tooLong = length > maxChars;
   const guard = useUnsavedGuard(dirty && !pending);
+  // Conductor, asked over this page, is told the changes not saved yet (it already knows the saved document).
+  useConductorScreen(
+    "philosophy",
+    canEdit
+      ? {
+          sections: rows.filter(isChanged).map((row) => ({
+            title: row.removed ? (row.saved?.title ?? row.title) : row.title,
+            state: row.removed ? ("removed" as const) : row.saved ? ("changed" as const) : ("added" as const),
+            text: row.text,
+          })),
+        }
+      : null,
+  );
 
   const update = (key: string, change: Partial<Row>) => {
     clear();
@@ -122,12 +138,20 @@ export function PhilosophyEditor({
 
   function discard() {
     clear();
-    setRows(initial);
+    // Back to the sections as last saved, in their saved order.
+    setRows((list) =>
+      baseOrder.flatMap((key) => {
+        const row = list.find((item) => item.key === key);
+        return row?.saved ? [{ ...row, title: row.saved.title, text: row.saved.text, removed: false }] : [];
+      }),
+    );
     setNote("");
     setOpen(null);
   }
 
-  const save = () =>
+  const save = () => {
+    // What is being saved, as it is at the press.
+    const sent = new Map(kept.map((row) => [row.key, { title: row.title.trim(), text: row.text }]));
     void run(
       () =>
         savePhilosophyAction({
@@ -136,8 +160,18 @@ export function PhilosophyEditor({
           note,
           baseRevisionId: revisionId,
         }),
-      { key: "save", onOk: () => setNote("") },
+      {
+        key: "save",
+        onOk: () => {
+          setNote("");
+          // Saved: "changed" is measured from what was saved at once, not when the new version
+          // arrives (a fresh editor, by its key) - so leaving straight away never asks.
+          setRows((list) => list.flatMap((row) => (sent.has(row.key) ? [{ ...row, saved: sent.get(row.key)! }] : row.removed ? [] : [row])));
+          setBaseOrder([...sent.keys()]);
+        },
+      },
     );
+  };
 
   return (
     <div className="mt-8">

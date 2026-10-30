@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { createSong } from "@/app/service-planner/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -22,6 +23,9 @@ import { SparkleIcon } from "./AiGenerate";
 import type { PlanAiOutcome } from "./ai-request";
 
 const copy = servicePlannerContent;
+
+/** How many of the list's songs Conductor is told of, after AI's suggestions. */
+const PICKER_SHOWN = 8;
 
 export interface ChosenSong extends SongReference {
   number: string | null;
@@ -55,6 +59,7 @@ export function SongPicker({
   ai,
   only,
   hideInsertSuggestions = false,
+  place,
 }: {
   candidates: CandidateSong[];
   serviceStartsAt: string;
@@ -68,8 +73,12 @@ export function SongPicker({
   hideInsertSuggestions?: boolean;
   /** Suggest with AI, where the picker is choosing for a place in a service and the person may use AI. */
   ai?: SuggestWithAi;
+  /** Which place of a service it is choosing for, from 1, for Conductor to be told; left out elsewhere. */
+  place?: { place: number; replacing: string | null };
 }) {
   const [query, setQuery] = useState("");
+  /** Suggest with AI's answer, while it is shown. */
+  const [aiShown, setAiShown] = useState<SongSuggestion[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [active, setActive] = useState(-1);
   const listId = useId();
@@ -88,6 +97,22 @@ export function SongPicker({
         facts: candidateFacts(candidate, serviceStartsAt),
       })),
     [candidates, query, serviceStartsAt, only, hideInsertSuggestions],
+  );
+
+  // Conductor, asked while this is open, is told what it is choosing for and what it shows: AI's
+  // suggestions with their reasons, then the first of the list.
+  useConductorScreen(
+    "picker",
+    place
+      ? {
+          ...place,
+          search: query,
+          shown: [
+            ...(aiShown ?? []).map((song) => ({ title: song.title, number: song.number, reason: song.reason })),
+            ...results.slice(0, PICKER_SHOWN).map(({ candidate }) => ({ title: candidate.title, number: candidate.number, reason: null })),
+          ],
+        }
+      : null,
   );
 
   const activeIndex = Math.min(active, results.length - 1);
@@ -164,7 +189,7 @@ export function SongPicker({
             />
           </div>
 
-          {ai ? <AiSuggestions ai={ai} serviceStartsAt={serviceStartsAt} onChoose={onChoose} /> : null}
+          {ai ? <AiSuggestions ai={ai} serviceStartsAt={serviceStartsAt} onChoose={onChoose} onShown={setAiShown} /> : null}
 
           {results.length === 0 ? (
             <p className="mt-3 text-sm text-muted">{copy.picker.noResults.replace("{query}", query.trim())}</p>
@@ -253,10 +278,13 @@ function AiSuggestions({
   ai,
   serviceStartsAt,
   onChoose,
+  onShown,
 }: {
   ai: SuggestWithAi;
   serviceStartsAt: string;
   onChoose: (song: ChosenSong) => void;
+  /** Says which suggestions are shown, for Conductor. */
+  onShown: (suggestions: SongSuggestion[]) => void;
 }) {
   const words = copy.ai.suggest;
   const { result, run, stateOf } = useAction();
@@ -274,7 +302,9 @@ function AiSuggestions({
     void run(() => ai.suggest(controller.signal), {
       refresh: false,
       onOk: (outcome) => {
-        if (outcome.ok) setSuggestions(outcome.suggestions);
+        if (!outcome.ok) return;
+        setSuggestions(outcome.suggestions);
+        onShown(outcome.suggestions);
       },
     });
   };

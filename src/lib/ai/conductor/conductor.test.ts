@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describePageContext, normalizePageContext, pageContextFor } from "@/lib/ai/conductor/context";
+import { describePageContext, normalizePageContext, pageContextFor, screenFor } from "@/lib/ai/conductor/context";
 import {
   clampDrawerWidth,
   DRAWER_DEFAULT_WIDTH,
@@ -180,6 +180,49 @@ describe("page context", () => {
     expect(saved).not.toContain("NOT been saved");
     // Without a plan, nothing of the page's contents is claimed.
     expect(describePageContext(planner)).toContain("nothing typed there that has not been saved");
+  });
+
+  it("carries what each planner screen reports, part by part, and drops only a part that does not fit", () => {
+    const context = normalizePageContext({
+      area: "service-planner",
+      screen: {
+        aiGenerate: { instruction: "  Something   about grace ", strategy: "fresh" },
+        queue: { services: [{ date: "2026-10-18", slot: "AM", name: "Sunday morning", status: "draft", songs: ["Amazing Grace"] }] },
+        picker: { place: 0, replacing: null, search: "", shown: [] },
+        nonsense: { anything: true },
+      },
+    })!;
+    expect(context.screen).toEqual({
+      aiGenerate: { instruction: "Something about grace", strategy: "fresh" },
+      queue: { services: [{ date: "2026-10-18", slot: "AM", name: "Sunday morning", status: "draft", songs: ["Amazing Grace"] }] },
+    });
+    const described = describePageContext(context)!;
+    expect(described).toContain('Typed in it, not yet sent: "Something about grace"');
+    expect(described).toContain('2026-10-18 AM "Sunday morning" (draft): "Amazing Grace"');
+    expect(described).not.toContain("not what it shows");
+  });
+
+  it("cuts what a screen says to size rather than refusing it", () => {
+    const context = normalizePageContext({ area: "service-planner", screen: { checks: Array.from({ length: 50 }, () => "x".repeat(1000)) } })!;
+    expect(context.screen?.checks).toHaveLength(30);
+    expect(context.screen?.checks?.[0]).toHaveLength(300);
+  });
+
+  it("tells each person only the parts of the screen they may see", () => {
+    const screen = { queue: { services: [] }, philosophy: { sections: [] } };
+    expect(screenFor(screen, { plan: true, philosophy: true })).toEqual(screen);
+    expect(screenFor(screen, { plan: true, philosophy: false })).toEqual({ queue: { services: [] } });
+    expect(screenFor(screen, { plan: false, philosophy: true })).toEqual({ philosophy: { sections: [] } });
+    expect(screenFor(screen, { plan: false, philosophy: false })).toBeUndefined();
+  });
+
+  it("says the philosophy's edits are not in force yet", () => {
+    const described = describePageContext({
+      area: "admin",
+      screen: { philosophy: { sections: [{ title: "Recent Usage", state: "changed", text: "Not within six weeks." }] } },
+    })!;
+    expect(described).toContain("NOT been saved");
+    expect(described).toContain('changed section "Recent Usage": "Not within six weeks."');
   });
 });
 

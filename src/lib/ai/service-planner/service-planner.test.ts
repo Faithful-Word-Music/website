@@ -17,6 +17,7 @@ import { NO_MEMORY, type MemoryContext } from "../memory/memory";
 import { PLAN_LIMITS, planWithAi, type PlanDeps, type PlanStandingContext, type PlanViewer } from "./plan";
 import { generatePrompt, generateSchema, plannerInstructions, replacePrompt, withCorrections } from "./prompt";
 import { planAiMessage, planAiRequestSchema, planAiStatus, type PlanAiRequest } from "./protocol";
+import { namedIn, repeatGapDays, type NearbyService } from "./repeats";
 import { christmasEligible, serviceSeason } from "./season";
 import { applyPlan, applySuggestions } from "./validate";
 
@@ -491,6 +492,77 @@ describe("the brief", () => {
   });
 });
 
+describe("the repeat rule", () => {
+  const near = (date: string, titles: string[], status: NearbyService["status"] = "sung"): NearbyService => ({
+    date,
+    startsAt: `${date}T10:30:00-07:00`,
+    service: "Sunday morning",
+    status,
+    songs: titles.map((title) => ({ songId: id(title), title, number: SONGS[title].number })),
+  });
+  const offered = (made: ReturnType<typeof brief>) => made.candidates.map((item) => item.title);
+
+  it("offers no song sung, or planned in a draft or published plan, within the gap either side", () => {
+    const gap = siteConfig.servicePlanner.aiRepeatGapDays;
+    expect(gap).toBeLessThan(30);
+    const nearby = [
+      near("2026-10-04", ["Amazing Grace"]),
+      near("2026-10-25", ["Victory in Jesus"], "draft"),
+      near("2026-10-18", ["Blessed Assurance"], "planned"),
+      // 30 days after: outside the gap, so allowed.
+      near("2026-11-10", ["Holy, Holy, Holy"], "draft"),
+    ];
+    const made = brief(usual(), {}, context({ nearby }));
+    expect(offered(made)).not.toContain("Amazing Grace");
+    expect(offered(made)).not.toContain("Victory in Jesus");
+    expect(offered(made)).not.toContain("Blessed Assurance");
+    expect(offered(made)).toContain("Holy, Holy, Holy");
+    expect(made.blocked.get(id("Victory in Jesus"))).toMatchObject({ status: "draft", days: 14 });
+    expect(made.repeatGapDays).toBe(gap);
+  });
+
+  it("never blocks a song already in an open place, an insert, or one the direction names", () => {
+    const nearby = [near("2026-10-04", ["At Calvary", "Psalm 23", "Amazing Grace", "Victory in Jesus"])];
+    const named = brief(usual(), { instruction: "Please use Amazing Grace, and #100 too" }, context({ nearby }));
+    expect(named.blocked.has(id("At Calvary"))).toBe(false);
+    expect(named.blocked.has(id("Psalm 23"))).toBe(false);
+    expect(offered(named)).toContain("Amazing Grace");
+    expect(offered(named)).toContain("Victory in Jesus");
+    // Not named: blocked.
+    const plain = brief(usual(), {}, context({ nearby }));
+    expect(offered(plain)).not.toContain("Amazing Grace");
+  });
+
+  it("refuses an answer that uses a blocked song, saying when it was used", () => {
+    const made = brief(usual(), {}, context({ nearby: [near("2026-10-04", ["Amazing Grace"])] }));
+    // Offered by mistake: the validator still holds the line.
+    const leaky = { ...made, offered: new Set([...made.offered, id("Amazing Grace")]), songs: new Map([...made.songs, [id("Amazing Grace"), candidates.find((item) => item.id === id("Amazing Grace"))!]]) };
+    const answer = applyPlan(leaky, plan([place(1, "Amazing Grace"), place(2, "Victory in Jesus"), place(4, "At Calvary"), place(5, "Blessed Assurance")]));
+    expect(answer.ok).toBe(false);
+    expect(!answer.ok && answer.problems.join(" ")).toContain("7 days before this service");
+  });
+
+  it("finds a song named by title or by hymn number, and not by accident", () => {
+    expect(namedIn("Let's sing Amazing Grace", { title: "Amazing Grace", number: "330" })).toBe(true);
+    expect(namedIn("hymn 330 please", { title: "Amazing Grace", number: "330" })).toBe(true);
+    expect(namedIn("#330", { title: "Amazing Grace", number: "330" })).toBe(true);
+    expect(namedIn("about 330 people", { title: "Amazing Grace", number: "330" })).toBe(false);
+    expect(namedIn("songs about grace", { title: "Amazing Grace", number: "330" })).toBe(false);
+  });
+
+  it("shows the model the services around this one and the gap", () => {
+    const prompt = generatePrompt(brief(usual(), {}, context({ nearby: [near("2026-10-04", ["Amazing Grace"])] })));
+    expect(prompt).toContain("NEARBY");
+    expect(prompt).toContain(`"noRepeatWithinDays":${siteConfig.servicePlanner.aiRepeatGapDays}`);
+    expect(prompt).toContain("Amazing Grace (330)");
+  });
+
+  it("uses the shorter gap in the Christmas season", () => {
+    expect(repeatGapDays(true)).toBe(siteConfig.servicePlanner.aiChristmasRepeatGapDays);
+    expect(repeatGapDays(false)).toBe(siteConfig.servicePlanner.aiRepeatGapDays);
+  });
+});
+
 describe("what the model is told", () => {
   const philosophy = readFileSync(join(process.cwd(), "src/content/music-planning-philosophy.md"), "utf8").replace(/\r\n?/g, "\n").trim();
 
@@ -505,7 +577,8 @@ describe("what the model is told", () => {
     const days = String(siteConfig.servicePlanner.recentDays);
     expect(rules).not.toMatch(new RegExp(`\\b${days}\\b`));
     expect(rules).not.toMatch(/fourteen|two weeks/i);
-    expect(rules).toContain("no minimum gap unless the philosophy states one");
+    // AI's own repeat rule is enforced before the model sees the candidates; it is only told so.
+    expect(rules).toContain("has already been removed from CANDIDATES");
     const prompt = generatePrompt(brief(usual()));
     expect(prompt).not.toContain("recentDays");
     expect(prompt).not.toContain("recently-sung");

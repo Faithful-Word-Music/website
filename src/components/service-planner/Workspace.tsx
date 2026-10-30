@@ -9,6 +9,7 @@ import { ActionMessage } from "@/components/account/fields";
 import { Notice } from "@/components/account/Notices";
 import { Pill } from "@/components/admin/StatusPill";
 import { usePlannerDraft } from "@/components/conductor/planner-draft";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { SongLink } from "@/components/song-list/SongLink";
 import { ActionBar } from "@/components/ui/ActionBar";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -105,13 +106,31 @@ export function Workspace(props: WorkspaceProps) {
     before: { slots: PlanSlots; locks: LockChoices };
   } | null>(null);
 
+  /**
+   * A change was saved (or the service's status changed) and the page's fresh
+   * copy has not arrived yet. It holds until that copy arrives - the editor is
+   * remounted then, or, when the stored service kept its key, given a new
+   * `service` below - never on a timer, so a slow refresh never makes the
+   * saved work look unsaved again.
+   */
+  const [settled, setSettled] = useState(false);
+  /** What the last successful save sent: what "unsaved" is measured against until the fresh copy arrives. */
+  const [savedAs, setSavedAs] = useState<string | null>(null);
+  const [shown, setShown] = useState(service);
+  if (shown !== service) {
+    setShown(service);
+    setSettled(false);
+    setSavedAs(null);
+  }
+
   const status = service.status;
   const editable = !locked && status !== "cancelled";
   const initial = useMemo(
     () => JSON.stringify([service.slots, service.label ?? "", churchTimeOf(service.startsAt)]),
     [service],
   );
-  const dirty = JSON.stringify([slots, label, time]) !== initial;
+  const current = JSON.stringify([slots, label, time]);
+  const dirty = current !== (savedAs ?? initial);
   const filled = slots.filter(Boolean).length;
 
   const candidateMap = useMemo(() => new Map(candidates.map((candidate) => [candidate.id, candidate])), [candidates]);
@@ -185,40 +204,56 @@ export function Workspace(props: WorkspaceProps) {
    * changes (its `key`), which would take a message here with it - so "Saved"
    * is said in a toast, which stays.
    */
-  function run(key: string, action: () => Promise<ActionResult<unknown>>) {
+  function run(key: string, action: () => Promise<ActionResult<unknown>>, onSaved?: () => void) {
     return runAction(
       async () => {
         const outcome = await action();
         if (!outcome.ok && outcome.error === ws.conflict) setConflict(true);
         return outcome;
       },
-      { key, toast: true },
+      {
+        key,
+        toast: true,
+        onOk: () => {
+          setSettled(true);
+          onSaved?.();
+        },
+      },
     );
   }
 
-  const save = (publish: boolean) =>
-    run(publish ? "publish" : "save", () =>
-      // Nothing changed: publishing alone, so the history records no empty edit.
-      publish && !dirty
-        ? publishServices({ anchors: [service.anchor] })
-        : saveService({
-            anchor: service.anchor,
-            revision: props.revision,
-            slots,
-            label: label.trim() === "" ? null : label.trim(),
-            time,
-            publish,
-          }),
+  const save = (publish: boolean) => {
+    // What is being saved, as it is at the press: the measure of "unsaved" from the moment it is.
+    const sent = current;
+    return run(
+      publish ? "publish" : "save",
+      () =>
+        // Nothing changed: publishing alone, so the history records no empty edit.
+        publish && !dirty
+          ? publishServices({ anchors: [service.anchor] })
+          : saveService({
+              anchor: service.anchor,
+              revision: props.revision,
+              slots,
+              label: label.trim() === "" ? null : label.trim(),
+              time,
+              publish,
+            }),
+      () => setSavedAs(sent),
     );
+  };
 
   const title = serviceTitle({ slot: service.slot, startsAt: service.startsAt, label: label.trim() || service.label });
-  // Saved, but the fresh copy has not arrived yet: nothing here is unsaved, and nothing can be saved twice.
-  const settled = ["save", "publish", "status", "delete"].some((key) => stateOf(key) === "done");
+  // Saving, or saved with the fresh copy still to come: nothing can be saved twice, and nothing is edited
+  // (an edit made now would be lost when the fresh copy replaces this editor).
   const locking = pending || settled;
   // Leaving with changes not saved asks first, however the page is left.
   const guard = useUnsavedGuard(dirty && !settled);
-  // Conductor, asked over this page, is told the songs as they stand here - saved or not.
-  usePlannerDraft(service.anchor, slots, dirty && !settled);
+  // Conductor, asked over this page, is told the songs as they stand here - saved or not - and the rest of
+  // what the editor shows.
+  usePlannerDraft(service.anchor, slots, dirty);
+  useConductorScreen("details", editable ? { name: label, time, unsaved: dirty } : null);
+  useConductorScreen("aiProposal", aiResult ? { summary: aiResult.summary, changed: aiResult.changed } : null);
 
   return (
     <>
@@ -264,6 +299,8 @@ export function Workspace(props: WorkspaceProps) {
             </Notice>
           ) : null}
 
+          {/* While saving, and until the saved copy arrives, nothing in the list can be changed. */}
+          <fieldset disabled={locking} className="contents">
           <Card className="overflow-hidden">
             <div className="flex items-baseline justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
               <h2 className="font-display text-xl text-ink">{ws.songs}</h2>
@@ -416,6 +453,7 @@ export function Workspace(props: WorkspaceProps) {
               </div>
             ) : null}
           </Card>
+          </fieldset>
           <datalist id="planner-keys">
             {KEY_OPTIONS.map((key) => (
               <option key={key} value={key} />
@@ -496,7 +534,7 @@ export function Workspace(props: WorkspaceProps) {
 
           {editable ? (
             <Panel title={ws.details} lead={ws.detailsLead} collapsible>
-              <div className="space-y-4">
+              <fieldset disabled={locking} className="min-w-0 space-y-4">
                 <Field id="service-label" label={ws.name}>
                   <input
                     id="service-label"
@@ -517,7 +555,7 @@ export function Workspace(props: WorkspaceProps) {
                   />
                 </Field>
                 <p className="text-xs text-muted">{ws.detailsHint}</p>
-              </div>
+              </fieldset>
             </Panel>
           ) : null}
 
@@ -633,6 +671,7 @@ export function Workspace(props: WorkspaceProps) {
           title={picker.replacing ? copy.picker.replaceTitle.replace("{title}", picker.replacing) : copy.picker.title}
           onChoose={(song) => choose(picker.index, song)}
           onClose={() => setPicker(null)}
+          place={{ place: picker.index + 1, replacing: picker.replacing }}
           // The service has its insert, and this place is not it: another is not offered in passing. Typing still finds one.
           hideInsertSuggestions={insertPlaces(slots).some((index) => index !== picker.index)}
           ai={
@@ -776,6 +815,8 @@ function Checks({
         return signal.count === 1 ? c.emptyPlace : c.emptyPlaces.replace("{count}", String(signal.count));
     }
   };
+  // Conductor is told the checks as they read here.
+  useConductorScreen("checks", signals.map(words));
 
   return (
     <Panel title={c.title}>

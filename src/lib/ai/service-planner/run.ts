@@ -11,10 +11,11 @@ import { songIdentity } from "@/lib/song-identity";
 import { assembleAiContext } from "../context/assemble";
 import { failAiOperation, generateAiObject, withAiOperation } from "../service";
 import { countRecentAiUsage } from "../store";
-import { NO_LIBRARY, OPENING_CHARS, serviceWords, type LibraryFindings, type PlanContext, type WeekService } from "./brief";
+import { NO_LIBRARY, OPENING_CHARS, serviceWords, type LibraryFindings, type PlanContext } from "./brief";
 import { linkLibrary } from "./library";
 import { PLAN_LIMITS, planWithAi, type Feature, type PlanDeps } from "./plan";
 import type { PlanAiRequest, PlanAiResult } from "./protocol";
+import type { NearbyService } from "./repeats";
 import { NATIVITY_WORDS, SEASON_SEARCH, serviceSeason } from "./season";
 
 /**
@@ -28,19 +29,28 @@ import { NATIVITY_WORDS, SEASON_SEARCH, serviceSeason } from "./season";
  */
 
 const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
+/**
+ * The services AI is shown around the one it plans (NEARBY), in days before
+ * and after. Both reach past the repeat gap (aiRepeatGapDays), which they must:
+ * the gap is enforced from these. The planner's loader reads plans to 120 days
+ * ahead; the history covers what is behind.
+ */
+const NEARBY_DAYS = { before: 56, after: 35 } as const;
 const hymnal = siteConfig.sheetMusic.hymnalCollection;
 
 /** Songs taken from each search by meaning. */
 const NEAR = { instruction: 14, season: 24, song: 10, songs: 3 } as const;
 
-/** The service being planned and the rest of its week, as the planner's own loader has them. */
+/** The service being planned, its week and the services around it, as the planner's own loader has them. */
 async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null> {
   const loaded = await loadServiceContext(viewer, anchor);
   if (!loaded) return null;
   const { service } = loaded;
   const weekStart = weekStartOf(service.date);
   const isThis = (other: { date: string; slot: string }) => other.date === service.date && other.slot === service.slot;
-  const inWeek = (other: { date: string; slot: string }) => weekStartOf(other.date) === weekStart && !isThis(other);
+  const inWeek = (other: { date: string }) => weekStartOf(other.date) === weekStart;
   const songsOf = (songs: ReturnType<typeof slotSongs>) =>
     songs.map((song) => ({
       ...(song.songId ? { songId: song.songId } : {}),
@@ -50,16 +60,21 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
       ...(isInsert(song) ? { insert: true as const } : {}),
     }));
 
-  // What is stored is the latest word on a service; the history fills in what the planner does not hold.
-  const week = new Map<string, WeekService & { startsAt: string }>();
-  for (const sung of loaded.past.filter(inWeek)) {
-    week.set(`${sung.date}|${sung.slot}`, { date: sung.date, service: serviceWords(sung), status: "sung", songs: songsOf(sung.songs), startsAt: sung.startsAt });
+  // Every service around this one. What is stored is the latest word on a service; the history fills in
+  // what the planner does not hold.
+  const start = Date.parse(service.startsAt);
+  const around = (other: { date: string; slot: string; startsAt: string }) =>
+    !isThis(other) &&
+    Date.parse(other.startsAt) >= start - NEARBY_DAYS.before * DAY_MS &&
+    Date.parse(other.startsAt) <= start + NEARBY_DAYS.after * DAY_MS;
+  const services = new Map<string, NearbyService>();
+  for (const sung of loaded.past.filter(around)) {
+    services.set(`${sung.date}|${sung.slot}`, { date: sung.date, service: serviceWords(sung), status: "sung", songs: songsOf(sung.songs), startsAt: sung.startsAt });
   }
-  for (const plan of loaded.plans.filter((plan) => inWeek(plan) && plan.status !== "cancelled")) {
+  for (const plan of loaded.plans.filter((plan) => around(plan) && plan.status !== "cancelled")) {
     const songs = slotSongs(plan.slots);
-    // A service with nothing but the week's inserts says nothing they do not.
-    if (!songs.some((song) => !isInsert(song))) continue;
-    week.set(`${plan.date}|${plan.slot}`, {
+    if (songs.length === 0) continue;
+    services.set(`${plan.date}|${plan.slot}`, {
       date: plan.date,
       service: serviceWords(plan),
       status: Date.parse(plan.startsAt) <= loaded.now && plan.status === "published" ? "sung" : plan.status === "published" ? "planned" : "draft",
@@ -67,6 +82,9 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
       startsAt: plan.startsAt,
     });
   }
+  const nearby = [...services.values()].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  // A service of this week with nothing but the week's inserts says nothing they do not.
+  const week = nearby.filter((item) => inWeek(item) && item.songs.some((song) => !song.insert));
 
   return {
     service: { date: service.date, slot: service.slot, startsAt: service.startsAt, label: service.label, special: service.kind === "special" },
@@ -75,9 +93,8 @@ async function load(viewer: Viewer, anchor: string): Promise<PlanContext | null>
     frozen: loaded.locked,
     candidates: loaded.candidates,
     past: loaded.past,
-    week: [...week.values()]
-      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
-      .map((item) => ({ date: item.date, service: item.service, status: item.status, songs: item.songs })),
+    week: week.map((item) => ({ date: item.date, service: item.service, status: item.status, songs: item.songs })),
+    nearby,
   };
 }
 

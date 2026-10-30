@@ -6,6 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 import { publishServices } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Pill } from "@/components/admin/StatusPill";
+import { useConductorScreen } from "@/components/conductor/screen-context";
 import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -61,6 +62,19 @@ export function QueueView({
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const { pending, result, run, stateOf } = useAction();
+
+  // Conductor, asked over this page, is told the services it lists, as they stand.
+  useConductorScreen("queue", {
+    services: [...published, ...needsPlanning, ...cancelled]
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      .map((row) => ({
+        date: row.date,
+        slot: row.slot,
+        name: serviceTitle({ slot: row.slot, startsAt: row.startsAt, label: row.label }),
+        status: row.status,
+        songs: row.songs,
+      })),
+  });
 
   const toggle = (anchor: string) =>
     setSelected((current) => (current.includes(anchor) ? current.filter((item) => item !== anchor) : [...current, anchor]));

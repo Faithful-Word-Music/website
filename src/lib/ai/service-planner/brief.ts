@@ -8,6 +8,7 @@ import type { DatedService, ServiceSlot } from "@/types/song-list";
 
 import { openPlaces } from "./locks";
 import type { PlanAiRequest } from "./protocol";
+import { blockedSongs, namedIn, nearbyUses, repeatGapDays, type NearbyService, type NearbyUse } from "./repeats";
 import { christmasEligible, serviceSeason, type ServiceSeason } from "./season";
 
 /**
@@ -28,7 +29,8 @@ import { christmasEligible, serviceSeason, type ServiceSeason } from "./season";
  * would be slow, costly and no better. buildShortlist() takes, in order:
  *
  *   1. the songs already in open places that may stay (so keeping one is
- *      always possible) - none, for the ordinary places of a fresh plan;
+ *      always possible) - none, for the ordinary places of a fresh plan -
+ *      and any song the Director's direction names;
  *   2. songs found by meaning: near the insert and the locked songs, near
  *      what the instruction asks for, and near the season's subject;
  *   3. the songs sung most (the familiar backbone);
@@ -37,6 +39,12 @@ import { christmasEligible, serviceSeason, type ServiceSeason } from "./season";
  *
  * Those numbers bound a prompt. They are not planning policy: which of the
  * candidates to use is the philosophy's and the model's to decide.
+ *
+ * NO SONG USED TOO RECENTLY IS OFFERED. A song sung, or planned for another
+ * service (draft or published), within the repeat gap either side of this one
+ * is left out of every part of the shortlist, with three exceptions - see
+ * repeats.ts. The model is also shown the services around this one (NEARBY),
+ * and each candidate's uses among them, so it can vary from them.
  *
  * INSERTS ARE NOT CANDIDATES FOR AN ORDINARY PLACE. An insert is a song with
  * no hymnal number (isInsert), chosen for its week on the Inserts page. None
@@ -52,14 +60,18 @@ export const SHORTLIST = {
   thematic: 36,
   /** Of those found by meaning, how many may be songs never sung here. */
   neverSung: 6,
-  mostSung: 40,
-  rested: 24,
-  lessFamiliar: 10,
+  /** Kept small, so the same familiar handful does not crowd out the rest. */
+  mostSung: 20,
+  rested: 40,
+  lessFamiliar: 16,
   /** Sung at least this often counts, for picking candidates, as familiar. */
   familiarPlays: 3,
   /** Other inserts offered for an insert's place, when one is open. */
   inserts: 12,
 } as const;
+
+/** How many of a candidate's uses nearby it carries. */
+const NEARBY_USES_SHOWN = 4;
 
 /** How much of a song's lyrics a candidate carries. */
 export const OPENING_CHARS = 150;
@@ -93,6 +105,8 @@ export interface PlanContext {
   candidates: CandidateSong[];
   past: readonly DatedService[];
   week: WeekService[];
+  /** The services around this one - sung, published and draft - for the repeat rule and NEARBY (repeats.ts). */
+  nearby?: NearbyService[];
 }
 
 /** What the library added to it (run.ts). Empty when the lyric index is. */
@@ -120,8 +134,8 @@ export interface PlanCandidate {
   lastSung: string | null;
   daysBeforeThisService: number | null;
   timesInTheYearBefore: number;
-  /** Other coming services it is already planned for. */
-  alsoPlannedFor?: string[];
+  /** Its uses in the services around this one (sung, planned or in a draft), nearest first. */
+  nearbyUses?: Array<{ date: string; service: string; status: NearbyUse["status"]; when: string }>;
   /** The services of this same week it is in. */
   inThisWeek?: string[];
   lyricsBegin?: string;
@@ -148,6 +162,10 @@ export interface PlanBrief {
   seasonDates: ReturnType<typeof seasonDates>;
   places: BriefPlace[];
   week: WeekService[];
+  /** The services around this one, oldest first. */
+  nearby: NearbyService[];
+  /** No candidate was used within this many days either side (repeats.ts). */
+  repeatGapDays: number;
   instruction: string;
   candidates: PlanCandidate[];
   /** The first date in the records; null when there are none. */
@@ -167,6 +185,8 @@ export interface PlanBrief {
   startsAt: string;
   /** In the Christmas season: the ids that may be put in. Null at any other time. */
   christmasOnly: ReadonlySet<string> | null;
+  /** Songs used too recently to be put in, with the use that blocks each (repeats.ts). */
+  blocked: ReadonlyMap<string, NearbyUse>;
   /**
    * The open places that held an insert when the request was made, from 0:
    * the only places an insert may be put. Empty when every insert is locked
@@ -209,10 +229,15 @@ export function buildShortlist(input: {
   christmasOnly: ReadonlySet<string> | null;
   /** An insert's own place is open: a few other inserts are offered, for that place. */
   insertOpen: boolean;
+  /** Used too recently: never offered (repeats.ts). */
+  blocked?: ReadonlySet<string>;
+  /** Songs the Director's direction names: offered right after the keepable ones. */
+  named?: readonly CandidateSong[];
 }): CandidateSong[] {
   const { candidates, startsAt, fixed, christmasOnly } = input;
+  const blocked = input.blocked ?? new Set<string>();
   const allowed = (song: CandidateSong) =>
-    !fixed.has(song.id) && (christmasOnly ? christmasOnly.has(song.id) : !song.christmas);
+    !fixed.has(song.id) && !blocked.has(song.id) && (christmasOnly ? christmasOnly.has(song.id) : !song.christmas);
   const everything = candidates.filter(allowed);
   // Ordinary places are planned from songs of the hymnal only: an insert is never one of their candidates.
   const pool = everything.filter((song) => !isInsert(song));
@@ -231,6 +256,8 @@ export function buildShortlist(input: {
   };
 
   take(input.keepable, input.keepable.length);
+  // An insert named for an ordinary place is still not one of its candidates.
+  take((input.named ?? []).filter((song) => allowed(song) && (!isInsert(song) || input.insertOpen)), SHORTLIST.total);
 
   if (input.insertOpen) {
     // For the insert's own place: those nearest what was asked for, then the most sung.
@@ -275,11 +302,24 @@ export function buildShortlist(input: {
 /** A candidate as the model is shown it: the song and the facts, looking from the service being planned. */
 export function describeCandidate(
   song: CandidateSong,
-  input: { startsAt: string; hymnal: string; week: readonly WeekService[]; openings: ReadonlyMap<string, string>; identities?: readonly IdentityEntry[] },
+  input: {
+    startsAt: string;
+    hymnal: string;
+    week: readonly WeekService[];
+    openings: ReadonlyMap<string, string>;
+    identities?: readonly IdentityEntry[];
+    /** Each candidate's uses in the services around this one (repeats.ts nearbyUses), by id. */
+    uses?: ReadonlyMap<string, readonly NearbyUse[]>;
+  },
 ): PlanCandidate {
   const facts = candidateFacts(song, input.startsAt);
   const inWeek = input.week.filter((service) => service.songs.some((item) => sameSong(item, song, input.identities ?? [song], input.hymnal))).map((service) => service.service);
-  const planned = [...new Set(facts.upcoming.map((at) => churchDate(Date.parse(at))))].slice(0, 3);
+  const uses = (input.uses?.get(song.id) ?? []).slice(0, NEARBY_USES_SHOWN).map((use) => ({
+    date: use.date,
+    service: use.service,
+    status: use.status,
+    when: use.days === 0 ? "same day" : `${Math.abs(use.days)} days ${use.days < 0 ? "before" : "after"}`,
+  }));
   const opening = input.openings.get(song.id);
   return {
     id: song.id,
@@ -290,7 +330,7 @@ export function describeCandidate(
     lastSung: facts.lastSung ? churchDate(Date.parse(facts.lastSung)) : null,
     daysBeforeThisService: facts.daysSince,
     timesInTheYearBefore: facts.lastYear,
-    ...(planned.length > 0 ? { alsoPlannedFor: planned } : {}),
+    ...(uses.length > 0 ? { nearbyUses: uses } : {}),
     ...(inWeek.length > 0 ? { inThisWeek: inWeek } : {}),
     ...(opening ? { lyricsBegin: opening } : {}),
     ...(isInsert(song) ? { insert: true as const } : {}),
@@ -351,6 +391,18 @@ export function buildBrief(
     return { place, state: "open", song: named, ...(mayStay ? {} : { mustChange: true as const }) };
   });
 
+  // The repeat rule: what the services around this one already hold, and what that rules out.
+  const nearby = context.nearby ?? [];
+  const uses = nearbyUses(nearby, startsAt, context.candidates, hymnal);
+  const gap = repeatGapDays(christmasOnly !== null);
+  const blocked = blockedSongs({
+    candidates: context.candidates,
+    uses,
+    gap,
+    keepable: new Set(keepable.map((song) => song.id)),
+    instruction,
+  });
+
   const shortlist = buildShortlist({
     candidates: context.candidates,
     startsAt,
@@ -360,6 +412,8 @@ export function buildBrief(
     // An insert kept in its own place is the one exception, and it is in `keepable`.
     christmasOnly,
     insertOpen: insertPlaces.length > 0,
+    blocked: new Set(blocked.keys()),
+    named: context.candidates.filter((song) => namedIn(instruction, song)),
   });
   const songs = new Map(shortlist.map((song) => [song.id, song]));
 
@@ -371,9 +425,11 @@ export function buildBrief(
     seasonDates: seasonDates(Number(date.slice(0, 4))),
     places,
     week: context.week,
+    nearby,
+    repeatGapDays: gap,
     instruction,
     candidates: shortlist
-      .map((song) => describeCandidate(song, { startsAt, hymnal, week: context.week, openings: library.openings, identities: context.candidates }))
+      .map((song) => describeCandidate(song, { startsAt, hymnal, week: context.week, openings: library.openings, identities: context.candidates, uses }))
       // By title, so the order says nothing about which to choose.
       .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id)),
     recordsBegin: [...context.past].sort((a, b) => a.date.localeCompare(b.date))[0]?.date ?? null,
@@ -385,6 +441,7 @@ export function buildBrief(
     songs,
     startsAt,
     christmasOnly,
+    blocked,
     insertPlaces,
   };
 }

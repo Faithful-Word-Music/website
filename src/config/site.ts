@@ -176,6 +176,16 @@ export const siteConfig = {
     recentDays: 14,
 
     /**
+     * AI never puts in a song sung, or planned for another service (draft or
+     * published), within this many days either side of the service it plans -
+     * unless the song is already in that place, is the week's insert, or the
+     * Director's direction names it (src/lib/ai/service-planner/repeats.ts).
+     */
+    aiRepeatGapDays: 28,
+    /** The same, in the Christmas season: its repertoire is small and sung all through it. */
+    aiChristmasRepeatGapDays: 6,
+
+    /**
      * Plan and Inserts show the month being planned, and bring in the next
      * month this many days before it starts - never further ahead unless
      * "Start planning" asks (src/lib/service-planner/planning-window.ts).
