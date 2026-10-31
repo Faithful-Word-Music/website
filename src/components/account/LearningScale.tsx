@@ -19,15 +19,18 @@ export function LearningScaleInput({
   name,
   value,
   onChange,
+  required = false,
 }: {
   name: string;
   value: LearningStyle | null;
   onChange: (value: LearningStyle | null) => void;
+  /** A required answer can be changed but never cleared. */
+  required?: boolean;
 }) {
   const chosen = LEARNING_STYLES.find((style) => style.value === value);
 
   return (
-    <fieldset>
+    <fieldset aria-required={required || undefined}>
       <legend className="mb-1.5 text-sm font-medium text-ink">How do you play?</legend>
       <p className="-mt-1 text-xs text-muted">
         Somewhere between learning everything by ear and reading everything from the page.
@@ -65,7 +68,7 @@ export function LearningScaleInput({
 
       <div className="mt-4 flex min-h-6 items-baseline justify-between gap-4 text-sm">
         <p className="text-muted">{chosen ? chosen.description : "Choose the stop that fits you best."}</p>
-        {chosen ? (
+        {chosen && !required ? (
           <button
             type="button"
             onClick={() => onChange(null)}

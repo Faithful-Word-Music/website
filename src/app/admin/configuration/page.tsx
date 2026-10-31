@@ -2,11 +2,16 @@ import { NoAccess } from "@/components/account/Notices";
 import { SectionLabel } from "@/components/account/ProfileView";
 import { OptionListEditor } from "@/components/admin/OptionListEditor";
 import { CapoPolicyForm } from "@/components/admin/CapoPolicyForm";
+import { ProfileRequirementsPanel } from "@/components/admin/ProfileRequirementsPanel";
 import { SheetMusicRefresh } from "@/components/admin/SheetMusicRefresh";
 import { SheetMusicTypeListEditor } from "@/components/admin/SheetMusicTypeListEditor";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { profileSetupContent } from "@/content/profile-setup";
+import { formatDate } from "@/lib/auth/format";
+import { GRACE_DAYS, type RequirementPolicy } from "@/lib/auth/profile-requirements";
+import { getRequirementPolicy } from "@/lib/auth/requirements-store";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { expandSheetMusicSources, getCapoPolicy, listOptions, listSheetMusicTypes } from "@/lib/auth/store";
 import { classify, FORMAT_FOLDERS, foldersOwned, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
@@ -18,21 +23,24 @@ export const metadata = { title: "Configuration" };
  * /admin/configuration - the lists that shape the site. Each section shows
  * only for its own permission: the sheet music types offered and when a song
  * needs capo sheet music (manage_sheet_music), and the titles and instruments
- * behind profiles (manage_profiles).
+ * behind profiles (manage_profiles), and profile requirements
+ * (manage_site_settings; docs/profile-requirements.md).
  */
 export default async function ConfigurationPage() {
-  const viewer = await requireAnyPermission("/admin/configuration", ["manage_profiles", "manage_sheet_music"]);
+  const viewer = await requireAnyPermission("/admin/configuration", ["manage_profiles", "manage_sheet_music", "manage_site_settings"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const managesSheetMusic = viewer.can("manage_sheet_music");
   const managesProfiles = viewer.can("manage_profiles");
+  const managesSettings = viewer.can("manage_site_settings");
   // eslint-disable-next-line prefer-const -- reassigned once the sources are expanded
-  let [sheetTypes, capoPolicy, sheetDrive, titles, instruments] = await Promise.all([
+  let [sheetTypes, capoPolicy, sheetDrive, titles, instruments, requirementPolicy] = await Promise.all([
     managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
     managesSheetMusic ? getCapoPolicy(viewer.env) : null,
     managesSheetMusic ? getSheetMusicSources() : null,
     managesProfiles ? listOptions(viewer.env, "titles") : null,
     managesProfiles ? listOptions(viewer.env, "instruments") : null,
+    managesSettings ? getRequirementPolicy(viewer.env) : undefined,
   ]);
   const drive = sheetDrive?.ok ? sheetDrive.sources : null;
   // The starting types' "every … folder" sources become the folders they stand
@@ -47,6 +55,15 @@ export default async function ConfigurationPage() {
     <div>
       <SectionHeading as="h1" title="Configuration" />
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {requirementPolicy !== undefined ? (
+          <section id="profile-requirements" className="min-w-0 scroll-mt-24 lg:col-span-2">
+            <Card className="h-full p-4 sm:p-6">
+              <SectionLabel>{profileSetupContent.admin.title}</SectionLabel>
+              <p className="mt-1 mb-5 text-sm text-muted">{profileSetupContent.admin.lead}</p>
+              <ProfileRequirementsPanel {...requirementsPanel(requirementPolicy)} />
+            </Card>
+          </section>
+        ) : null}
         {sheetTypes ? (
           <section id="sheet-music" className="min-w-0 scroll-mt-24 lg:col-span-2">
             <Card className="h-full p-4 sm:p-6">
@@ -125,4 +142,20 @@ export default async function ConfigurationPage() {
       </div>
     </div>
   );
+}
+
+/** How the requirements policy stands, in words, for the panel. */
+function requirementsPanel(policy: RequirementPolicy | null): { state: "inactive" | "pending" | "active" | "paused"; summary: string } {
+  const copy = profileSetupContent.admin;
+  if (!policy) return { state: "inactive", summary: copy.inactive };
+  if (policy.snapshot !== "complete") return { state: "pending", summary: copy.pending };
+  if (policy.pausedAt) return { state: "paused", summary: copy.paused.replace("{date}", formatDate(policy.pausedAt)) };
+  const due = Date.parse(policy.activatedAt) + GRACE_DAYS * 24 * 60 * 60 * 1000;
+  return {
+    state: "active",
+    summary: copy.active
+      .replace("{date}", formatDate(policy.activatedAt))
+      .replace("{count}", String(policy.snapshotAccounts ?? 0))
+      .replace("{due}", formatDate(due)),
+  };
 }

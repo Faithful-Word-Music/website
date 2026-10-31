@@ -13,6 +13,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { availabilityContent } from "@/content/availability";
 import { requireViewer } from "@/lib/auth/session";
 import { LEADER_PERMISSION, PARTICIPANT_PERMISSION } from "@/lib/availability/access";
+import { hasReviewedNormal } from "@/lib/availability/board";
 import { loadAvailabilityPage } from "@/lib/availability/load";
 
 export const metadata: Metadata = {
@@ -100,7 +101,12 @@ export default async function AvailabilityPage(props: PageProps<"/availability">
           <aside className="space-y-6">
             {subject ? <RangeButton occurrences={data.upcoming} today={data.today} now={data.now} subject={subject} /> : null}
             {subject && data.subject ? (
-              <NormalServicesForm key={subject.id} subject={subject} initial={data.subject.normal} />
+              <NormalServicesForm
+                key={subject.id}
+                subject={subject}
+                initial={data.subject.normal}
+                reviewed={hasReviewedNormal(data.subject)}
+              />
             ) : null}
             {data.view === "me" && subject ? (
               <UpcomingChanges

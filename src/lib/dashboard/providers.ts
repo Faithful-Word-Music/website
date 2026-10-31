@@ -28,21 +28,6 @@ function listOf(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-/** Everyone: whatever their profile still lacks (missingProfileItems()). */
-export function profileAttention(missing: readonly string[]): AttentionItem[] {
-  if (missing.length === 0) return [];
-  return [
-    {
-      id: "profile:incomplete",
-      priority: "low",
-      title: copy.profile.title,
-      detail: copy.profile.detail.replace("{items}", listOf(missing.map((item) => item.charAt(0).toLowerCase() + item.slice(1)))),
-      href: "/profile/edit",
-      action: copy.profile.action,
-    },
-  ];
-}
-
 /** People who look after sheet music: upcoming songs with gaps (see sheet-gaps.ts). */
 export function sheetGapAttention(focus: DashboardFocus, gaps: readonly unknown[] | null): AttentionItem[] {
   if (!focus.managesSheetMusic || !gaps || gaps.length === 0) return [];
@@ -143,8 +128,11 @@ export function accountRequestAttention(focus: DashboardFocus, pending: number |
 export function availabilityAttention(
   focus: DashboardFocus,
   normal: readonly string[] | null,
+  /** Whether the pattern was ever saved on purpose; an empty one confirmed as "none" asks nothing. */
+  reviewed?: boolean,
 ): AttentionItem[] {
-  if (!focus.tracksAvailability || normal === null || normal.length > 0) return [];
+  if (!focus.tracksAvailability || normal === null) return [];
+  if (reviewed ?? normal.length > 0) return [];
   const text = availabilityContent.attention;
   return [
     {

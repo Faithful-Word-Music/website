@@ -8,7 +8,7 @@ import { siteConfig } from "@/config/site";
 import { assignableRoles } from "@/lib/auth/assignable-roles";
 import { listInvitations } from "@/lib/auth/clerk";
 import { formatDate } from "@/lib/auth/format";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { listRoles, pendingInvitationRoles } from "@/lib/auth/store";
 
 import { revokeInvitationAction } from "../actions";
@@ -17,7 +17,7 @@ export const metadata = { title: "Invitations" };
 
 /** /admin/invitations - invite someone directly, and see or withdraw invitations not yet used. */
 export default async function InvitationsPage() {
-  const viewer = await requireAnyPermission("/admin/invitations", ["manage_users"]);
+  const viewer = await requireAnyPermission("/admin/invitations", ["manage_users"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const [invitations, roles, chosenRoles, allRoles] = await Promise.all([

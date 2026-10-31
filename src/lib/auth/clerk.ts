@@ -97,6 +97,8 @@ export async function listAccounts(params: {
   userIds?: string[];
   limit: number;
   offset: number;
+  /** Newest first by default. Oldest first keeps paging stable while accounts are being created. */
+  order?: "newest" | "oldest";
 }): Promise<ClerkResult<{ accounts: AccountSummary[]; total: number }>> {
   try {
     const client = await clerkClient();
@@ -105,7 +107,7 @@ export async function listAccounts(params: {
       userId: params.userIds,
       limit: params.limit,
       offset: params.offset,
-      orderBy: "-created_at",
+      orderBy: params.order === "oldest" ? "+created_at" : "-created_at",
     });
     return { ok: true, value: { accounts: data.map(summarize), total: totalCount } };
   } catch (error) {

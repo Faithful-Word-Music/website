@@ -264,7 +264,89 @@ export const AUTH_SCHEMA = [
      updated_at timestamptz NOT NULL DEFAULT now(),
      PRIMARY KEY (clerk_env, title_key)
    )`,
+  // Profile requirements (src/lib/auth/profile-requirements.ts,
+  // docs/profile-requirements.md). All additive; nothing existing changes.
+  //
+  // When normal availability was last saved on purpose, and by whom (the
+  // person, or a leader on their behalf). NULL: never reviewed - which an
+  // empty service_availability alone cannot tell apart from "none, on
+  // purpose". Saving through the one write path sets it.
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS availability_reviewed_at timestamptz`,
+  `ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS availability_reviewed_by text`,
+  // A non-empty normal pattern was chosen on purpose, so it counts as
+  // reviewed. Empty ones stay unreviewed until confirmed. Idempotent: it only
+  // ever fills a NULL, and the write path sets it for every later save.
+  `UPDATE user_profiles SET availability_reviewed_at = updated_at
+     WHERE availability_reviewed_at IS NULL AND service_availability <> '{}'`,
+  // Song leading: a person's own assessment, asked of everyone who may be
+  // assigned to lead songs. NULL is unanswered. Informational only - nothing
+  // in scheduling reads it.
+  `CREATE TABLE IF NOT EXISTS user_song_leading (
+     ${ENV},
+     clerk_user_id         text        NOT NULL,
+     experience            text,
+     unfamiliar_hymns      text        CHECK (unfamiliar_hymns IN ('comfortable', 'with_preparation', 'still_learning')),
+     unaccompanied_leading text        CHECK (unaccompanied_leading IN ('comfortable', 'with_preparation', 'still_learning')),
+     updated_at            timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id)
+   )`,
+  // The first time each person was accounted for under the requirements
+  // policy: by the activation snapshot (every account that existed then) or
+  // when a member who joined later was first seen. A requirement with no
+  // deadline after this is one they gained since (a new role).
+  `CREATE TABLE IF NOT EXISTS profile_requirement_baselines (
+     ${ENV},
+     clerk_user_id  text        NOT NULL,
+     source         text        NOT NULL CHECK (source IN ('snapshot', 'first_seen')),
+     established_at timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id)
+   )`,
+  // One deadline per person per requirement. Written once and never moved
+  // by anything the person does (only an administrator's "give more time").
+  `CREATE TABLE IF NOT EXISTS profile_requirement_deadlines (
+     ${ENV},
+     clerk_user_id    text        NOT NULL,
+     requirement      text        NOT NULL,
+     first_applied_at timestamptz NOT NULL,
+     due_at           timestamptz NOT NULL,
+     extended_by      text,
+     PRIMARY KEY (clerk_env, clerk_user_id, requirement)
+   )`,
+  // Onboarding (/welcome): only the optional steps a person has been
+  // through. Required steps are done when their answers are saved - their
+  // data lives in the profile, never here.
+  `CREATE TABLE IF NOT EXISTS onboarding_progress (
+     ${ENV},
+     clerk_user_id text        NOT NULL,
+     step          text        NOT NULL,
+     completed_at  timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, clerk_user_id, step)
+   )`,
+  // Song-leading skill level: four levels in place of the first three
+  // (new / some / experienced). An answer already saved is carried over,
+  // never erased: new -> beginner, some -> low_intermediate,
+  // experienced -> high_intermediate (the closer match to "leads regularly";
+  // the person can raise it). The old check goes first, the new one last -
+  // AUTH_SCHEMA_READY looks for it.
+  `ALTER TABLE user_song_leading DROP CONSTRAINT IF EXISTS user_song_leading_experience_check`,
+  `UPDATE user_song_leading SET experience = CASE experience
+       WHEN 'new' THEN 'beginner' WHEN 'some' THEN 'low_intermediate' WHEN 'experienced' THEN 'high_intermediate' END
+     WHERE experience IN ('new', 'some', 'experienced')`,
+  `ALTER TABLE user_song_leading DROP CONSTRAINT IF EXISTS user_song_leading_experience_level`,
+  `ALTER TABLE user_song_leading ADD CONSTRAINT user_song_leading_experience_level
+     CHECK (experience IN ('beginner', 'low_intermediate', 'high_intermediate', 'advanced'))`,
 ];
+
+/**
+ * Whether AUTH_SCHEMA has been applied here already (applySchema in
+ * src/lib/db.ts): it names the LAST object the list creates, so it is only
+ * true once every statement has run. Without it, every server start runs
+ * the ALTERs and the backfill again, and many starting at once (a build's
+ * workers, a burst of cold starts) can deadlock with ordinary queries.
+ * Adding a statement to AUTH_SCHEMA? Point this at what it creates.
+ */
+export const AUTH_SCHEMA_READY =
+  "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_song_leading_experience_level') AS ready";
 
 /** The administrator role row, which the bootstrap script needs before it can assign it. */
 export const ADMIN_ROLE_ROW = {

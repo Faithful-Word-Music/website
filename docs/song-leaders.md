@@ -147,6 +147,10 @@ Conflicts use the existing rules (`effectiveAvailability`): normal services plus
 
 When someone's availability change makes them unavailable for a service where they lead songs, the schedulers are told (`song_leading.leader_unavailable`, from `src/lib/availability/change.ts`).
 
+## Song leaders' profiles
+
+Everyone who can be assigned to lead songs (the same `lead_songs` test as above) is asked three questions on their profile and in onboarding (`user_song_leading`): skill level (Beginner to Advanced), comfort with unfamiliar hymns, and comfort leading without accompaniment. They are also asked once whether they read sheet music, and to review their normal services. These are the person's own assessment, seen only by them and by staff with `view_profiles`. They are **informational only**: nothing here reads them, they never disqualify anyone, and leaders are still offered and assigned exactly as before. Normal services saved there are ordinary availability; they are not a commitment to lead. See [profile-requirements.md](./profile-requirements.md).
+
 ## Notifications
 
 There is a category of its own, `song_leading`. In-app and push are on by default. **Email is offered but off until the person switches it on.** The notices come from `src/lib/notifications/events/leadership.ts`:

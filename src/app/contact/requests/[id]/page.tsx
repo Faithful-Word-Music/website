@@ -10,7 +10,7 @@ import { cn } from "@/components/ui/cn";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { supportContent } from "@/content/support";
-import { requireViewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer } from "@/lib/auth/session";
 import { relativeTime } from "@/lib/notifications/format";
 import { contextLinks, isEmptyContext, isRedacted } from "@/lib/support/context";
 import { songSlugs } from "@/lib/support/context-load";
@@ -39,7 +39,7 @@ async function renderedAt(): Promise<number> {
  */
 export default async function SupportRequestPage({ params }: PageProps<"/contact/requests/[id]">) {
   const { id } = await params;
-  const viewer = await requireViewer(requestHref(id.toUpperCase()));
+  const viewer = await requireViewer(requestHref(id.toUpperCase()), PROFILE_GATE_EXEMPT);
   const result = await readRequest(viewer, id, supportDeps(viewer.env));
   if (!result.ok) notFound();
   const { access, request, messages, events } = result.view;

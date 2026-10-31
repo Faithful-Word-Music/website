@@ -18,7 +18,7 @@ import { getAiUsageSummary, listRecentAiUsage, type AiUsageRecord, type AiUsageS
 import { averageCostUsd, budgetStatus, monthWindow, type AiUsageGroup } from "@/lib/ai/usage";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { formatDateTime } from "@/lib/auth/format";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { isGoogleConfigured } from "@/lib/google-auth";
 import { getLibraryIndexStatus, type LibraryIndexStatus } from "@/lib/library-content/indexer";
 import { plural } from "@/lib/plural";
@@ -36,7 +36,7 @@ const content = aiContent.admin;
  * shown beside the site's figures. A fuller usage page will grow from this one.
  */
 export default async function AiPage() {
-  const viewer = await requireAnyPermission("/admin/ai", ["use_ai"]);
+  const viewer = await requireAnyPermission("/admin/ai", ["use_ai"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const config = aiConfig();

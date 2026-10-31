@@ -7,10 +7,13 @@ import { connection } from "next/server";
 import { cache } from "react";
 
 import { siteConfig } from "@/config/site";
+import { isSitePath } from "@/lib/page-origin";
 
 import { currentClerkConfig, warnIfMisconfigured, type ClerkEnv } from "./clerk-env";
-import { canAccessAdmin, resolvePermissions, type Permission } from "./permissions";
+import { canAccessAdmin, explicitPermissions, resolvePermissions, type Permission } from "./permissions";
+import type { ProfileStatus } from "./profile-requirements";
 import { normalizeEmail } from "./request-status";
+import { getViewerProfileStatus } from "./requirements";
 import {
   AccountsUnavailableError,
   applyInvitationRoles,
@@ -63,6 +66,12 @@ export interface Viewer {
   env: ClerkEnv;
   roleKeys: string[];
   permissions: Set<Permission>;
+  /**
+   * Permissions held on purpose - not through the Administrator role's
+   * blanket "everything" (explicitPermissions()). Decides participation:
+   * who is asked the musician and song-leader questions.
+   */
+  explicit: Set<Permission>;
   can(permission: Permission): boolean;
   canAccessAdmin: boolean;
 }
@@ -97,6 +106,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     env: status.env,
     roleKeys,
     permissions,
+    explicit: explicitPermissions(roleKeys, rolePermissions, overrides),
     can: (permission) => permissions.has(permission),
     canAccessAdmin: canAccessAdmin(permissions),
   };
@@ -107,15 +117,53 @@ export function loginUrl(returnTo: string): string {
   return `/login?redirect_url=${encodeURIComponent(returnTo)}`;
 }
 
+// ---------------------------------------------------------------------------
+// The profile gate (docs/profile-requirements.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a page or action asks for a finished profile. Every one does by
+ * default; the exemptions - recovery, help and the places where a profile is
+ * finished - pass `profileGate: false`, and each is listed in
+ * docs/profile-requirements.md (src/lib/auth/profile-gate.test.ts checks the
+ * list against the code).
+ */
+export interface GateOptions {
+  profileGate?: boolean;
+}
+
+/** The signed-in person's profile status (once per request; never throws). */
+export function viewerProfileStatus(viewer: Viewer): Promise<ProfileStatus> {
+  return getViewerProfileStatus(viewer);
+}
+
+/** True when a missing requirement is past its deadline and the policy is enforcing. */
+export async function isProfileBlocked(viewer: Viewer): Promise<boolean> {
+  return (await viewerProfileStatus(viewer)).state === "blocked";
+}
+
+/** Where a blocked person is sent: onboarding, then back to where they were going. */
+export function welcomeUrl(returnTo: string): string {
+  // Only a page on this site, and never onboarding itself - no loop, and never a link off the site.
+  const next = isSitePath(returnTo) && !returnTo.startsWith("/welcome") ? returnTo : null;
+  return next ? `/welcome?next=${encodeURIComponent(next)}` : "/welcome";
+}
+
+/** A route's answer for someone whose profile must be finished first. */
+export const PROFILE_INCOMPLETE = { error: "profile-incomplete", href: "/welcome" } as const;
+
 /**
  * The signed-in person, for a page. Signed-out visitors are sent to /login and
  * brought back afterwards. (The proxy does this first; this is the backstop.)
+ * Someone whose required profile answers are overdue is sent to /welcome,
+ * unless the page is one of the exemptions.
  */
-export async function requireViewer(returnTo: string): Promise<Viewer> {
+export async function requireViewer(returnTo: string, options: GateOptions = {}): Promise<Viewer> {
   const status = await requestAccountsStatus();
   if (!status.available) redirect("/login");
   const viewer = await getViewer();
   if (!viewer) redirect(loginUrl(returnTo));
+  if (options.profileGate !== false && (await isProfileBlocked(viewer))) redirect(welcomeUrl(returnTo));
   return viewer;
 }
 
@@ -130,6 +178,7 @@ export const ACTION_ERRORS = {
   forbidden: "You do not have permission to do that.",
   unavailable: "Accounts are temporarily unavailable. Please try again later.",
   failed: "Something went wrong. Please try again.",
+  profileIncomplete: "Please finish your profile first - it only takes a few minutes.",
 } as const;
 
 /**
@@ -143,6 +192,7 @@ export const ACTION_ERRORS = {
 export async function withPermission<T>(
   permission: Permission | null,
   action: (viewer: Viewer) => Promise<ActionResult<T>>,
+  options: GateOptions = {},
 ): Promise<ActionResult<T>> {
   let viewer: Viewer | null;
   try {
@@ -157,6 +207,9 @@ export async function withPermission<T>(
     console.warn(`[auth] Refused ${permission} for ${viewer.userId}.`);
     return { ok: false, error: ACTION_ERRORS.forbidden };
   }
+  if (options.profileGate !== false && (await isProfileBlocked(viewer))) {
+    return { ok: false, error: ACTION_ERRORS.profileIncomplete };
+  }
 
   try {
     return await action(viewer);
@@ -168,6 +221,23 @@ export async function withPermission<T>(
     return { ok: false, error: ACTION_ERRORS.failed };
   }
 }
+
+/**
+ * withPermission() for an action someone must still reach while their
+ * profile is overdue: finishing the profile itself, notification and push
+ * settings, asking for help, and administering accounts (so an
+ * administrator can always resolve a problem). Every caller is one of the
+ * exemptions listed in docs/profile-requirements.md.
+ */
+export function withPermissionExempt<T>(
+  permission: Permission | null,
+  action: (viewer: Viewer) => Promise<ActionResult<T>>,
+): Promise<ActionResult<T>> {
+  return withPermission(permission, action, { profileGate: false });
+}
+
+/** The page-side twin of withPermissionExempt(). */
+export const PROFILE_GATE_EXEMPT: GateOptions = { profileGate: false };
 
 function isNextControlFlow(error: unknown): boolean {
   const digest = (error as { digest?: unknown } | null)?.digest;
@@ -195,7 +265,11 @@ export async function siteOrigin(): Promise<string> {
  * otherwise null (the page then shows "no access"). Signed-out visitors are
  * sent to log in.
  */
-export async function requireAnyPermission(returnTo: string, permissions: Permission[]): Promise<Viewer | null> {
-  const viewer = await requireViewer(returnTo);
+export async function requireAnyPermission(
+  returnTo: string,
+  permissions: Permission[],
+  options: GateOptions = {},
+): Promise<Viewer | null> {
+  const viewer = await requireViewer(returnTo, options);
   return permissions.some((permission) => viewer.can(permission)) ? viewer : null;
 }

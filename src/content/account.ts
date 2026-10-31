@@ -71,26 +71,28 @@ export const accountContent = {
     title: "Your profile",
     edit: "Edit profile",
     editTitle: "Edit profile",
-    editLead: "Only you and the ministry's administrators can see your profile.",
+    editLead: "Only you and the ministry's administrators can see your profile. Each section saves on its own.",
     settingsLink: "Account settings",
-    /** /profile/edit?welcome=1: a new member's first page, straight after creating their account. */
-    welcome: {
-      eyebrow: "Welcome",
-      title: "Set up your profile",
-      lead: "Tell the music ministry a little about yourself. You can change any of this later from your profile.",
-      save: "Save and continue",
-      skip: "Skip for now",
-    },
-    completeTitle: "Finish your profile",
-    completeBody: "A few details help the music ministry know who plays and sings what.",
+    notificationsLink: "Notification settings",
+    availabilityLink: "Availability",
+    linksLabel: "Profile settings",
+    // A new member's first page is onboarding (/welcome); its copy and the
+    // profile's status lines are in src/content/profile-setup.ts.
   },
 
   /** /account: how the person signs in (Clerk's screen), and later account-wide settings. */
   settings: {
     eyebrow: "Your account",
     title: "Account settings",
-    lead: "Your sign-in email, password and signed-in devices.",
+    lead: "Your settings in one place: your profile, notifications, availability, and how you sign in.",
     profileLink: "Your profile",
+    placesLabel: "Settings",
+    places: {
+      profile: { title: "Your profile", lead: "Your name, photo, instruments and how you serve." },
+      availability: { title: "Normal services", lead: "The services the ministry can usually expect you at." },
+    },
+    signInTitle: "Signing in",
+    signInLead: "Your email addresses, password and signed-in devices.",
   },
 
   /**

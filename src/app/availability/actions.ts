@@ -1,6 +1,6 @@
 "use server";
 
-import { withPermission, type ActionResult } from "@/lib/auth/session";
+import { withPermission, withPermissionExempt, type ActionResult } from "@/lib/auth/session";
 import { PARTICIPANT_PERMISSION } from "@/lib/availability/access";
 import { changeNormalAvailability, changeRangeAvailability, changeServiceAvailability } from "@/lib/availability/change";
 
@@ -35,5 +35,6 @@ export async function setRangeAvailability(input: unknown): Promise<ActionResult
 
 /** The services someone usually serves at. */
 export async function setNormalPattern(input: unknown): Promise<ActionResult> {
-  return withPermission(PARTICIPANT_PERMISSION, (viewer) => changeNormalAvailability(viewer, input));
+  // Exempt from the profile gate: saving normal services is how the availability requirement is met.
+  return withPermissionExempt(PARTICIPANT_PERMISSION, (viewer) => changeNormalAvailability(viewer, input));
 }

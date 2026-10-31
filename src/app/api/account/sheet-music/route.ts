@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
@@ -32,6 +32,8 @@ export async function GET() {
 
     const viewer = await getViewer();
     if (!viewer) return NextResponse.json({ signedIn: false }, { status: 401, headers });
+    // Profile overdue: nothing members-only until it is finished (the page then offers /welcome).
+    if (await isProfileBlocked(viewer)) return NextResponse.json({ assigned: false, profileIncomplete: true }, { headers });
 
     const sheetTypes = await getSheetMusicTypes(viewer.env, viewer.userId);
     const printsForOthers = viewer.can("manage_sheet_music");

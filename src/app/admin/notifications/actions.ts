@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { notificationsContent } from "@/content/notifications";
-import { ACTION_ERRORS, withPermission, type ActionResult } from "@/lib/auth/session";
+import { ACTION_ERRORS, withPermissionExempt, type ActionResult } from "@/lib/auth/session";
 import { MANUAL_AUDIENCES, SEND_PERMISSION } from "@/lib/notifications/manual";
 import {
   deleteTemplate,
@@ -24,7 +24,7 @@ import { manualDeps } from "@/lib/notifications/manual-store";
  * Admin -> Notifications: previewing and sending an announcement, the older
  * pages of the history, and the templates (send_notifications).
  *
- * Each goes through withPermission(), and the rules in manual-service.ts
+ * Each goes through withPermissionExempt(), and the rules in manual-service.ts
  * check the permission again and validate every argument: the title, the
  * message, the link, the priority and every part of the audience. Nothing a
  * browser says about WHO would receive a notification is taken - sending
@@ -64,7 +64,7 @@ const TEMPLATE_ERRORS: Record<TemplateProblem, string> = {
 
 /** Who a draft would reach if it were sent now. Writes nothing. */
 export async function previewAnnouncementAction(draft: unknown): Promise<ActionResult<AnnouncementPreview>> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     const result = await previewAnnouncement(viewer, draft, NAMED, manualDeps(viewer.env));
     return result.ok ? { ok: true, value: result.preview } : { ok: false, error: SEND_ERRORS[result.problem] };
   });
@@ -77,7 +77,7 @@ export async function previewAnnouncementAction(draft: unknown): Promise<ActionR
  * is not part of the answer - that is recorded per device afterwards.
  */
 export async function sendAnnouncementAction(draft: unknown, templateId: unknown = null): Promise<ActionResult<{ eventId: number; recipients: number }>> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     let result;
     try {
       result = await sendAnnouncement(viewer, { draft, templateId }, NAMED, manualDeps(viewer.env));
@@ -93,7 +93,7 @@ export async function sendAnnouncementAction(draft: unknown, templateId: unknown
 
 /** The next page of the history, older than `before`. */
 export async function loadAnnouncementsAction(before: unknown): Promise<ActionResult<AnnouncementPage>> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     const page = await listAnnouncements(viewer, { before }, manualDeps(viewer.env));
     return page ? { ok: true, value: page } : { ok: false, error: ACTION_ERRORS.forbidden };
   });
@@ -101,7 +101,7 @@ export async function loadAnnouncementsAction(before: unknown): Promise<ActionRe
 
 /** Keeps a draft as a new template, or replaces template `id`'s contents. Nothing is sent. */
 export async function saveTemplateAction(input: { id?: unknown; name: unknown; draft: unknown }): Promise<ActionResult<{ id: number }>> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     const fields = input && typeof input === "object" ? input : { name: null, draft: null };
     const result = await saveTemplate(viewer, fields, manualDeps(viewer.env));
     if (!result.ok) return { ok: false, error: TEMPLATE_ERRORS[result.problem] };
@@ -112,7 +112,7 @@ export async function saveTemplateAction(input: { id?: unknown; name: unknown; d
 }
 
 export async function duplicateTemplateAction(id: unknown): Promise<ActionResult> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     const rename = (name: string) => copy.templates.copyName.replace("{name}", name);
     const result = await duplicateTemplate(viewer, { id, rename }, manualDeps(viewer.env));
     if (!result.ok) return { ok: false, error: TEMPLATE_ERRORS[result.problem] };
@@ -123,7 +123,7 @@ export async function duplicateTemplateAction(id: unknown): Promise<ActionResult
 
 /** Deletes a template. What was sent from it keeps its own record. */
 export async function deleteTemplateAction(id: unknown): Promise<ActionResult> {
-  return withPermission(SEND_PERMISSION, async (viewer) => {
+  return withPermissionExempt(SEND_PERMISSION, async (viewer) => {
     const result = await deleteTemplate(viewer, id, manualDeps(viewer.env));
     if (!result.ok) return { ok: false, error: TEMPLATE_ERRORS[result.problem] };
     revalidatePath("/admin/notifications/templates");

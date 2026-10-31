@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { LearningScaleDisplay } from "@/components/account/LearningScale";
 import { Card } from "@/components/ui/Card";
 import {
+  LEADING_COMFORT,
+  LEADING_EXPERIENCE,
   LEARNING_STYLES,
   PROFICIENCIES,
   SERVICE_AVAILABILITY,
@@ -25,12 +27,15 @@ import type { VisibleProfile } from "@/lib/auth/profile-visibility";
 export function ProfileView({
   profile,
   isMusician = false,
+  isSongLeader = false,
   availabilityHref,
   actions,
 }: {
   profile: VisibleProfile;
   /** Musicians are asked "How do you play?", so it shows even when unanswered. */
   isMusician?: boolean;
+  /** Song leaders are asked about leading, so the card shows even when unanswered. */
+  isSongLeader?: boolean;
   /**
    * Where normal availability is changed (/availability), for someone who
    * may change it. Availability is only shown here, never edited.
@@ -137,7 +142,9 @@ export function ProfileView({
         {profile.serviceAvailability ? (
           <Card className="p-6">
             <SectionLabel>Usually available</SectionLabel>
-            {profile.serviceAvailability.length > 0 ? (
+            {profile.serviceAvailability.length === 0 && profile.availabilityReviewed === false ? (
+              <Empty>Not reviewed yet.</Empty>
+            ) : profile.serviceAvailability.length > 0 ? (
               <ul className="mt-3 flex flex-wrap gap-2">
                 {SERVICE_AVAILABILITY.filter((slot) => profile.serviceAvailability!.includes(slot.value)).map((slot) => (
                   <li key={slot.value} className="rounded-full border border-line px-3 py-1 text-sm text-ink">
@@ -145,6 +152,8 @@ export function ProfileView({
                   </li>
                 ))}
               </ul>
+            ) : profile.availabilityReviewed ? (
+              <Empty>No regular services.</Empty>
             ) : (
               <Empty>Not given.</Empty>
             )}
@@ -158,6 +167,17 @@ export function ProfileView({
                 </Link>
               </p>
             ) : null}
+          </Card>
+        ) : null}
+
+        {profile.songLeading !== undefined && (isSongLeader || profile.songLeading !== null) ? (
+          <Card className="p-6">
+            <SectionLabel>Song leading</SectionLabel>
+            <dl className="mt-3 space-y-3 text-sm">
+              <Row label="Skill level" value={labelOf(LEADING_EXPERIENCE, profile.songLeading?.experience)} />
+              <Row label="Unfamiliar hymns" value={labelOf(LEADING_COMFORT, profile.songLeading?.unfamiliarHymns)} />
+              <Row label="Leading without accompaniment" value={labelOf(LEADING_COMFORT, profile.songLeading?.unaccompaniedLeading)} />
+            </dl>
           </Card>
         ) : null}
 

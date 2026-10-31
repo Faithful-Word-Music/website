@@ -130,7 +130,7 @@ export function accountMenu(context: NavContext): NavItem[] {
 }
 
 /** The pages only a signed-in person can reach (the proxy sends anyone else to /login). */
-const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/account", "/admin"];
+const MEMBER_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/welcome", "/account", "/admin"];
 
 /**
  * Whether this page can only be open to someone signed in. While Clerk is

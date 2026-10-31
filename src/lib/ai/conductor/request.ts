@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { aiContent } from "@/content/ai";
 import { conductorContent } from "@/content/conductor";
-import { getViewer, type Viewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, getViewer, isProfileBlocked, type Viewer } from "@/lib/auth/session";
 
 /**
  * The start of every /api/conductor/... request that is not a question: who
@@ -30,6 +30,7 @@ export async function conductorViewer(): Promise<{ viewer: Viewer } | { refused:
     return { refused: conductorRefusal(503, aiContent.errors.unknown) };
   }
   if (!viewer) return { refused: conductorRefusal(401, conductorContent.errors.signedOut) };
+  if (await isProfileBlocked(viewer)) return { refused: conductorRefusal(403, ACTION_ERRORS.profileIncomplete) };
   if (!viewer.can("use_ai")) {
     console.warn(`[conductor] Refused ${viewer.userId}: no use_ai permission.`);
     return { refused: conductorRefusal(403, aiContent.errors.forbidden) };

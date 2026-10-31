@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { notificationsContent } from "@/content/notifications";
-import { withPermission, type ActionResult } from "@/lib/auth/session";
+import { withPermissionExempt, type ActionResult } from "@/lib/auth/session";
 import { setPreference } from "@/lib/notifications/service";
 import { notificationDeps } from "@/lib/notifications/store";
 
@@ -16,7 +16,7 @@ import { notificationDeps } from "@/lib/notifications/store";
  * showed.
  */
 export async function setNotificationPreferenceAction(category: unknown, channel: unknown, enabled: unknown): Promise<ActionResult> {
-  return withPermission(null, async (viewer) => {
+  return withPermissionExempt(null, async (viewer) => {
     const copy = notificationsContent.settings;
     const result = await setPreference(viewer, { category, channel, enabled }, notificationDeps(viewer.env));
     if (!result.ok) {

@@ -4,7 +4,7 @@ import { NoAccess, Notice } from "@/components/account/Notices";
 import { AnnouncementComposer, type DraftSource } from "@/components/admin/notifications/AnnouncementComposer";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
-import { requireViewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer } from "@/lib/auth/session";
 import { SEND_PERMISSION } from "@/lib/notifications/manual";
 import { composerOptions, loadDraft, type ComposerOptions, type LoadedDraft } from "@/lib/notifications/manual-service";
 import { manualDeps } from "@/lib/notifications/manual-store";
@@ -32,7 +32,7 @@ const positive = (value: string | string[] | undefined): number | null => {
  * (/admin/notifications/policies), so an old link or bookmark still arrives.
  */
 export default async function SendNotificationPage({ searchParams }: PageProps<"/admin/notifications">) {
-  const viewer = await requireViewer("/admin/notifications");
+  const viewer = await requireViewer("/admin/notifications", PROFILE_GATE_EXEMPT);
   if (!viewer.can(SEND_PERMISSION)) {
     if (viewer.can(MANAGE_PERMISSION)) redirect("/admin/notifications/policies");
     return <NoAccess />;

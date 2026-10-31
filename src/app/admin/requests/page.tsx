@@ -8,14 +8,14 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { formatDate } from "@/lib/auth/format";
 import { reconcileRequests } from "@/lib/auth/reconcile";
 import { REQUEST_STATUSES, REQUEST_STATUS_LABELS, isRequestStatus } from "@/lib/auth/request-status";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { listRequests } from "@/lib/auth/store";
 
 export const metadata = { title: "Account requests" };
 
 /** /admin/requests - everyone who has asked for an account, pending first. */
 export default async function RequestsPage({ searchParams }: PageProps<"/admin/requests">) {
-  const viewer = await requireAnyPermission("/admin/requests", ["manage_users"]);
+  const viewer = await requireAnyPermission("/admin/requests", ["manage_users"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const { status: statusParam } = await searchParams;

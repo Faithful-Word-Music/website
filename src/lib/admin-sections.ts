@@ -85,7 +85,7 @@ export const ADMIN_SECTIONS: AdminSectionGroup[] = [
         href: "/admin/configuration",
         label: nav.items.configuration,
         icon: "configuration",
-        anyOf: ["manage_profiles", "manage_sheet_music"],
+        anyOf: ["manage_profiles", "manage_sheet_music", "manage_site_settings"],
       },
       {
         id: "notifications",

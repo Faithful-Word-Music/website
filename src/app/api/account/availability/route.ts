@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { searchContent } from "@/content/search";
-import { ACTION_ERRORS, getViewer, type Viewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, getViewer, isProfileBlocked, type Viewer } from "@/lib/auth/session";
 import { PARTICIPANT_PERMISSION } from "@/lib/availability/access";
 import { changeServiceAvailability, loadMyAvailability } from "@/lib/availability/change";
 
@@ -39,6 +39,7 @@ async function participant(): Promise<{ viewer: Viewer } | { refused: NextRespon
     return { refused: refuse(503, ACTION_ERRORS.unavailable) };
   }
   if (!viewer) return { refused: refuse(401, searchContent.availability.signedOut) };
+  if (await isProfileBlocked(viewer)) return { refused: refuse(403, ACTION_ERRORS.profileIncomplete) };
   if (!viewer.can(PARTICIPANT_PERMISSION)) {
     console.warn(`[availability] Refused ${viewer.userId}: no ${PARTICIPANT_PERMISSION} permission.`);
     return { refused: refuse(403, ACTION_ERRORS.forbidden) };

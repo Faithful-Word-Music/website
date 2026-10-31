@@ -171,6 +171,7 @@ export const ADMIN_PERMISSIONS: Permission[] = [
   "use_ai",
   "manage_notifications",
   "send_notifications",
+  "manage_site_settings",
 ];
 
 /** Permissions that open People (/admin/users): everything that works on a person's page. */
@@ -339,6 +340,25 @@ export function resolvePermissions(
   }
 
   return result;
+}
+
+/**
+ * The permissions someone holds on purpose: through a role other than the
+ * Administrator's implicit "all permissions", or an individual grant, minus
+ * individual denies. What makes someone a participant (on the availability
+ * board, offered as a song leader, asked the matching profile questions) -
+ * administering the site never makes anyone a musician or a song leader.
+ */
+export function explicitPermissions(
+  roleKeys: readonly string[],
+  rolePermissions: ReadonlyMap<string, readonly string[]>,
+  overrides: readonly PermissionOverride[] = [],
+): Set<Permission> {
+  return resolvePermissions(
+    roleKeys.filter((key) => key !== ADMIN_ROLE),
+    rolePermissions,
+    overrides,
+  );
 }
 
 export function canAccessAdmin(permissions: ReadonlySet<Permission>): boolean {

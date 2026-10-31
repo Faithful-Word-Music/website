@@ -12,12 +12,8 @@ export const dashboardContent = {
 
   attention: {
     title: "Needs your attention",
-    profile: {
-      title: "Finish your profile",
-      /** {items} is replaced with what is missing, e.g. "a profile photo and your music theory level". */
-      detail: "Still missing: {items}.",
-      action: "Edit profile",
-    },
+    // A profile that still needs something is no longer an item here: the
+    // profile notice above everything else says it (ProfileStatusNotice).
     requests: {
       /** [one, many]; {count} is replaced. */
       title: ["{count} account request is waiting", "{count} account requests are waiting"],

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { serviceSheets } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
@@ -54,6 +54,7 @@ export async function GET(request: Request, ctx: RouteContext<"/dashboard/sheet-
 
   const viewer = await getViewer().catch(() => null);
   if (!viewer) return jsonError(401, "sign-in-required");
+  if (await isProfileBlocked(viewer)) return jsonError(403, PROFILE_INCOMPLETE.error);
 
   // One chosen type, for someone who prints for others - or the person's own.
   const chosen = new URL(request.url).searchParams.get("type");

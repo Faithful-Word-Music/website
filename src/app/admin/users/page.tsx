@@ -8,7 +8,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { listAccounts } from "@/lib/auth/clerk";
 import { formatDate } from "@/lib/auth/format";
 import { MEMBER_ROLE, PEOPLE_PERMISSIONS } from "@/lib/auth/permissions";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { listRoles, rolesForUsers, titlesForUsers, userIdsWithRole } from "@/lib/auth/store";
 
 export const metadata = { title: "People" };
@@ -17,7 +17,7 @@ const PAGE_SIZE = 25;
 
 /** /admin/users - everyone with an account in this environment, searchable and filterable by role. */
 export default async function UsersPage({ searchParams }: PageProps<"/admin/users">) {
-  const viewer = await requireAnyPermission("/admin/users", PEOPLE_PERMISSIONS);
+  const viewer = await requireAnyPermission("/admin/users", PEOPLE_PERMISSIONS, PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const params = await searchParams;

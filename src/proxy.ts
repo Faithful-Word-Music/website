@@ -27,7 +27,7 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  * decide who is sent to log in - never as the protection itself, which each
  * page and action does for its own data (requireViewer, withPermission).
  */
-const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/account", "/admin", "/contact/requests"];
+const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/welcome", "/account", "/admin", "/contact/requests"];
 
 function isAccountRoute(request: NextRequest): boolean {
   const { pathname } = request.nextUrl;
@@ -80,6 +80,8 @@ export const config = {
     "/availability/:path*",
     "/notifications/:path*",
     "/profile/:path*",
+    // Onboarding, and where an overdue profile is finished (docs/profile-requirements.md).
+    "/welcome/:path*",
     "/account/:path*",
     "/admin/:path*",
     "/login/:path*",

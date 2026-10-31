@@ -6,14 +6,14 @@ import { Pill } from "@/components/admin/StatusPill";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { ADMIN_ROLE, ALL_PERMISSIONS, MEMBER_ROLE } from "@/lib/auth/permissions";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { listRoles } from "@/lib/auth/store";
 
 export const metadata = { title: "Roles" };
 
 /** /admin/roles - every role, what it allows and who holds it; and a form to create a new one. */
 export default async function RolesPage() {
-  const viewer = await requireAnyPermission("/admin/roles", ["manage_roles"]);
+  const viewer = await requireAnyPermission("/admin/roles", ["manage_roles"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const roles = await listRoles(viewer.env);

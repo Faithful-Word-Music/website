@@ -19,12 +19,7 @@
  * Pure - no server-only import - so it can be unit tested.
  */
 
-import {
-  ADMIN_ROLE,
-  resolvePermissions,
-  type Permission,
-  type PermissionOverride,
-} from "@/lib/auth/permissions";
+import { explicitPermissions, type Permission, type PermissionOverride } from "@/lib/auth/permissions";
 
 export const PARTICIPANT_PERMISSION = "view_availability" satisfies Permission;
 export const LEADER_PERMISSION = "manage_availability" satisfies Permission;
@@ -40,8 +35,7 @@ export function holdsExplicitly(
   rolePermissions: ReadonlyMap<string, readonly string[]>,
   overrides: readonly PermissionOverride[] = [],
 ): boolean {
-  const roles = roleKeys.filter((key) => key !== ADMIN_ROLE);
-  return resolvePermissions(roles, rolePermissions, overrides).has(permission);
+  return explicitPermissions(roleKeys, rolePermissions, overrides).has(permission);
 }
 
 /** Whether one person is on the availability board. */

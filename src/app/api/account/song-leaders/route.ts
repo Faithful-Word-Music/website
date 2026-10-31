@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { ROSTER_PERMISSION, SCHEDULER_PERMISSION } from "@/lib/leadership/access";
 import { songListLeaders } from "@/lib/leadership/board";
 import { loadBoard } from "@/lib/leadership/load";
@@ -26,6 +26,7 @@ export async function GET() {
   try {
     const viewer = await getViewer();
     if (!viewer) return NextResponse.json({ signedIn: false }, { status: 401, headers });
+    if (await isProfileBlocked(viewer)) return NextResponse.json({ authorized: false, leaders: [] }, { headers });
     if (!viewer.can(ROSTER_PERMISSION) && !viewer.can(SCHEDULER_PERMISSION)) {
       return NextResponse.json({ authorized: false, leaders: [] }, { headers });
     }

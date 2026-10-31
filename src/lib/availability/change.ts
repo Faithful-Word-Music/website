@@ -186,9 +186,10 @@ export async function changeNormalAvailability(viewer: Viewer, input: unknown): 
   const today = churchDate(Date.now());
   const ahead = { from: today, to: addDays(today, LEADERSHIP_DAYS) };
   const standing = await standingExceptions(viewer, target.person, ahead.from, ahead.to);
-  await setNormalAvailability(viewer.env, target.person.id, parsed.data.services);
+  await setNormalAvailability(viewer.env, target.person.id, parsed.data.services, viewer.userId);
   refreshAvailability();
   revalidatePath("/profile");
+  revalidatePath("/welcome");
   await warnSchedulers(viewer, target.person, standing, ahead, parsed.data.services);
   await announce(viewer, target.person, new Map(), (person) =>
     availabilityNormalChanged({

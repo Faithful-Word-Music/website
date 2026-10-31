@@ -5,7 +5,7 @@ import { NotificationPreferences } from "@/components/notifications/Notification
 import { NotificationsFrame } from "@/components/notifications/NotificationsFrame";
 import { PushDeviceSection } from "@/components/notifications/PushDevice";
 import { notificationsContent } from "@/content/notifications";
-import { requireViewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer } from "@/lib/auth/session";
 import { preferencesFor, type CategoryPreferences } from "@/lib/notifications/service";
 import { notificationDeps } from "@/lib/notifications/store";
 
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
  * server (src/app/notifications/actions.ts).
  */
 export default async function NotificationSettingsPage() {
-  const viewer = await requireViewer("/notifications/settings");
+  const viewer = await requireViewer("/notifications/settings", PROFILE_GATE_EXEMPT);
 
   let categories: CategoryPreferences[] | null;
   try {

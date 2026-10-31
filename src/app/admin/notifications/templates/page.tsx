@@ -2,7 +2,7 @@ import { NoAccess, Notice } from "@/components/account/Notices";
 import { TemplateManager } from "@/components/admin/notifications/TemplateManager";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { SEND_PERMISSION } from "@/lib/notifications/manual";
 import { composerOptions, listTemplates, type ComposerOptions, type NotificationTemplate } from "@/lib/notifications/manual-service";
 import { manualDeps } from "@/lib/notifications/manual-store";
@@ -20,7 +20,7 @@ const content = notificationsContent.center.templates;
  * template here changes nothing that was already sent.
  */
 export default async function NotificationTemplatesPage() {
-  const viewer = await requireAnyPermission("/admin/notifications/templates", [SEND_PERMISSION]);
+  const viewer = await requireAnyPermission("/admin/notifications/templates", [SEND_PERMISSION], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const deps = manualDeps(viewer.env);

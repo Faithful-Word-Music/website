@@ -6,7 +6,7 @@ import { Container } from "@/components/ui/Container";
 import { RehearsalMark } from "@/components/ui/SectionHeading";
 import { adminContent } from "@/content/admin";
 import { adminSectionsFor } from "@/lib/admin-sections";
-import { requireViewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer } from "@/lib/auth/session";
 import { countRequestsByStatus } from "@/lib/auth/store";
 
 const copy = adminContent.nav;
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
  * so it can never be the thing that protects a page.
  */
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
-  const viewer = await requireViewer("/admin");
+  const viewer = await requireViewer("/admin", PROFILE_GATE_EXEMPT);
 
   if (!viewer.canAccessAdmin) {
     return (

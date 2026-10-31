@@ -2,7 +2,7 @@ import { NoAccess, Notice } from "@/components/account/Notices";
 import { NotificationPolicyEditor, NotificationTest } from "@/components/admin/NotificationPolicyEditor";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { CHANNELS, allowedPolicies } from "@/lib/notifications/model";
 import { policiesFor, type CategoryPolicyView } from "@/lib/notifications/service";
 import { notificationDeps } from "@/lib/notifications/store";
@@ -26,7 +26,7 @@ const content = notificationsContent.admin;
  * refuses anything else (setNotificationPoliciesAction).
  */
 export default async function NotificationPoliciesPage() {
-  const viewer = await requireAnyPermission("/admin/notifications/policies", ["manage_notifications"]);
+  const viewer = await requireAnyPermission("/admin/notifications/policies", ["manage_notifications"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   let categories: CategoryPolicyView[] | null;

@@ -2,7 +2,7 @@ import { NoAccess, Notice } from "@/components/account/Notices";
 import { AnnouncementHistory } from "@/components/admin/notifications/AnnouncementHistory";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { SEND_PERMISSION } from "@/lib/notifications/manual";
 import { listAnnouncements, type AnnouncementPage } from "@/lib/notifications/manual-service";
 import { manualDeps } from "@/lib/notifications/manual-store";
@@ -20,7 +20,7 @@ const content = notificationsContent.center.history;
  * (src/lib/notifications/manual-service.ts).
  */
 export default async function NotificationHistoryPage() {
-  const viewer = await requireAnyPermission("/admin/notifications/history", [SEND_PERMISSION]);
+  const viewer = await requireAnyPermission("/admin/notifications/history", [SEND_PERMISSION], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   let page: AnnouncementPage | null;

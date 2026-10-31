@@ -9,6 +9,7 @@ import { disconnectForSignOut } from "@/components/notifications/push-device";
 import { cn } from "@/components/ui/cn";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { accountContent } from "@/content/account";
+import { profileSetupContent } from "@/content/profile-setup";
 import { accountMenu, isActivePath } from "@/lib/navigation";
 
 /**
@@ -66,6 +67,7 @@ export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
               )}
             >
               {item.label}
+              {item.href === "/profile" ? <ProfileMarker state={me?.profileAttention} /> : null}
             </Link>
           </li>
         ))}
@@ -138,10 +140,17 @@ export function UserMenu() {
         type="button"
         aria-expanded={open}
         aria-controls={menuId}
-        aria-label={accountContent.menu.button}
+        aria-label={
+          me && me.profileAttention !== "none"
+            ? `${accountContent.menu.button} - ${profileSetupContent.status.menuMarker}`
+            : accountContent.menu.button
+        }
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper"
+        className="relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper"
       >
+        {me && me.profileAttention !== "none" ? (
+          <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-gold-dark" />
+        ) : null}
         {/* eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized by Clerk */}
         <img
           src={user.imageUrl}
@@ -176,6 +185,7 @@ export function UserMenu() {
                     className={cn(itemClass, current && "bg-paper")}
                   >
                     {item.label}
+                    {item.href === "/profile" ? <ProfileMarker state={me?.profileAttention} /> : null}
                   </Link>
                 </li>
               );
@@ -193,5 +203,16 @@ export function UserMenu() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** A small gold dot beside Profile while the profile needs something; said in words for screen readers. */
+function ProfileMarker({ state }: { state: "none" | "due" | "blocked" | undefined }) {
+  if (!state || state === "none") return null;
+  return (
+    <>
+      <span aria-hidden="true" className="ml-2 inline-block h-2 w-2 rounded-full bg-gold-dark" />
+      <span className="sr-only"> ({profileSetupContent.status.menuMarker})</span>
+    </>
   );
 }

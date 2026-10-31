@@ -8,7 +8,7 @@ import { loadPlanningPhilosophy } from "@/lib/ai/planning/load";
 import { PHILOSOPHY_MAX_CHARS } from "@/lib/ai/planning/philosophy";
 import { toDraft, type PhilosophyRevisionSummary } from "@/lib/ai/planning/revisions";
 import { listPhilosophyRevisions } from "@/lib/ai/planning/store";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 
 export const metadata = { title: aiContent.admin.nav.philosophy };
 
@@ -25,7 +25,7 @@ const content = aiContent.admin.philosophy;
  * is read-only, and the actions refuse regardless.
  */
 export default async function PhilosophyPage() {
-  const viewer = await requireAnyPermission("/admin/ai/philosophy", ["use_ai"]);
+  const viewer = await requireAnyPermission("/admin/ai/philosophy", ["use_ai"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const loaded = await loadPlanningPhilosophy(viewer.env);

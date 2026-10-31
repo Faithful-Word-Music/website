@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { NoAccess, Notice } from "@/components/account/Notices";
 import { ProfileView, SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
+import { ExtendDeadlineButton } from "@/components/admin/ProfileRequirementsPerson";
+import { profileSetupContent, requirementLabel } from "@/content/profile-setup";
 import { feedbackContent } from "@/content/feedback";
 import { Pill } from "@/components/admin/StatusPill";
 import { OverrideEditor, RoleEditor, SheetMusicTypeEditor, TitleEditor } from "@/components/admin/UserEditors";
@@ -11,7 +13,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getAccount } from "@/lib/auth/clerk";
-import { formatDateTime } from "@/lib/auth/format";
+import { formatDate, formatDateTime } from "@/lib/auth/format";
 import { clerkUserIdSchema } from "@/lib/auth/forms";
 import {
   ADMIN_ROLE,
@@ -20,10 +22,14 @@ import {
   PERMISSIONS,
   PEOPLE_PERMISSIONS,
   PERMISSION_GROUPS,
+  explicitPermissions,
   resolvePermissions,
 } from "@/lib/auth/permissions";
+import { LEAD_SONGS } from "@/lib/auth/profile-requirements";
+import { evaluateProfile } from "@/lib/auth/requirements";
+import { getSongLeading } from "@/lib/auth/requirements-store";
 import { audienceFor, toProfileRecord, visibleProfile } from "@/lib/auth/profile-visibility";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import {
   getProfile,
   getSheetMusicTypes,
@@ -47,7 +53,7 @@ export const metadata = { title: "Person" };
  */
 export default async function UserPage({ params }: PageProps<"/admin/users/[id]">) {
   const { id } = await params;
-  const viewer = await requireAnyPermission(`/admin/users/${id}`, PEOPLE_PERMISSIONS);
+  const viewer = await requireAnyPermission(`/admin/users/${id}`, PEOPLE_PERMISSIONS, PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const userId = clerkUserIdSchema.safeParse(id);
@@ -65,7 +71,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
   const isSelf = person.id === viewer.userId;
 
   const managesSheetMusic = viewer.can("manage_sheet_music");
-  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, assignedSheetTypes, sheetTypes] =
+  const [authorization, overrides, roles, profile, instruments, titles, titleOptions, assignedSheetTypes, sheetTypes, leading] =
     await Promise.all([
       loadAuthorization(viewer.env, person.id),
       listOverrides(viewer.env, person.id),
@@ -76,6 +82,7 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
       listOptions(viewer.env, "titles"),
       getSheetMusicTypes(viewer.env, person.id),
       managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
+      getSongLeading(viewer.env, person.id),
     ]);
   const effective = resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
   const roleLabels = roles
@@ -84,6 +91,19 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
   const isTargetAdmin = authorization.roleKeys.includes(ADMIN_ROLE);
   // The profile needs "View profiles"; the audience then decides which fields it shows.
   const audience = viewer.can("view_profiles") ? audienceFor(viewer, person.id) : null;
+  const explicit = explicitPermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
+  const isSongLeader = explicit.has(LEAD_SONGS);
+  // Looked at, never recorded: viewing someone does not start their clock.
+  const requirements =
+    viewer.can("manage_users") || viewer.can("view_profiles")
+      ? await evaluateProfile(viewer.env, person.id, {
+          roleKeys: authorization.roleKeys,
+          explicit,
+          account: { firstName: person.firstName, lastName: person.lastName, createdAt: person.createdAt },
+          record: false,
+        }).catch(() => null)
+      : null;
+  const requirementCopy = profileSetupContent.admin.person;
 
   return (
     <div className="space-y-10">
@@ -100,8 +120,17 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
 
       {audience ? (
         <ProfileView
-          profile={visibleProfile(toProfileRecord(person, profile, { titles, instruments, roleLabels }), audience)}
+          profile={visibleProfile(
+            toProfileRecord(person, profile, {
+              titles,
+              instruments,
+              roleLabels,
+              songLeading: isSongLeader || Object.values(leading).some((value) => value !== null) ? leading : null,
+            }),
+            audience,
+          )}
           isMusician={authorization.roleKeys.includes(MUSICIAN_ROLE)}
+          isSongLeader={isSongLeader}
         />
       ) : null}
 
@@ -172,6 +201,25 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
                   </div>
                 );
               })}
+            </div>
+          </Section>
+        ) : null}
+
+        {requirements && requirements.state !== "unknown" ? (
+          <Section title={requirementCopy.title} description={profileSetupContent.admin.lead}>
+            <div className="space-y-3 text-sm text-ink">
+              {requirements.state === "complete" ? <p>{requirementCopy.complete}</p> : null}
+              {requirements.state === "advisory" ? <p className="text-muted">{requirementCopy.notActive}</p> : null}
+              {requirements.missing.length > 0 ? (
+                <p>{requirementCopy.missing.replace("{items}", requirements.missing.map((item) => requirementLabel(item.key).toLowerCase()).join(", "))}</p>
+              ) : null}
+              {requirements.state === "grace" && requirements.dueAt ? <p>{requirementCopy.due.replace("{date}", formatDate(requirements.dueAt))}</p> : null}
+              {requirements.state === "blocked" && requirements.dueAt ? (
+                <p className="text-gold-dark">{requirementCopy.overdue.replace("{date}", formatDate(requirements.dueAt))}</p>
+              ) : null}
+              {viewer.can("manage_users") && !isSelf && (requirements.state === "grace" || requirements.state === "blocked") ? (
+                <ExtendDeadlineButton userId={person.id} />
+              ) : null}
             </div>
           </Section>
         ) : null}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { siteConfig } from "@/config/site";
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE } from "@/lib/auth/session";
 import { fileLabel, findFile } from "@/lib/sheet-music";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { openDriveFile } from "@/lib/sheet-music-index";
@@ -62,6 +62,7 @@ export async function GET(
   if (!isPublic) {
     const viewer = await getViewer().catch(() => null);
     if (!viewer) return jsonError(401, "sign-in-required");
+    if (await isProfileBlocked(viewer)) return jsonError(403, PROFILE_INCOMPLETE.error);
     if (!viewer.can("view_sheet_music") || !canAccessFile(song, found.file, MEMBER_VIEWER)) {
       return jsonError(403, "restricted");
     }

@@ -98,19 +98,25 @@ export async function setNormalAvailability(
   env: ClerkEnv,
   userId: string,
   services: readonly ServiceAvailability[],
+  /** Who saved it: the person, or a leader on their behalf. Saving is reviewing (profile requirements). */
+  actorId: string,
 ): Promise<void> {
   const sql = await db(env);
   await sql.query(
-    `INSERT INTO user_profiles (clerk_env, clerk_user_id, service_availability) VALUES ($1, $2, $3::text[])
+    `INSERT INTO user_profiles (clerk_env, clerk_user_id, service_availability, availability_reviewed_at, availability_reviewed_by)
+     VALUES ($1, $2, $3::text[], now(), $4)
      ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET
-       service_availability = EXCLUDED.service_availability, updated_at = now()`,
-    [env, userId, services],
+       service_availability = EXCLUDED.service_availability, updated_at = now(),
+       availability_reviewed_at = now(), availability_reviewed_by = EXCLUDED.availability_reviewed_by`,
+    [env, userId, services, actorId],
   );
 }
 
 export interface RosterRecord {
   id: string;
   normal: ServiceAvailability[];
+  /** Whether the normal services were ever saved on purpose (an empty list included, once confirmed). */
+  reviewed: boolean;
   preferredName: string;
 }
 
@@ -151,15 +157,16 @@ export async function loadRosterRecords(env: ClerkEnv, wanted: Permission = PART
   const ids = explicitHolderIds(wanted, userRoles, rolePermissions, overrides);
   if (ids.length === 0) return [];
   const profiles = (await sql.query(
-    `SELECT clerk_user_id, service_availability, preferred_name FROM user_profiles
+    `SELECT clerk_user_id, service_availability, preferred_name, availability_reviewed_at IS NOT NULL AS reviewed FROM user_profiles
       WHERE clerk_env = $1 AND clerk_user_id = ANY($2::text[])`,
     [env, ids],
-  )) as Array<{ clerk_user_id: string; service_availability: ServiceAvailability[]; preferred_name: string }>;
+  )) as Array<{ clerk_user_id: string; service_availability: ServiceAvailability[]; preferred_name: string; reviewed: boolean }>;
   const byId = new Map(profiles.map((profile) => [profile.clerk_user_id, profile]));
 
   return ids.map((id) => ({
     id,
     normal: byId.get(id)?.service_availability ?? [],
+    reviewed: byId.get(id)?.reviewed ?? false,
     preferredName: byId.get(id)?.preferred_name ?? "",
   }));
 }

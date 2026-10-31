@@ -6,7 +6,7 @@ import { answerConductor, type ConductorAnswer } from "@/lib/ai/conductor/conduc
 import { CONDUCTOR_LIMITS } from "@/lib/ai/conductor/limits";
 import { parseConductorRequest } from "@/lib/ai/conductor/protocol";
 import { AI_STREAM_CONTENT_TYPE } from "@/lib/ai/stream";
-import { getViewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, getViewer, isProfileBlocked } from "@/lib/auth/session";
 
 /** Longer than the AI layer's own time limit, so that limit is the one that ends a slow answer. */
 export const maxDuration = 120;
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
     return refuse(503, aiContent.errors.unknown);
   }
   if (!viewer) return refuse(401, conductorContent.errors.signedOut);
+  if (await isProfileBlocked(viewer)) return refuse(403, ACTION_ERRORS.profileIncomplete);
   if (!viewer.can("use_ai")) {
     console.warn(`[conductor] Refused ${viewer.userId}: no use_ai permission.`);
     return refuse(403, aiContent.errors.forbidden);

@@ -52,7 +52,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("Conductor loader identity during an index outage", () => {
   it.each([false, true])("uses stored associations before identifying raw upcoming songs (planner access: %s)", async (canPlan) => {
     const viewer: Viewer = {
-      userId: "director", env: "development", roleKeys: [], permissions: new Set(), canAccessAdmin: false,
+      userId: "director", env: "development", roleKeys: [], permissions: new Set(), explicit: new Set(), canAccessAdmin: false,
       can: (permission) => permission === "use_ai" || (canPlan && permission === "manage_service_plans"),
     };
     const loaded = await loadConductorData(viewer);

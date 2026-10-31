@@ -21,6 +21,7 @@ import type { ServiceAvailability } from "@/lib/auth/profile-options";
 
 import {
   buildBoard,
+  hasReviewedNormal,
   personStatus,
   indexExceptions,
   upcomingChanges,
@@ -42,6 +43,8 @@ export interface AvailabilitySummary {
   /** Null when the viewer is not on the board themself. */
   self: {
     normal: ServiceAvailability[];
+    /** Saved on purpose at least once - choosing none, confirmed, included. */
+    reviewed: boolean;
     next: { date: string; slot: Occurrence["slot"]; startsAt: string; kind: Occurrence["kind"]; state: AvailabilityState } | null;
     changes: UpcomingChange[];
     /** How many there are in all, when more than `changes` holds. */
@@ -102,6 +105,7 @@ export function buildAvailabilitySummary(input: {
     const changes = upcomingChanges(ahead, input.roster, input.exceptions, me.id);
     self = {
       normal: me.normal,
+      reviewed: hasReviewedNormal(me),
       next: next
         ? { date: next.date, slot: next.slot, startsAt: next.startsAt, kind: next.kind, state: personStatus(me, next, index).state }
         : null,
@@ -141,7 +145,7 @@ function buildTeam(
       away: service.changes.filter((person) => person.state === "unavailable-by-exception"),
     })),
     unset: roster
-      .filter((person) => person.normal.length === 0)
+      .filter((person) => !hasReviewedNormal(person))
       .map((person) => ({ id: person.id, name: person.name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     size: roster.length,

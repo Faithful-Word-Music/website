@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { listAccounts } from "@/lib/auth/clerk";
 import { ADMIN_ROLE, MEMBER_ROLE } from "@/lib/auth/permissions";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { getRole, userIdsWithRole } from "@/lib/auth/store";
 
 import { deleteRoleAction } from "../../actions";
@@ -21,7 +21,7 @@ export const metadata = { title: "Role" };
 /** /admin/roles/[key] - edit one role and see who holds it. */
 export default async function RolePage({ params }: PageProps<"/admin/roles/[key]">) {
   const { key } = await params;
-  const viewer = await requireAnyPermission(`/admin/roles/${key}`, ["manage_roles"]);
+  const viewer = await requireAnyPermission(`/admin/roles/${key}`, ["manage_roles"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const role = await getRole(viewer.env, key);

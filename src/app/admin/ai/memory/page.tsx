@@ -5,7 +5,7 @@ import { aiContent } from "@/content/ai";
 import { canManageGlobalMemory, canUsePersonalMemory, listMemories } from "@/lib/ai/memory/service";
 import { memoryDeps } from "@/lib/ai/memory/store";
 import { namesOf } from "@/lib/ai/people";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 
 export const metadata = { title: "AI memory" };
 
@@ -22,7 +22,7 @@ const content = aiContent.admin.memory;
  * checks it again (src/lib/ai/memory/service.ts).
  */
 export default async function MemoryPage() {
-  const viewer = await requireAnyPermission("/admin/ai/memory", ["use_ai"]);
+  const viewer = await requireAnyPermission("/admin/ai/memory", ["use_ai"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   let memory;

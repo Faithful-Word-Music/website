@@ -17,12 +17,21 @@ const profile: ProfileRecord = {
   theoryLevel: null,
   learningStyle: 4,
   serviceAvailability: ["sunday_am"],
+  availabilityReviewed: true,
+  songLeading: { experience: "low_intermediate", unfamiliarHymns: "with_preparation", unaccompaniedLeading: "still_learning" },
   titles: [{ titleId: 1, label: "Pianist", isPrimary: true }],
   instruments: [{ instrumentId: 1, label: "Piano", proficiency: "confident", isPrimary: true }],
   roleLabels: ["Musician", "Member"],
 };
 
 describe("visibleProfile", () => {
+  it("keeps song-leading self-assessments to the person and staff", () => {
+    expect(visibleProfile(profile, "self").songLeading).toEqual(profile.songLeading);
+    expect(visibleProfile(profile, "staff").songLeading).toEqual(profile.songLeading);
+    expect(visibleProfile(profile, "members")).not.toHaveProperty("songLeading");
+    expect(visibleProfile(profile, "members")).not.toHaveProperty("availabilityReviewed");
+  });
+
   it("shows the owner everything", () => {
     expect(visibleProfile(profile, "self")).toEqual(profile);
   });

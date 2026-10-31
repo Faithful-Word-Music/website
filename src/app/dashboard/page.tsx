@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InstallAppCard } from "@/components/account/InstallApp";
+import { ProfileStatusNotice } from "@/components/account/profile/ProfileStatusNotice";
 import { PushCard } from "@/components/notifications/PushDevice";
 import { AttentionList } from "@/components/dashboard/AttentionList";
 import { AvailabilitySummary } from "@/components/dashboard/AvailabilitySummary";
@@ -19,8 +20,7 @@ import { siteConfig } from "@/config/site";
 import { dashboardContent } from "@/content/dashboard";
 import { activateOwnRequests } from "@/lib/auth/activation";
 import { summarize } from "@/lib/auth/clerk";
-import { missingProfileItems } from "@/lib/auth/profile-completeness";
-import { requireViewer } from "@/lib/auth/session";
+import { requireViewer, viewerProfileStatus } from "@/lib/auth/session";
 import {
   capoRulesOrNone,
   countRequestsByStatus,
@@ -42,7 +42,6 @@ import {
   availabilityAttention,
   instrumentAttention,
   invitationAttention,
-  profileAttention,
   servicePlannerAttention,
   sheetGapAttention,
   sheetTypeAttention,
@@ -100,11 +99,13 @@ export default async function DashboardPage() {
   // The first visit after accepting an invitation closes the request that led to it.
   await activateOwnRequests(viewer, person.emails);
 
-  const [profile, instruments, titles, sheetTypes] = await Promise.all([
+  const [profile, instruments, titles, sheetTypes, profileStatus] = await Promise.all([
     getProfile(viewer.env, viewer.userId),
     getUserInstruments(viewer.env, viewer.userId),
     getUserTitles(viewer.env, viewer.userId),
     getSheetMusicTypes(viewer.env, viewer.userId),
+    // Worked out already by requireViewer() for the gate: cached for this request.
+    viewerProfileStatus(viewer),
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
@@ -180,18 +181,10 @@ export default async function DashboardPage() {
     sheetGapAttention(focus, gaps),
     sheetTypeAttention(focus, withoutSheetMusic),
     instrumentAttention(focus, withoutInstruments),
-    availabilityAttention(focus, availability?.self?.normal ?? null),
-    profileAttention(
-      missingProfileItems({
-        roleKeys: viewer.roleKeys,
-        hasName: Boolean(person.firstName && person.lastName),
-        hasImage: person.hasImage,
-        instrumentCount: instruments.length,
-        learningStyle: profile.learningStyle,
-        theoryLevel: profile.theoryLevel,
-        readsSheetMusic: profile.readsSheetMusic,
-      }),
-    ),
+    // Normal services that are a profile requirement show in the profile notice instead, once.
+    profileStatus.missing.some((item) => item.key === "availability_reviewed")
+      ? []
+      : availabilityAttention(focus, availability?.self?.normal ?? null, availability?.self?.reviewed),
   );
 
   const recordsBegan = music.past.reduce<string | null>(
@@ -233,6 +226,9 @@ export default async function DashboardPage() {
         */}
         {/* Shown by the browser only where installing is possible, until dismissed. */}
         {/* And, where push can be switched on and is not, one offer to do so. Nothing at all when neither shows. */}
+        {/* Required profile details still missing: always first, and not dismissible while anything is missing. */}
+        <ProfileStatusNotice status={profileStatus} className="mt-10" />
+
         <div className="mt-10 space-y-4 empty:hidden">
           <InstallAppCard />
           <PushCard />

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { planAiMessage, planAiRequestSchema, planAiStatus, type PlanAiFailure, type PlanAiResponse } from "@/lib/ai/service-planner/protocol";
 import { answerPlanRequest } from "@/lib/ai/service-planner/run";
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked } from "@/lib/auth/session";
 
 /** Longer than the AI layer's own time limit for a request and its one correction, so that limit ends a slow answer. */
 export const maxDuration = 180;
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
     return refuse({ ok: false, problem: "unavailable" });
   }
   if (!viewer) return refuse({ ok: false, problem: "signed-out" });
+  if (await isProfileBlocked(viewer)) return refuse({ ok: false, problem: "forbidden" });
   if (!viewer.can("manage_service_plans") || !viewer.can("use_ai")) {
     console.warn(`[service-planner] Refused AI for ${viewer.userId}: needs manage_service_plans and use_ai.`);
     return refuse({ ok: false, problem: "forbidden" });

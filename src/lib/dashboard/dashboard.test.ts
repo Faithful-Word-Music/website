@@ -7,7 +7,6 @@ import { buildFocus, servesInMusic, type DashboardFocus } from "@/lib/dashboard/
 import {
   accountRequestAttention,
   availabilityAttention,
-  profileAttention,
   sheetTypeAttention,
 } from "@/lib/dashboard/providers";
 import type { IndexSong, SheetFile, SheetMusicIndex, SongVersion } from "@/lib/sheet-music";
@@ -124,16 +123,6 @@ describe("collectAttention", () => {
 });
 
 describe("attention providers", () => {
-  it("asks for nothing when the profile is complete", () => {
-    expect(profileAttention([])).toEqual([]);
-  });
-
-  it("lists what the profile lacks", () => {
-    const [entry] = profileAttention(["A profile photo", "Your music theory level"]);
-    expect(entry.href).toBe("/profile/edit");
-    expect(entry.detail).toBe("Still missing: a profile photo and your music theory level.");
-  });
-
   it("raises waiting requests only for reviewers, and never as a zero", () => {
     expect(accountRequestAttention(focusFor(["administrator"]), 0)).toEqual([]);
     expect(accountRequestAttention(focusFor(["musician"]), 3)).toEqual([]);
@@ -472,5 +461,10 @@ describe("availabilityAttention", () => {
     expect(availabilityAttention(focusFor(["musician"]), ["sunday_am"])).toEqual([]);
     expect(availabilityAttention(focusFor(["administrator"]), null)).toEqual([]);
     expect(availabilityAttention(focusFor([]), [])).toEqual([]);
+  });
+
+  it("follows the review, not the list: none confirmed asks nothing, never reviewed asks", () => {
+    expect(availabilityAttention(focusFor(["musician"]), [], true)).toEqual([]);
+    expect(availabilityAttention(focusFor(["musician"]), [], false)).toHaveLength(1);
   });
 });

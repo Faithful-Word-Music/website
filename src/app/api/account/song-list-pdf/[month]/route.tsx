@@ -1,7 +1,7 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 
 import { SongListPdf } from "@/components/song-list/SongListPdf";
-import { getViewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { ROSTER_PERMISSION, SCHEDULER_PERMISSION } from "@/lib/leadership/access";
 import { matchCardLeaders, songListLeaders, type CardLeaderView } from "@/lib/leadership/board";
 import { loadBoard } from "@/lib/leadership/load";
@@ -23,6 +23,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/account/son
   const headers = { "Cache-Control": "private, no-store" };
   const viewer = await getViewer();
   if (!viewer) return new Response("Sign in to download this song list.", { status: 401, headers });
+  if (await isProfileBlocked(viewer)) return new Response(ACTION_ERRORS.profileIncomplete, { status: 403, headers });
   if (!viewer.can(ROSTER_PERMISSION) && !viewer.can(SCHEDULER_PERMISSION)) {
     return new Response("You do not have access to this song list.", { status: 403, headers });
   }

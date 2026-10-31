@@ -34,7 +34,7 @@ import {
   type VoicePart,
 } from "./profile-options";
 import type { RequestStatus } from "./request-status";
-import { AUTH_SCHEMA } from "./schema.mjs";
+import { AUTH_SCHEMA, AUTH_SCHEMA_READY } from "./schema.mjs";
 
 /**
  * Reading and writing the account tables (see schema.mjs). Every function
@@ -66,7 +66,7 @@ export async function db(env: ClerkEnv): Promise<Sql> {
   const sql = getSql();
   if (!sql) throw new AccountsUnavailableError();
   if (!schemaReady) {
-    await applySchema(sql, AUTH_SCHEMA);
+    await applySchema(sql, AUTH_SCHEMA, AUTH_SCHEMA_READY);
     schemaReady = true;
   }
   if (!seeded.has(env)) {
@@ -457,6 +457,10 @@ export async function deleteUserData(env: ClerkEnv, userId: string): Promise<voi
       "user_sheet_music",
       "user_sheet_music_types",
       "availability_exceptions",
+      "user_song_leading",
+      "profile_requirement_baselines",
+      "profile_requirement_deadlines",
+      "onboarding_progress",
     ].map((table) =>
       txn.query(`DELETE FROM ${table} WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
     ),
@@ -673,11 +677,14 @@ export const EMPTY_PROFILE: ProfileData = {
   readsSheetMusic: null,
 };
 
-export async function getProfile(env: ClerkEnv, userId: string): Promise<ProfileData & { updatedAt: string | null }> {
+export async function getProfile(
+  env: ClerkEnv,
+  userId: string,
+): Promise<ProfileData & { updatedAt: string | null; availabilityReviewedAt: string | null }> {
   const sql = await db(env);
   const rows = (await sql.query(
     `SELECT middle_name, preferred_name, bio, phone, voice_part, service_availability, learning_style,
-            theory_level, reads_sheet_music, updated_at
+            theory_level, reads_sheet_music, updated_at, availability_reviewed_at
        FROM user_profiles WHERE clerk_env = $1 AND clerk_user_id = $2`,
     [env, userId],
   )) as Array<{
@@ -691,9 +698,10 @@ export async function getProfile(env: ClerkEnv, userId: string): Promise<Profile
     theory_level: TheoryLevel | null;
     reads_sheet_music: boolean | null;
     updated_at: Date | string;
+    availability_reviewed_at: Date | string | null;
   }>;
   const row = rows[0];
-  if (!row) return { ...EMPTY_PROFILE, updatedAt: null };
+  if (!row) return { ...EMPTY_PROFILE, updatedAt: null, availabilityReviewedAt: null };
   return {
     middleName: row.middle_name,
     preferredName: row.preferred_name,
@@ -705,7 +713,74 @@ export async function getProfile(env: ClerkEnv, userId: string): Promise<Profile
     theoryLevel: row.theory_level,
     readsSheetMusic: row.reads_sheet_music,
     updatedAt: new Date(row.updated_at).toISOString(),
+    availabilityReviewedAt: row.availability_reviewed_at === null ? null : new Date(row.availability_reviewed_at).toISOString(),
   };
+}
+
+/** The profile columns a section of the profile form may write, by field. */
+const PROFILE_COLUMNS = {
+  middleName: "middle_name",
+  preferredName: "preferred_name",
+  bio: "bio",
+  phone: "phone",
+  voicePart: "voice_part",
+  learningStyle: "learning_style",
+  theoryLevel: "theory_level",
+  readsSheetMusic: "reads_sheet_music",
+} as const;
+
+export type ProfileFields = Partial<Omit<ProfileData, "serviceAvailability">>;
+
+/**
+ * Saves only the fields given - one section of the profile, or one step of
+ * onboarding - leaving every other answer as it was. A field left out is
+ * never touched; one given as null is cleared on purpose. Normal
+ * availability is never written here (see saveProfile).
+ *
+ * `instruments`, when given, replaces the person's instruments in the same
+ * transaction.
+ */
+export async function updateProfileFields(
+  env: ClerkEnv,
+  userId: string,
+  fields: ProfileFields,
+  instruments?: Array<{ instrumentId: number; proficiency: Proficiency; isPrimary: boolean }>,
+): Promise<void> {
+  const sql = await db(env);
+  const entries = (Object.keys(PROFILE_COLUMNS) as Array<keyof typeof PROFILE_COLUMNS>)
+    .filter((field) => fields[field] !== undefined)
+    .map((field) => [PROFILE_COLUMNS[field], fields[field]] as const);
+  const columns = entries.map(([column]) => column);
+  const params: unknown[] = [env, userId, ...entries.map(([, value]) => value)];
+  const placeholders = entries.map((_, index) => `$${index + 3}`);
+  const updates = [...columns.map((column) => `${column} = EXCLUDED.${column}`), "updated_at = now()"];
+  const writes = [
+    sql.query(
+      `INSERT INTO user_profiles (clerk_env, clerk_user_id${columns.map((column) => `, ${column}`).join("")})
+       VALUES ($1, $2${placeholders.map((placeholder) => `, ${placeholder}`).join("")})
+       ON CONFLICT (clerk_env, clerk_user_id) DO UPDATE SET ${updates.join(", ")}`,
+      params,
+    ),
+  ];
+  if (instruments) {
+    writes.push(
+      sql.query(`DELETE FROM user_instruments WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
+      sql.query(
+        `INSERT INTO user_instruments (clerk_env, clerk_user_id, instrument_id, proficiency, is_primary)
+         SELECT $1, $2, x.instrument_id, x.proficiency, x.is_primary
+           FROM jsonb_to_recordset($3::jsonb) AS x(instrument_id int, proficiency text, is_primary boolean)
+           JOIN instruments i ON i.id = x.instrument_id AND i.clerk_env = $1`,
+        [
+          env,
+          userId,
+          JSON.stringify(
+            instruments.map((item) => ({ instrument_id: item.instrumentId, proficiency: item.proficiency, is_primary: item.isPrimary })),
+          ),
+        ],
+      ),
+    );
+  }
+  await sql.transaction(writes);
 }
 
 /**

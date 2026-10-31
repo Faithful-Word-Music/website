@@ -108,6 +108,13 @@ export const availabilityContent = {
     save: "Save normal services",
     saved: "Normal services saved.",
     none: "No normal services yet - you are only expected where you mark yourself available.",
+    /** An empty pattern only counts once it is confirmed: "none" is an answer, never a default. */
+    confirmNone: "I am not regularly available for any of these services",
+    confirmNoneOther: "{name} is not regularly available for any of these services",
+    confirmNoneRequired: "Please confirm that no services are usual, or choose the services.",
+    /** Shown when the pattern has never been saved on purpose. */
+    unreviewed: "Not reviewed yet. Choose your usual services, or confirm that none are, and save.",
+    reviewed: "Reviewed {date}.",
   },
 
   upcoming: {
@@ -169,7 +176,7 @@ export const availabilityContent = {
 
   /** The "Needs your attention" item. */
   attention: {
-    title: "Set your normal services",
+    title: "Review your normal services",
     detail: "Choose the services you usually serve at, so the music team knows when to expect you.",
     action: "Set availability",
   },

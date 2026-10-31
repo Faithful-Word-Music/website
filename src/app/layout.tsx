@@ -116,7 +116,7 @@ function AccountsProvider({ enabled, children }: { enabled: boolean; children: R
       // lands on their Dashboard; someone who has just created their account
       // from an invitation is new, so they start by setting up their profile.
       signInFallbackRedirectUrl="/dashboard"
-      signUpFallbackRedirectUrl="/profile/edit?welcome=1"
+      signUpFallbackRedirectUrl="/welcome?new=1"
       afterSignOutUrl="/"
     >
       <AccountProvider>

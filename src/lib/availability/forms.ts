@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { availabilityContent } from "@/content/availability";
 import { clerkUserIdSchema } from "@/lib/auth/forms";
 import { SERVICE_AVAILABILITY } from "@/lib/auth/profile-options";
 
@@ -51,13 +52,24 @@ const services = SERVICE_AVAILABILITY.map((option) => option.value) as [
   ...(typeof SERVICE_AVAILABILITY)[number]["value"][],
 ];
 
-export const normalAvailabilitySchema = z.object({
-  services: z
-    .array(z.enum(services))
-    .max(SERVICE_AVAILABILITY.length)
-    .transform((values) => [...new Set(values)]),
-  userId,
-});
+/**
+ * Normal services. An empty list is a real answer ("none of them, on
+ * purpose") only with `confirmNone`: without it, saving nothing could be a
+ * slip, and an unreviewed pattern must never count as reviewed by accident.
+ */
+export const normalAvailabilitySchema = z
+  .object({
+    services: z
+      .array(z.enum(services))
+      .max(SERVICE_AVAILABILITY.length)
+      .transform((values) => [...new Set(values)]),
+    confirmNone: z.boolean().optional(),
+    userId,
+  })
+  .refine((value) => value.services.length > 0 || value.confirmNone === true, {
+    message: availabilityContent.normal.confirmNoneRequired,
+    path: ["confirmNone"],
+  });
 
 export type ServiceExceptionInput = z.input<typeof serviceExceptionSchema>;
 export type RangeInput = z.input<typeof rangeSchema>;

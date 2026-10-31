@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { notificationsContent } from "@/content/notifications";
 import { formatDateTime } from "@/lib/auth/format";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { SEND_PERMISSION } from "@/lib/notifications/manual";
 import { getAnnouncement, type AnnouncementDetail } from "@/lib/notifications/manual-service";
 import { manualDeps } from "@/lib/notifications/manual-store";
@@ -37,7 +37,7 @@ const content = center.detail;
  */
 export default async function SentNotificationPage({ params }: PageProps<"/admin/notifications/history/[id]">) {
   const { id } = await params;
-  const viewer = await requireAnyPermission(`/admin/notifications/history/${id}`, [SEND_PERMISSION]);
+  const viewer = await requireAnyPermission(`/admin/notifications/history/${id}`, [SEND_PERMISSION], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const eventId = /^\d{1,15}$/.test(id) ? Number(id) : 0;

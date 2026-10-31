@@ -35,7 +35,7 @@ export async function loadRoster(env: ClerkEnv): Promise<RosterPerson[]> {
       const account = byId?.get(record.id);
       const first = record.preferredName || account?.firstName || "";
       const name = [first, account?.lastName ?? ""].filter(Boolean).join(" ") || account?.fullName || "A musician";
-      return { id: record.id, name, normal: record.normal };
+      return { id: record.id, name, normal: record.normal, reviewed: record.reviewed };
     });
 }
 

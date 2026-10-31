@@ -25,6 +25,12 @@ interface Me {
   canAccessAdmin: boolean;
   canViewSheetMusic: boolean;
   title: string | null;
+  /**
+   * Whether their profile needs something (src/lib/auth/profile-requirements.ts):
+   * "due" while a deadline is still ahead (or no policy is active), "blocked"
+   * once one has passed. Only marks the menu; the gate is on the server.
+   */
+  profileAttention: "none" | "due" | "blocked";
 }
 
 export interface AccountState {
@@ -64,6 +70,7 @@ function parseMe(data: unknown): Me {
     canAccessAdmin: value.canAccessAdmin === true,
     canViewSheetMusic: value.canViewSheetMusic === true,
     title: typeof value.title === "string" ? value.title : null,
+    profileAttention: value.profileAttention === "due" || value.profileAttention === "blocked" ? value.profileAttention : "none",
   };
 }
 
@@ -106,6 +113,11 @@ function writeNavCache(value: string | null) {
 export function AccountProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, userId } = useAuth();
   const [result, setResult] = useState<{ userId: string; me: Me | null } | null>(null);
+  // Asked again on each page only while the profile needs something, so the
+  // marker goes as soon as it is finished - and costs nothing otherwise.
+  const pagePath = usePagePath();
+  const needsProfile = result?.me ? result.me.profileAttention !== "none" : false;
+  const recheck = needsProfile ? pagePath : null;
   // Null on the server and while hydrating, so the first render matches it.
   const cachedRaw = useSyncExternalStore(subscribeNavCache, readNavCache, () => null);
   const cached = useMemo(() => parseCachedNav(cachedRaw), [cachedRaw]);
@@ -134,7 +146,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn, userId]);
+  }, [isSignedIn, userId, recheck]);
 
   // A members' page is only ever open to someone signed in, so its navigation
   // need not wait for Clerk (it would otherwise flash the visitor's links).

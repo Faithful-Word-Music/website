@@ -522,10 +522,20 @@ invite:   /admin/invitations → Clerk invitation directly (no request needed)
 
 **Profiles:**
 - **Owners:** Clerk holds the first name, last name and photo. The site holds the middle name, preferred name, bio, phone, voice part, usual services and instruments (each with a skill level and a primary).
-- **Questions:** everyone answers "Can you read sheet music?" and gives a music-theory level. **Musicians** also answer **How do you play?** (a five-stop By ear ↔ Sheet music scale).
+- **Questions and requirements:** what each person must answer follows what they do. **[docs/profile-requirements.md](./docs/profile-requirements.md)** is authoritative.
+  - **Everyone:** a first and last name.
+  - **Musicians:** their instruments, each with a proficiency and one marked primary, and **How do you play?** (a five-stop By ear ↔ Sheet music scale).
+  - **Song leaders** (anyone holding `lead_songs` on purpose): three short song-leading questions. These are informational only.
+  - **Both:** whether they read sheet music (asked once), and a review of their normal services.
+  - **Always optional:** photo, bio, voice part and music theory.
+- **Profile requirements and the gate:** activated per environment under **Admin → Configuration → Profile requirements**, never by deploying.
+  - Existing members get seven days from activation. New members finish in onboarding. A role gained later gets its own seven days.
+  - Once a deadline passes, normal pages send the person to **`/welcome`**. Their profile, account, notification settings, the Support Center and admin stay reachable.
+  - The doc has the activation steps, the exemptions and the recovery option (**Give 7 more days**).
 - **Titles** (Pianist, Organist…) are assigned by administrators. The title and instrument lists are edited under **Admin → Configuration**. An item still in use is archived, not deleted.
 - **Visibility:** a profile is visible to its owner and to anyone with `view_profiles`, which by default is only Administrator. (Normal services are also seen by the music team on the [availability board](#availability).)
-- **Usual services** are shown on the profile but edited on `/availability`. The profile form never writes them, so saving it can't wipe them.
+- **Usual services** are shown on the profile but edited on `/availability`. The profile form never writes them, so saving it can't wipe them. Saving them records that they were reviewed (`availability_reviewed_at`). Choosing none has to be confirmed, so "never set" and "none, on purpose" stay distinct.
+- **The editor** (`/profile/edit`) is in sections (About you, Instruments, Reading music, Song leading). Each is saved on its own (`saveProfileSection`), so saving one never overwrites another.
 
 **Security model:**
 - **Every protected page and every server action checks, on the server:**
@@ -568,7 +578,7 @@ Editing happens on the page being edited (the **Edit profile** button on `/profi
 
 **Logging in:**
 - **Returning members** logging in with no page to return to (e.g. the footer's **Log in!**) land on `/dashboard` (`signInFallbackRedirectUrl` in `layout.tsx`).
-- **New members**, straight after creating their account from an invitation, land on `/profile/edit?welcome=1` (`signUpFallbackRedirectUrl`): the profile form introduced as "Set up your profile", where saving or skipping carries on to the Dashboard.
+- **New members**, straight after creating their account from an invitation, land on `/welcome?new=1` (`signUpFallbackRedirectUrl`). That is guided onboarding: About you, Your ministry, Availability, Notifications, Your Dashboard. It saves as it goes and resumes on any device ([docs/profile-requirements.md](./docs/profile-requirements.md)).
 - Sent to log in from a members' page, they arrive with `?redirect_url=…` and go back to that page, which always wins over the fallback.
 - Logging out goes to the public home page.
 
@@ -786,7 +796,7 @@ Notifications in the app and by push, built in phases; **[NOTIFICATIONS.md](./NO
 - **Where it shows:** a bell in the header for signed-in people (a panel on wide screens, a dialog on a phone), the history at `/notifications`, and each person's choices at `/notifications/settings` (linked from `/account`).
 - **Policies are data.** Every category has a policy per channel (mandatory, default on, default off, unavailable), set under **Admin → Setup → Notifications → Policies** by anyone holding `manage_notifications` (Administrator, and Music Director by default). Nothing is mandatory in code; Announcements only start that way.
 - **A person's choices are stored only when they make one, and a policy change never erases them.** `effectiveSetting()` in `src/lib/notifications/model.ts` combines the two each time, so a choice outranked by "mandatory" counts again when the policy is relaxed.
-- **Email shows as "Coming soon"** and cannot be switched on by anyone, administrators included. When it launches nobody is opted in.
+- **Email is opt-in:** nobody is switched on for it, except the Support Center's acknowledgment of a person's own request. A deployment sends nothing unless `NOTIFICATION_EMAIL_ENABLED=1` (and `RESEND_API_KEY`) is set there.
 - **A notification's link grants nothing.** Links are internal paths only, and the page they lead to checks permissions itself.
 - **One unread count:** `components/notifications/notification-store.ts`. The bell, the history page and the app-icon badge all read it.
 - **Tables** are created on first use and tagged `clerk_env`, like the account tables, including `push_subscriptions`, `notification_deliveries` and `notification_templates`. No migration.
@@ -867,6 +877,13 @@ Vitest covers the pure logic in `src/lib`:
 - notification events: one notification per publication, drafts and reordering silent, added/removed/replaced/key/time changes told, quick edits folded, withdrawal, cancellation and restoration, the week's insert; availability told to its managers only, the person told when a leader changed theirs, a range as one, no-op choices silent, the page and the quick action sharing one write path; account requests and access changes; the library index; every event having an entity, payloads staying on the server, push and email sending nothing, and a failed notification never throwing (`notifications/events/*.test.ts`)
 - the Support Center: kinds, the lifecycle and reply effects, link and key validation, who may read and manage what (own requests only, delegated and revoked managers), internal notes never reaching a submitter, idempotent sending and replying, concurrent replies both kept, revision conflicts, context checks (duplicate titles and occurrences, reordered, replaced and removed places, drafts, a leader's own positions only, sheet music the person may open), redaction, its notifications (recipients, no self-notification, no user-written text, dedupe, email only when opted in) and its Dashboard items (`support/*.test.ts`, `notifications/events/support.test.ts`, `dashboard/support-attention.test.ts`). `support/support.integration.test.ts` runs its SQL on isolated PGlite (set `SUPPORT_PGLITE`, see docs/support-center.md)
 - the acknowledgment emails: the public contact form's idempotency keys, in-request retries (provider rejection, 5xx, 429, no answer, giving up), the relay guard and wording (`email-retry.test.ts`), and the route itself, where a failed confirmation still answers 200 and a failed ministry copy sends no confirmation (`api/contact/route.test.ts`). A support request's acknowledgment is built only from its `created` event, goes to the submitter alone, is on by default, can be turned off, and is recorded once (`notifications/events/support.test.ts`)
+- profile requirements:
+  - who is asked what, for every role and combination, with grants and denies, and never administrators for being one; null against false; primary instruments; reviewed availability; deadlines on a fixed clock (activation, late sign-in, new members, new roles, never moved, paused); and the resulting states (`auth/profile-requirements.test.ts`)
+  - activation: across pages, partial failures, retries, concurrent presses and verification (`auth/activation-run.test.ts`)
+  - onboarding: steps, resuming, skipping and role changes (`auth/onboarding.test.ts`)
+  - the gate's exemptions, read from the code (`auth/profile-gate.test.ts`)
+  - the section forms (`auth/account-forms.test.ts`)
+  - `auth/profile-requirements.integration.test.ts` runs the SQL on isolated PGlite (set `PROFILE_PGLITE`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.

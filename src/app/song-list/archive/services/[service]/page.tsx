@@ -10,7 +10,7 @@ import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { servicePlannerContent } from "@/content/service-planner";
 import { songListContent } from "@/content/song-list";
-import { getViewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { scheduleEnv } from "@/lib/schedule";
 import { toArchive } from "@/lib/service-archive";
 import { serviceFullDate, serviceTitle } from "@/lib/service-planner/format";
@@ -54,7 +54,7 @@ export default async function ArchivedServicePage(props: PageProps<"/song-list/a
   const earlier = services[index + 1] ?? null;
 
   const viewer = await getViewer().catch(() => null);
-  const manages = viewer?.can("manage_service_plans") ?? false;
+  const manages = (viewer?.can("manage_service_plans") ?? false) && !(viewer && (await isProfileBlocked(viewer)));
   const audit = manages && plannerConfigured() ? await loadAudit(service.date, service.slot) : null;
 
   return (

@@ -48,6 +48,43 @@ export const PROFICIENCIES = [
 ] as const;
 export type Proficiency = (typeof PROFICIENCIES)[number]["value"];
 
+/**
+ * Song leading (asked only of people who may be assigned to lead songs).
+ * Self-assessments, shown to the person and to staff: informational only,
+ * never a reason to refuse or skip an assignment. Unanswered is NULL.
+ */
+export const LEADING_EXPERIENCE = [
+  {
+    value: "beginner",
+    label: "Beginner",
+    description: "New to leading congregational singing, or have led only a few times. Still learning to start a hymn and set its pace.",
+  },
+  {
+    value: "low_intermediate",
+    label: "Low Intermediate",
+    description: "Have led in services. Comfortable with familiar hymns, and still building confidence with tempo, cues and longer songs.",
+  },
+  {
+    value: "high_intermediate",
+    label: "High Intermediate",
+    description: "Lead regularly and comfortably. Set a steady tempo, give clear cues, and keep the congregation together through most hymns.",
+  },
+  {
+    value: "advanced",
+    label: "Advanced",
+    description: "Lead with confidence in any service. Recover smoothly when something goes wrong, and can help others learn to lead.",
+  },
+] as const;
+export type LeadingExperience = (typeof LEADING_EXPERIENCE)[number]["value"];
+
+/** How comfortable someone is with one situation: unfamiliar hymns, or leading without accompaniment. */
+export const LEADING_COMFORT = [
+  { value: "comfortable", label: "Comfortable", description: "I can do this without extra help." },
+  { value: "with_preparation", label: "With preparation", description: "I can, given time to prepare." },
+  { value: "still_learning", label: "Still learning", description: "I am still growing in this." },
+] as const;
+export type LeadingComfort = (typeof LEADING_COMFORT)[number]["value"];
+
 /** Matches the regular services in siteConfig.songList.regularServices, plus special meetings. */
 export const SERVICE_AVAILABILITY = [
   { value: "sunday_am", label: "Sunday morning" },

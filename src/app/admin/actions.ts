@@ -3,6 +3,7 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { profileSetupContent } from "@/content/profile-setup";
 import {
   createInvitation,
   deleteAccount,
@@ -22,8 +23,11 @@ import {
   roleSchema,
 } from "@/lib/auth/forms";
 import { ADMIN_ROLE, MEMBER_ROLE, isPermission, roleKeyFromLabel, type Permission } from "@/lib/auth/permissions";
+import { GRACE_DAYS } from "@/lib/auth/profile-requirements";
 import { normalizeEmail } from "@/lib/auth/request-status";
-import { ACTION_ERRORS, siteOrigin, withPermission, type ActionResult, type Viewer } from "@/lib/auth/session";
+import { activateProfileRequirements } from "@/lib/auth/requirements-activation";
+import { extendDeadlines, getRequirementPolicy, patchPolicy } from "@/lib/auth/requirements-store";
+import { ACTION_ERRORS, siteOrigin, withPermissionExempt, type ActionResult, type Viewer } from "@/lib/auth/session";
 import {
   addOption,
   assignRole,
@@ -91,7 +95,7 @@ import { describeSource } from "@/lib/sheet-music-type";
  * Every change made from the admin area. Server actions are public POST
  * endpoints, so each one:
  *
- *   1. goes through withPermission() - a verified Clerk session, resolved to
+ *   1. goes through withPermissionExempt() (admin is exempt from the profile gate, so accounts can always be fixed) - a verified Clerk session, resolved to
  *      this site's roles, holding the named permission;
  *   2. validates every argument (IDs included) before using it;
  *   3. applies the rules below that stop anyone raising their own access.
@@ -177,7 +181,7 @@ function parseId(value: unknown): number | null {
  * Clerk never disagree about whether an invitation went out.
  */
 export async function approveRequestAction(id: unknown, roleKeys: unknown = []): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const requestId = parseId(id);
     if (!requestId) return { ok: false, error: "Unknown request." };
     // Checked before anything is sent, so a refused role never leaves a half-done approval.
@@ -201,7 +205,7 @@ export async function approveRequestAction(id: unknown, roleKeys: unknown = []):
 }
 
 export async function rejectRequestAction(id: unknown, note: unknown): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const requestId = parseId(id);
     if (!requestId) return { ok: false, error: "Unknown request." };
     const parsedNote = reviewNoteSchema.safeParse(note ?? "");
@@ -219,7 +223,7 @@ export async function rejectRequestAction(id: unknown, note: unknown): Promise<A
 // ---------------------------------------------------------------------------
 
 export async function inviteAction(email: unknown, roleKeys: unknown = []): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const parsed = inviteSchema.safeParse({ email });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const roles = await checkInvitationRoles(viewer, roleKeys);
@@ -240,7 +244,7 @@ export async function inviteAction(email: unknown, roleKeys: unknown = []): Prom
 }
 
 export async function revokeInvitationAction(invitationId: unknown): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const parsed = clerkInvitationIdSchema.safeParse(invitationId);
     if (!parsed.success) return { ok: false, error: "Unknown invitation." };
 
@@ -262,7 +266,7 @@ export async function revokeInvitationAction(invitationId: unknown): Promise<Act
  * is checked before any is applied, so one refused change saves nothing.
  */
 export async function setUserRolesAction(userId: unknown, changes: unknown): Promise<ActionResult> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (
       !target.success ||
@@ -338,7 +342,7 @@ export async function setUserRolesAction(userId: unknown, changes: unknown): Pro
 }
 
 export async function setOverrideAction(userId: unknown, input: unknown): Promise<ActionResult> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     const parsed = overrideSchema.safeParse(input);
     if (!target.success) return { ok: false, error: "Unknown person." };
@@ -362,7 +366,7 @@ export async function setOverrideAction(userId: unknown, input: unknown): Promis
 }
 
 export async function removeOverrideAction(userId: unknown, permission: unknown): Promise<ActionResult> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success || typeof permission !== "string") return { ok: false, error: "Unknown exception." };
     if (target.data === viewer.userId) {
@@ -379,7 +383,7 @@ export async function removeOverrideAction(userId: unknown, permission: unknown)
 }
 
 export async function setTitlesAction(userId: unknown, titleIds: unknown, primaryId: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success) return { ok: false, error: "Unknown person." };
     if (!Array.isArray(titleIds) || titleIds.length > 20 || !titleIds.every((id) => parseId(id))) {
@@ -398,7 +402,7 @@ export async function setTitlesAction(userId: unknown, titleIds: unknown, primar
  * -> Configuration can be chosen - checked here against that list.
  */
 export async function setSheetMusicTypesAction(userId: unknown, typeIds: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success) return { ok: false, error: "Unknown person." };
     if (!Array.isArray(typeIds) || typeIds.length > 20) return { ok: false, error: "Unknown sheet music type." };
@@ -426,7 +430,7 @@ export async function setSheetMusicTypesAction(userId: unknown, typeIds: unknown
 
 /** Banning signs the person out everywhere and blocks sign-in until unbanned. */
 export async function setBannedAction(userId: unknown, banned: unknown): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success || typeof banned !== "boolean") return { ok: false, error: "Unknown person." };
     if (target.data === viewer.userId) return { ok: false, error: "You cannot disable your own account." };
@@ -459,7 +463,7 @@ export async function setBannedAction(userId: unknown, banned: unknown): Promise
  * are harmless (they belong to an ID that can never sign in again).
  */
 export async function deleteUserAction(userId: unknown): Promise<ActionResult> {
-  return withPermission("manage_users", async (viewer) => {
+  return withPermissionExempt("manage_users", async (viewer) => {
     const target = clerkUserIdSchema.safeParse(userId);
     if (!target.success) return { ok: false, error: "Unknown person." };
     if (target.data === viewer.userId) return { ok: false, error: "You cannot delete your own account here." };
@@ -487,7 +491,7 @@ export async function deleteUserAction(userId: unknown): Promise<ActionResult> {
 // ---------------------------------------------------------------------------
 
 export async function createRoleAction(input: unknown): Promise<ActionResult<string>> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     const parsed = roleSchema.safeParse(input);
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const permissions = [...new Set(parsed.data.permissions)] as Permission[];
@@ -505,7 +509,7 @@ export async function createRoleAction(input: unknown): Promise<ActionResult<str
 }
 
 export async function updateRoleAction(key: unknown, input: unknown): Promise<ActionResult> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     if (typeof key !== "string") return { ok: false, error: "Unknown role." };
     if (key === ADMIN_ROLE) return { ok: false, error: "The Administrator role always has every permission." };
     const role = await getRole(viewer.env, key);
@@ -530,7 +534,7 @@ export async function updateRoleAction(key: unknown, input: unknown): Promise<Ac
 }
 
 export async function deleteRoleAction(key: unknown): Promise<ActionResult> {
-  return withPermission("manage_roles", async (viewer) => {
+  return withPermissionExempt("manage_roles", async (viewer) => {
     if (typeof key !== "string") return { ok: false, error: "Unknown role." };
     const role = await getRole(viewer.env, key);
     if (!role) return { ok: false, error: "That role no longer exists." };
@@ -550,7 +554,7 @@ function parseList(value: unknown): OptionList | null {
 }
 
 export async function addOptionAction(list: unknown, label: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const which = parseList(list);
     const parsed = optionLabelSchema.safeParse(label);
     if (!which) return { ok: false, error: "Unknown list." };
@@ -564,7 +568,7 @@ export async function addOptionAction(list: unknown, label: unknown): Promise<Ac
 }
 
 export async function renameOptionAction(list: unknown, id: unknown, label: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const which = parseList(list);
     const optionId = parseId(id);
     const parsed = optionLabelSchema.safeParse(label);
@@ -579,7 +583,7 @@ export async function renameOptionAction(list: unknown, id: unknown, label: unkn
 }
 
 export async function archiveOptionAction(list: unknown, id: unknown, archived: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const which = parseList(list);
     const optionId = parseId(id);
     if (!which || !optionId || typeof archived !== "boolean") return { ok: false, error: "Unknown item." };
@@ -591,7 +595,7 @@ export async function archiveOptionAction(list: unknown, id: unknown, archived: 
 
 /** Deletes a title or instrument, taking it off any profile that had it. */
 export async function deleteOptionAction(list: unknown, id: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const which = parseList(list);
     const optionId = parseId(id);
     if (!which || !optionId) return { ok: false, error: "Unknown item." };
@@ -603,7 +607,7 @@ export async function deleteOptionAction(list: unknown, id: unknown): Promise<Ac
 }
 
 export async function moveOptionAction(list: unknown, id: unknown, direction: unknown): Promise<ActionResult> {
-  return withPermission("manage_profiles", async (viewer) => {
+  return withPermissionExempt("manage_profiles", async (viewer) => {
     const which = parseList(list);
     const optionId = parseId(id);
     if (!which || !optionId || (direction !== "up" && direction !== "down")) return { ok: false, error: "Unknown item." };
@@ -635,7 +639,7 @@ function revalidateSheetMusicTypes() {
  * shows sheet music.
  */
 export async function refreshSheetMusicAction(): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async () => {
+  return withPermissionExempt("manage_sheet_music", async () => {
     updateTag(SHEET_MUSIC_TAG);
     revalidateSheetMusicTypes();
     revalidatePath("/service-planner", "layout");
@@ -651,7 +655,7 @@ function parseThreshold(value: unknown): number | null | undefined {
 
 /** Saves when a song needs capo sheet music, and which type that is (src/lib/capo-policy.ts). */
 export async function setCapoPolicyAction(input: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const value = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const minFlats = parseThreshold(value.minFlats);
     const minSharps = parseThreshold(value.minSharps);
@@ -669,7 +673,7 @@ export async function setCapoPolicyAction(input: unknown): Promise<ActionResult>
 }
 
 export async function addSheetMusicTypeAction(label: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const parsed = optionLabelSchema.safeParse(label);
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     if ((await addSheetMusicType(viewer.env, parsed.data)) === "exists") {
@@ -681,7 +685,7 @@ export async function addSheetMusicTypeAction(label: unknown): Promise<ActionRes
 }
 
 export async function renameSheetMusicTypeAction(id: unknown, label: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const typeId = parseId(id);
     if (!typeId) return { ok: false, error: "Unknown type." };
     const parsed = optionLabelSchema.safeParse(label);
@@ -696,7 +700,7 @@ export async function renameSheetMusicTypeAction(id: unknown, label: unknown): P
 
 /** Deletes a type; anyone assigned it is left with no sheet music type. */
 export async function deleteSheetMusicTypeAction(id: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const typeId = parseId(id);
     if (!typeId) return { ok: false, error: "Unknown type." };
     await deleteSheetMusicType(viewer.env, typeId);
@@ -706,7 +710,7 @@ export async function deleteSheetMusicTypeAction(id: unknown): Promise<ActionRes
 }
 
 export async function moveSheetMusicTypeAction(id: unknown, direction: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const typeId = parseId(id);
     if (!typeId || (direction !== "up" && direction !== "down")) return { ok: false, error: "Unknown type." };
     await moveSheetMusicType(viewer.env, typeId, direction);
@@ -747,7 +751,7 @@ type SourceCoverage = ReturnType<typeof sourceCoverage>;
 
 /** What a source would cover, for the picker's preview. Changes nothing. */
 export async function previewSheetMusicSourceAction(path: unknown): Promise<ActionResult<SourceCoverage>> {
-  return withPermission("manage_sheet_music", async () => {
+  return withPermissionExempt("manage_sheet_music", async () => {
     const checked = await checkSourcePath(path);
     if (!checked.ok) return checked;
     return { ok: true, value: checked.coverage };
@@ -755,7 +759,7 @@ export async function previewSheetMusicSourceAction(path: unknown): Promise<Acti
 }
 
 export async function addSheetMusicSourceAction(typeId: unknown, path: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const id = parseId(typeId);
     if (!id) return { ok: false, error: "Unknown type." };
     const checked = await checkSourcePath(path);
@@ -769,7 +773,7 @@ export async function addSheetMusicSourceAction(typeId: unknown, path: unknown):
 }
 
 export async function removeSheetMusicSourceAction(sourceId: unknown): Promise<ActionResult> {
-  return withPermission("manage_sheet_music", async (viewer) => {
+  return withPermissionExempt("manage_sheet_music", async (viewer) => {
     const id = parseId(sourceId);
     if (!id) return { ok: false, error: "Unknown source." };
     await removeSheetMusicSource(viewer.env, id);
@@ -798,7 +802,7 @@ export interface AiTestOutcome {
  * cannot be used as a way to ask the model anything else.
  */
 export async function testAiConnectionAction(): Promise<ActionResult<AiTestOutcome>> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     const result = await generateAiText({
       viewer,
       feature: "connection_test",
@@ -844,14 +848,14 @@ function memoryResult(result: MemoryResult, message: string): ActionResult {
  * the two needs both. use_ai is only the way in.
  */
 export async function createMemoryAction(scope: unknown, text: unknown, category: unknown): Promise<ActionResult> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     if (!isMemoryScope(scope)) return { ok: false, error: MEMORY_ERRORS.invalid };
     return memoryResult(await createMemory(viewer, { scope, text, category }, memoryDeps(viewer.env)), aiContent.admin.memory.saved);
   });
 }
 
 export async function updateMemoryAction(id: unknown, text: unknown, category: unknown): Promise<ActionResult> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     const memoryId = parseId(id);
     if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
     return memoryResult(await updateMemory(viewer, { id: memoryId, text, category }, memoryDeps(viewer.env)), aiContent.admin.memory.saved);
@@ -859,7 +863,7 @@ export async function updateMemoryAction(id: unknown, text: unknown, category: u
 }
 
 export async function deleteMemoryAction(id: unknown): Promise<ActionResult> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     const memoryId = parseId(id);
     if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
     return memoryResult(await deleteMemory(viewer, memoryId, memoryDeps(viewer.env)), aiContent.admin.memory.deleted);
@@ -867,7 +871,7 @@ export async function deleteMemoryAction(id: unknown): Promise<ActionResult> {
 }
 
 export async function moveMemoryAction(id: unknown, scope: unknown): Promise<ActionResult> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     const memoryId = parseId(id);
     if (!memoryId) return { ok: false, error: MEMORY_ERRORS["not-found"] };
     if (!isMemoryScope(scope)) return { ok: false, error: MEMORY_ERRORS.invalid };
@@ -892,7 +896,7 @@ function philosophyResult(result: PhilosophyChangeResult, message: string): Acti
  * src/lib/ai/planning/service.ts), so both are checked and recorded alike.
  */
 export async function savePhilosophyAction(input: unknown): Promise<ActionResult> {
-  return withPermission("manage_planning_philosophy", async (viewer) => {
+  return withPermissionExempt("manage_planning_philosophy", async (viewer) => {
     const value = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
     const baseRevisionId = parseId(value.baseRevisionId);
     const sections = Array.isArray(value.sections) ? value.sections : null;
@@ -923,7 +927,7 @@ export async function savePhilosophyAction(input: unknown): Promise<ActionResult
 
 /** One earlier version of the philosophy, whole, to read or compare. For anyone who may use AI: it is what the AI was planning by. */
 export async function loadPhilosophyRevisionAction(revisionId: unknown): Promise<ActionResult<{ markdown: string }>> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     const id = parseId(revisionId);
     const revision = id ? await getPhilosophyRevision(viewer.env, id) : null;
     if (!revision) return { ok: false, error: aiContent.admin.philosophy.errors["not-found"] };
@@ -933,7 +937,7 @@ export async function loadPhilosophyRevisionAction(revisionId: unknown): Promise
 
 /** Brings an earlier version of the philosophy back, as a new version: nothing in the history is lost. */
 export async function restorePhilosophyAction(revisionId: unknown, baseRevisionId: unknown): Promise<ActionResult> {
-  return withPermission("manage_planning_philosophy", async (viewer) => {
+  return withPermissionExempt("manage_planning_philosophy", async (viewer) => {
     const id = parseId(revisionId);
     const base = parseId(baseRevisionId);
     if (!id || !base) return { ok: false, error: aiContent.admin.philosophy.errors["not-found"] };
@@ -958,7 +962,7 @@ export interface LibraryRefreshOutcome {
  * plan or anything a person made.
  */
 export async function refreshLibraryIndexAction(continuing: unknown): Promise<ActionResult<LibraryRefreshOutcome>> {
-  return withPermission("use_ai", async (viewer) => {
+  return withPermissionExempt("use_ai", async (viewer) => {
     // A refresh starts from what is in Drive now, not the hourly copy (later passes reuse it).
     if (continuing !== true) updateTag(SHEET_MUSIC_TAG);
     const result = await refreshLibraryIndex(viewer, { continuing: continuing === true });
@@ -990,7 +994,7 @@ export async function refreshLibraryIndexAction(continuing: unknown): Promise<Ac
  * every value is checked before anything is saved.
  */
 export async function setNotificationPoliciesAction(category: unknown, policies: unknown): Promise<ActionResult> {
-  return withPermission("manage_notifications", async (viewer) => {
+  return withPermissionExempt("manage_notifications", async (viewer) => {
     const copy = notificationsContent.admin;
     const chosen = (policies && typeof policies === "object" ? policies : {}) as Record<string, unknown>;
     const changes = CHANNELS.filter((channel) => chosen[channel] !== undefined).map((channel) => ({ channel, policy: chosen[channel] }));
@@ -1020,7 +1024,7 @@ export async function setNotificationPoliciesAction(category: unknown, policies:
  * category's policy and the person's own choice apply.
  */
 export async function sendTestNotificationAction(category: unknown): Promise<ActionResult> {
-  return withPermission("manage_notifications", async (viewer) => {
+  return withPermissionExempt("manage_notifications", async (viewer) => {
     const copy = notificationsContent.admin.test;
     if (viewer.env !== "development") return { ok: false, error: copy.productionOnly };
     if (typeof category !== "string") return { ok: false, error: notificationsContent.admin.unknown };
@@ -1041,5 +1045,52 @@ export async function sendTestNotificationAction(category: unknown): Promise<Act
     );
     if (!result.ok) return { ok: false, error: notificationsContent.admin.unknown };
     return { ok: true, value: null, message: result.recipients > 0 ? copy.sent : copy.skipped };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Profile requirements (docs/profile-requirements.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Activates profile requirements in this environment - or finishes an
+ * activation that stopped partway. Safe to press again at any time: the
+ * first activation's date is kept, and no deadline already recorded moves.
+ */
+export async function activateProfileRequirementsAction(): Promise<ActionResult> {
+  return withPermissionExempt("manage_site_settings", async (viewer) => {
+    const result = await activateProfileRequirements(viewer.env, viewer.userId);
+    revalidatePath("/admin/configuration");
+    if (!result.ok) return { ok: false, error: profileSetupContent.admin.failed[result.problem] };
+    return { ok: true, value: null, message: profileSetupContent.admin.activated };
+  });
+}
+
+/** Pausing stops all blocking (notices still show); resuming starts it again. Deadlines never move. */
+export async function setProfileRequirementsPausedAction(paused: unknown): Promise<ActionResult> {
+  return withPermissionExempt("manage_site_settings", async (viewer) => {
+    if (typeof paused !== "boolean") return { ok: false, error: ACTION_ERRORS.failed };
+    const policy = await getRequirementPolicy(viewer.env);
+    if (!policy) return { ok: false, error: profileSetupContent.admin.inactive };
+    await patchPolicy(viewer.env, { pausedAt: paused ? new Date().toISOString() : null }, viewer.userId);
+    revalidatePath("/admin/configuration");
+    return { ok: true, value: null, message: paused ? profileSetupContent.admin.pausedDone : profileSetupContent.admin.resumedDone };
+  });
+}
+
+/**
+ * Gives one person seven more days for everything still due - the way an
+ * administrator resolves someone who is stuck. Never for yourself.
+ */
+export async function extendProfileDeadlineAction(userId: unknown): Promise<ActionResult> {
+  return withPermissionExempt("manage_users", async (viewer) => {
+    const target = clerkUserIdSchema.safeParse(userId);
+    if (!target.success) return { ok: false, error: "Unknown person." };
+    if (target.data === viewer.userId) {
+      return { ok: false, error: "You cannot give yourself more time. Ask another administrator." };
+    }
+    await extendDeadlines(viewer.env, target.data, GRACE_DAYS, viewer.userId);
+    revalidatePath(`/admin/users/${target.data}`);
+    return { ok: true, value: null, message: profileSetupContent.admin.person.extended };
   });
 }

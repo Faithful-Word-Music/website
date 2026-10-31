@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { NotificationHistory } from "@/components/notifications/NotificationHistory";
 import { NotificationsFrame } from "@/components/notifications/NotificationsFrame";
 import { notificationsContent } from "@/content/notifications";
-import { requireViewer, type Viewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer, type Viewer } from "@/lib/auth/session";
 import { listNotifications, type NotificationPage } from "@/lib/notifications/service";
 import { notificationDeps } from "@/lib/notifications/store";
 
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
  * nothing - the page it leads to checks permissions for itself.
  */
 export default async function NotificationsPage() {
-  const viewer = await requireViewer("/notifications");
+  const viewer = await requireViewer("/notifications", PROFILE_GATE_EXEMPT);
   const { initial, loadedAt } = await firstPage(viewer);
 
   return (

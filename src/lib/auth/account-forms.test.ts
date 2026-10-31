@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { clerkUserIdSchema, profileSchema } from "@/lib/auth/forms";
-import { missingProfileItems } from "@/lib/auth/profile-completeness";
+import { aboutSchema, clerkUserIdSchema, musicSchema, profileSchema, sharedMusicSchema, songLeadingSchema } from "@/lib/auth/forms";
+import { normalAvailabilitySchema } from "@/lib/availability/forms";
 import { normalizeEmail, statusFromInvitation } from "@/lib/auth/request-status";
 import { accountRequestSchema } from "@/lib/validation";
 
@@ -72,32 +72,57 @@ describe("clerkUserIdSchema", () => {
   });
 });
 
-describe("missingProfileItems", () => {
-  const base = {
-    roleKeys: [] as string[],
-    hasName: true,
-    hasImage: true,
-    instrumentCount: 0,
-    learningStyle: null,
-    theoryLevel: null,
-    readsSheetMusic: null,
-  };
-
-  it("asks everyone about reading sheet music and music theory", () => {
-    expect(missingProfileItems(base)).toEqual(["Whether you read sheet music", "Your music theory level"]);
-    expect(missingProfileItems({ ...base, roleKeys: ["song_leader"] })).toEqual(missingProfileItems(base));
-    expect(missingProfileItems({ ...base, readsSheetMusic: false, theoryLevel: "none" })).toEqual([]);
-    expect(missingProfileItems({ ...base, readsSheetMusic: true, theoryLevel: "basics", hasImage: false })).toEqual([
-      "A profile photo",
-    ]);
+describe("profile sections", () => {
+  it("requires a proficiency for every instrument - never filled in for the person", () => {
+    expect(musicSchema.safeParse({ instruments: [{ instrumentId: 1, isPrimary: true }], learningStyle: null }).success).toBe(false);
+    expect(
+      musicSchema.safeParse({ instruments: [{ instrumentId: 1, proficiency: "learning", isPrimary: true }], learningStyle: null }).success,
+    ).toBe(true);
   });
 
-  it("asks only musicians about their instruments and how they play", () => {
-    const answered = { ...base, readsSheetMusic: true, theoryLevel: "basics" };
-    expect(missingProfileItems({ ...answered, roleKeys: ["musician"] })).toEqual([
-      "The instruments you play",
-      "How you play (by ear or from sheet music)",
-    ]);
-    expect(missingProfileItems({ ...answered, roleKeys: ["song_leader"] })).toEqual([]);
+  it("requires exactly one primary instrument when any are listed", () => {
+    const two = (a: boolean, b: boolean) => ({
+      instruments: [
+        { instrumentId: 1, proficiency: "confident", isPrimary: a },
+        { instrumentId: 2, proficiency: "learning", isPrimary: b },
+      ],
+      learningStyle: 2,
+    });
+    expect(musicSchema.safeParse(two(false, false)).success).toBe(false);
+    expect(musicSchema.safeParse(two(true, true)).success).toBe(false);
+    expect(musicSchema.safeParse(two(true, false)).success).toBe(true);
+    expect(musicSchema.safeParse({ instruments: [], learningStyle: null }).success).toBe(true);
+  });
+
+  it("refuses the same instrument twice", () => {
+    const item = { instrumentId: 3, proficiency: "confident", isPrimary: true };
+    expect(musicSchema.safeParse({ instruments: [item, { ...item, isPrimary: false }], learningStyle: 1 }).success).toBe(false);
+  });
+
+  it("keeps unanswered song-leading questions as null, and refuses made-up values", () => {
+    const none = { experience: null, unfamiliarHymns: null, unaccompaniedLeading: null };
+    expect(songLeadingSchema.parse(none)).toEqual(none);
+    expect(songLeadingSchema.safeParse({ ...none, experience: "expert" }).success).toBe(false);
+    expect(songLeadingSchema.safeParse({ experience: "beginner", unfamiliarHymns: "with_preparation", unaccompaniedLeading: "still_learning" }).success).toBe(true);
+  });
+
+  it("counts false as an answer to reading sheet music", () => {
+    expect(sharedMusicSchema.parse({ readsSheetMusic: false, voicePart: null, theoryLevel: null }).readsSheetMusic).toBe(false);
+  });
+
+  it("checks names and phone in About you", () => {
+    const about = { firstName: "Mary", middleName: "", lastName: "Smith", preferredName: "", bio: "", phone: "" };
+    expect(aboutSchema.safeParse(about).success).toBe(true);
+    expect(aboutSchema.safeParse({ ...about, lastName: " " }).success).toBe(false);
+    expect(aboutSchema.safeParse({ ...about, phone: "<b>" }).success).toBe(false);
+  });
+});
+
+describe("normal availability", () => {
+  it("accepts an empty pattern only when none is confirmed", () => {
+    expect(normalAvailabilitySchema.safeParse({ services: [] }).success).toBe(false);
+    expect(normalAvailabilitySchema.safeParse({ services: [], confirmNone: false }).success).toBe(false);
+    expect(normalAvailabilitySchema.safeParse({ services: [], confirmNone: true }).success).toBe(true);
+    expect(normalAvailabilitySchema.safeParse({ services: ["sunday_am"] }).success).toBe(true);
   });
 });

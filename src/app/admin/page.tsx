@@ -4,7 +4,7 @@ import { NoAccess } from "@/components/account/Notices";
 import { Card } from "@/components/ui/Card";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { countAccounts, listInvitations } from "@/lib/auth/clerk";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { countRequestsByStatus, listRoles } from "@/lib/auth/store";
 import { ADMIN_PERMISSIONS } from "@/lib/auth/permissions";
 
@@ -12,7 +12,7 @@ export const metadata = { title: "Overview" };
 
 /** /admin - what needs attention, at a glance. */
 export default async function AdminOverviewPage() {
-  const viewer = await requireAnyPermission("/admin", ADMIN_PERMISSIONS);
+  const viewer = await requireAnyPermission("/admin", ADMIN_PERMISSIONS, PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const canUsers = viewer.can("manage_users");

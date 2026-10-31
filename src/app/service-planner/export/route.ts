@@ -1,4 +1,4 @@
-import { getViewer } from "@/lib/auth/session";
+import { ACTION_ERRORS, getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { addDays, churchDate, isDateString } from "@/lib/availability/occurrences";
 import { exportFileName, exportMonths, exportRows, toCsv } from "@/lib/service-planner/export";
 import { formattedWorkbook, rawWorkbook } from "@/lib/service-planner/export-files";
@@ -38,6 +38,7 @@ function attachment(body: Uint8Array | string, type: string, fileName: string): 
 export async function GET(request: Request) {
   const viewer = await getViewer().catch(() => null);
   if (!viewer) return new Response("Please log in.", { status: 401 });
+  if (await isProfileBlocked(viewer)) return new Response(ACTION_ERRORS.profileIncomplete, { status: 403 });
   if (!viewer.can("manage_service_plans")) return new Response("Not allowed.", { status: 403 });
 
   const params = new URL(request.url).searchParams;

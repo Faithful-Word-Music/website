@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { siteConfig } from "@/config/site";
-import { getViewer, type Viewer } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE, type Viewer } from "@/lib/auth/session";
 import { getCapoRules, listSheetMusicTypes, setSongCapoRule } from "@/lib/auth/store";
 import { capoRequired, capoRequiredByKey, isSongCapoRule, songCapoRule, type SongCapoRule } from "@/lib/capo-policy";
 import { listCatalogSongs } from "@/lib/service-planner/store";
@@ -45,6 +45,7 @@ function refuse(status: number, reason: string) {
 async function authorized(): Promise<Viewer | NextResponse> {
   const viewer = await getViewer().catch(() => null);
   if (!viewer) return refuse(401, "sign-in-required");
+  if (await isProfileBlocked(viewer)) return refuse(403, PROFILE_INCOMPLETE.error);
   if (!viewer.can("manage_sheet_music")) return refuse(403, "forbidden");
   return viewer;
 }

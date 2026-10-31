@@ -20,6 +20,13 @@ export interface RosterPerson {
   id: string;
   name: string;
   normal: ServiceAvailability[];
+  /** Normal services saved on purpose at least once. Absent counts as reviewed when any are set. */
+  reviewed?: boolean;
+}
+
+/** Whether someone has said which services are usual - choosing none, on purpose, is an answer. */
+export function hasReviewedNormal(person: Pick<RosterPerson, "normal" | "reviewed">): boolean {
+  return person.reviewed ?? person.normal.length > 0;
 }
 
 /** A stored exception: one person, one whole service. */

@@ -19,7 +19,22 @@
  */
 
 import type { Permission } from "./permissions";
-import type { LearningStyle, Proficiency, ServiceAvailability, TheoryLevel, VoicePart } from "./profile-options";
+import type {
+  LeadingComfort,
+  LeadingExperience,
+  LearningStyle,
+  Proficiency,
+  ServiceAvailability,
+  TheoryLevel,
+  VoicePart,
+} from "./profile-options";
+
+/** A song leader's own assessment (user_song_leading). */
+export interface SongLeadingRecord {
+  experience: LeadingExperience | null;
+  unfamiliarHymns: LeadingComfort | null;
+  unaccompaniedLeading: LeadingComfort | null;
+}
 
 export type ProfileAudience = "self" | "staff" | "members";
 
@@ -38,6 +53,10 @@ export interface ProfileRecord {
   theoryLevel: TheoryLevel | null;
   learningStyle: LearningStyle | null;
   serviceAvailability: ServiceAvailability[];
+  /** Whether the normal services were ever saved on purpose (none, confirmed, included). Null: not known. */
+  availabilityReviewed: boolean | null;
+  /** Null for someone never asked (not a song leader, nothing saved). */
+  songLeading: SongLeadingRecord | null;
   titles: Array<{ titleId: number; label: string; isPrimary: boolean }>;
   instruments: Array<{ instrumentId: number; label: string; proficiency: Proficiency; isPrimary: boolean }>;
   roleLabels: string[];
@@ -46,8 +65,11 @@ export interface ProfileRecord {
 /** Gathers the pieces pages already load into one ProfileRecord. */
 export function toProfileRecord(
   person: { firstName: string; lastName: string; email: string | null; imageUrl: string },
-  profile: Omit<ProfileRecord, "firstName" | "lastName" | "email" | "imageUrl" | "titles" | "instruments" | "roleLabels">,
-  extra: Pick<ProfileRecord, "titles" | "instruments" | "roleLabels">,
+  profile: Omit<
+    ProfileRecord,
+    "firstName" | "lastName" | "email" | "imageUrl" | "titles" | "instruments" | "roleLabels" | "availabilityReviewed" | "songLeading"
+  > & { availabilityReviewedAt?: string | null },
+  extra: Pick<ProfileRecord, "titles" | "instruments" | "roleLabels"> & { songLeading?: SongLeadingRecord | null },
 ): ProfileRecord {
   return {
     firstName: person.firstName,
@@ -63,6 +85,8 @@ export function toProfileRecord(
     theoryLevel: profile.theoryLevel,
     learningStyle: profile.learningStyle,
     serviceAvailability: profile.serviceAvailability,
+    availabilityReviewed: profile.availabilityReviewedAt === undefined ? null : profile.availabilityReviewedAt !== null,
+    songLeading: extra.songLeading ?? null,
     titles: extra.titles,
     instruments: extra.instruments,
     roleLabels: extra.roleLabels,
@@ -104,6 +128,10 @@ export const PROFILE_FIELD_AUDIENCES: Record<Field, readonly ProfileAudience[]> 
   // availability board (src/lib/availability/), who see each other's normal
   // pattern and exceptions there - the music team, not every member.
   serviceAvailability: PRIVATE,
+  availabilityReviewed: PRIVATE,
+  // Song leaders' self-assessments: for them and the staff who support them,
+  // never other members. Informational only - scheduling never reads them.
+  songLeading: PRIVATE,
   instrumentProficiency: PRIVATE,
   roleLabels: PRIVATE,
 };

@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { InstallAppSection } from "@/components/account/InstallApp";
-import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -11,7 +10,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { accountContent } from "@/content/account";
 import { notificationsContent } from "@/content/notifications";
 import { clerkProfileAppearance } from "@/lib/auth/appearance";
-import { requireViewer } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireViewer } from "@/lib/auth/session";
 
 const copy = accountContent.settings;
 const notifications = notificationsContent.settings;
@@ -35,7 +34,15 @@ export const metadata: Metadata = {
  * the site as an app and are not already running it (src/lib/install.ts).
  */
 export default async function AccountSettingsPage() {
-  await requireViewer("/account");
+  // Exempt from the profile gate: signing in, passwords and devices must always be reachable.
+  const viewer = await requireViewer("/account", PROFILE_GATE_EXEMPT);
+  const places = [
+    { href: "/profile", title: copy.places.profile.title, lead: copy.places.profile.lead },
+    { href: "/notifications/settings", title: notifications.accountLink, lead: notifications.accountLead },
+    ...(viewer.can("view_availability")
+      ? [{ href: "/availability#normal", title: copy.places.availability.title, lead: copy.places.availability.lead }]
+      : []),
+  ];
 
   return (
     <PageTransition>
@@ -48,24 +55,31 @@ export default async function AccountSettingsPage() {
             </Link>
           </p>
         </SectionHeading>
+        {/* The site's own settings, each on its own page; then how you sign in, which Clerk owns. */}
+        <nav aria-label={copy.placesLabel} className="mt-10">
+          <ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {places.map((place) => (
+              <li key={place.href}>
+                <Link href={place.href} className="group block h-full rounded-card focus-visible:outline-none">
+                  <Card className="h-full p-5 transition-colors group-hover:border-gold group-focus-visible:ring-2 group-focus-visible:ring-gold/40 sm:p-6">
+                    <h2 className="font-display text-xl text-ink">{place.title}</h2>
+                    <p className="mt-1 text-sm text-muted">{place.lead}</p>
+                  </Card>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
         <InstallAppSection className="mt-10" />
-        {/* Notifications have pages of their own; this is the way to their settings. */}
-        <section aria-labelledby="account-notifications" className="mt-10 [section+&]:mt-6">
-          <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-            <div>
-              <h2 id="account-notifications" className="font-display text-xl text-ink">
-                {notifications.accountLink}
-              </h2>
-              <p className="mt-1 text-sm text-muted">{notifications.accountLead}</p>
-            </div>
-            <ButtonLink href="/notifications/settings" variant="secondary" className="shrink-0">
-              {notifications.accountLink}
-            </ButtonLink>
-          </Card>
+        <section aria-labelledby="account-signin" className="mt-12">
+          <h2 id="account-signin" className="font-display text-2xl text-ink">
+            {copy.signInTitle}
+          </h2>
+          <p className="mt-1 text-sm text-muted">{copy.signInLead}</p>
+          <div className="mt-6 flex justify-center">
+            <UserProfile routing="path" path="/account" appearance={clerkProfileAppearance} />
+          </div>
         </section>
-        <div className="mt-10 flex justify-center">
-          <UserProfile routing="path" path="/account" appearance={clerkProfileAppearance} />
-        </div>
       </Container>
     </PageTransition>
   );

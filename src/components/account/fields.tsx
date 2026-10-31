@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import { cn } from "@/components/ui/cn";
+import { Collapse } from "@/components/ui/Collapse";
 import { CheckIcon } from "@/components/ui/StatusIcons";
 
 /** A labelled input or textarea in the site's form style (see ContactForm). */
@@ -15,6 +18,7 @@ export function TextField({
   type = "text",
   autoComplete,
   multiline = false,
+  required = false,
   rows = 5,
   onChange,
 }: {
@@ -28,12 +32,15 @@ export function TextField({
   type?: string;
   autoComplete?: string;
   multiline?: boolean;
+  /** Announced as required (the server checks it too). */
+  required?: boolean;
   rows?: number;
   onChange: (value: string) => void;
 }) {
   const errorId = `${id}-error`;
   const shared = {
     id,
+    "aria-required": required || undefined,
     value,
     placeholder,
     maxLength,
@@ -77,20 +84,76 @@ export function ChoiceChips<T extends string | number>({
   options,
   selected,
   multiple = false,
+  tag,
+  error,
+  describe = false,
+  explainLabel,
+  required = false,
   onChange,
 }: {
   name: string;
   legend: string;
   hint?: string;
-  options: ReadonlyArray<{ value: T; label: string }>;
+  options: ReadonlyArray<{ value: T; label: string; description?: string }>;
+  /**
+   * The options carry descriptions: an ⓘ beside the question opens them all,
+   * and the chosen one's shows under the choices.
+   */
+  describe?: boolean;
+  /** The ⓘ's label for screen readers; {question} is replaced. */
+  explainLabel?: string;
+  /** A required question: announced as required, and a chosen answer can be changed but not cleared. */
+  required?: boolean;
   selected: readonly T[];
   multiple?: boolean;
+  /** "Required" or "Optional", beside the question. */
+  tag?: string;
+  /** A field-level problem, read out with the group. */
+  error?: string;
   onChange: (next: T[]) => void;
 }) {
+  const errorId = `${name}-error`;
+  const explainId = `${name}-explain`;
+  const [explaining, setExplaining] = useState(false);
+  const described = describe ? options.filter((option) => option.description) : [];
+  // The chosen answer's own description, under the choices - one line, never all of them at once.
+  const chosen = !multiple && described.length > 0 ? described.find((option) => selected.includes(option.value)) : undefined;
   return (
-    <fieldset>
-      <legend className="mb-1.5 text-sm font-medium text-ink">{legend}</legend>
+    <fieldset aria-describedby={error ? errorId : undefined} aria-invalid={error ? true : undefined} aria-required={required || undefined}>
+      <legend className="mb-2 flex w-full items-center justify-between gap-3 text-sm font-medium text-ink">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0">{legend}</span>
+          {described.length > 0 ? (
+            <button
+              type="button"
+              aria-expanded={explaining}
+              aria-controls={explainId}
+              aria-label={(explainLabel ?? "What the choices mean: {question}").replace("{question}", legend)}
+              onClick={() => setExplaining((open) => !open)}
+              className={cn(
+                "-my-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
+                explaining ? "text-ink" : "text-muted hover:text-ink",
+              )}
+            >
+              <InfoIcon />
+            </button>
+          ) : null}
+        </span>
+        {tag ? <span className="shrink-0 text-xs font-normal text-muted">{tag}</span> : null}
+      </legend>
       {hint ? <p className="-mt-1 mb-2 text-xs text-muted">{hint}</p> : null}
+      {described.length > 0 ? (
+        <Collapse open={explaining} id={explainId}>
+          <dl className="mb-3 space-y-2.5 rounded-lg border border-line bg-paper px-4 py-3">
+            {described.map((option) => (
+              <div key={String(option.value)}>
+                <dt className="text-sm font-medium text-ink">{option.label}</dt>
+                <dd className="mt-0.5 text-sm leading-relaxed text-ink-soft">{option.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </Collapse>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const checked = selected.includes(option.value);
@@ -112,7 +175,8 @@ export function ChoiceChips<T extends string | number>({
                   if (multiple) {
                     onChange(checked ? selected.filter((value) => value !== option.value) : [...selected, option.value]);
                   } else {
-                    // Clicking the chosen option again clears it: every question is optional.
+                    // Clicking the chosen option again clears an optional answer; a required one stays.
+                    if (checked && required) return;
                     onChange(checked ? [] : [option.value]);
                   }
                 }}
@@ -122,6 +186,16 @@ export function ChoiceChips<T extends string | number>({
           );
         })}
       </div>
+      {chosen ? (
+        <p aria-live="polite" className="mt-2 text-sm leading-relaxed text-ink-soft">
+          {chosen.description}
+        </p>
+      ) : null}
+      {error ? (
+        <p id={errorId} className="mt-1.5 text-sm text-gold-dark">
+          {error}
+        </p>
+      ) : null}
     </fieldset>
   );
 }
@@ -134,13 +208,18 @@ export function SelectField<T extends string>({
   options,
   onChange,
   className,
+  placeholder,
+  invalid = false,
 }: {
   id: string;
   label: string;
-  value: T;
+  /** "" shows the placeholder: nothing chosen yet (never a stand-in answer). */
+  value: T | "";
   options: ReadonlyArray<{ value: T; label: string }>;
   onChange: (value: T) => void;
   className?: string;
+  placeholder?: string;
+  invalid?: boolean;
 }) {
   return (
     <div className={className}>
@@ -150,9 +229,20 @@ export function SelectField<T extends string>({
       <select
         id={id}
         value={value}
-        onChange={(event) => onChange(event.target.value as T)}
-        className="min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink transition-colors hover:border-muted/50"
+        aria-invalid={invalid ? true : undefined}
+        onChange={(event) => {
+          if (event.target.value) onChange(event.target.value as T);
+        }}
+        className={cn(
+          "min-h-10 w-full rounded-lg border bg-surface px-3 text-sm text-ink transition-colors hover:border-muted/50",
+          invalid ? "border-gold-dark" : "border-line",
+        )}
       >
+        {placeholder ? (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        ) : null}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -178,5 +268,16 @@ export function ActionMessage({ result }: { result: { ok: boolean; message?: str
       {result.ok ? <CheckIcon className="mt-0.5 text-gold-dark" /> : null}
       <span>{text}</span>
     </p>
+  );
+}
+
+/** A small "i" in a circle, drawn in the text colour. */
+function InfoIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" className="h-[1.125rem] w-[1.125rem]" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <circle cx="10" cy="10" r="7.25" />
+      <path d="M10 9v4.5" strokeLinecap="round" />
+      <circle cx="10" cy="6.6" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

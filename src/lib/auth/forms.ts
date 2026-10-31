@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { isPermission } from "./permissions";
 import {
+  LEADING_COMFORT,
+  LEADING_EXPERIENCE,
   LEARNING_STYLES,
   PROFICIENCIES,
   PROFILE_LIMITS,
@@ -48,6 +50,56 @@ export const profileSchema = z.object({
 });
 
 export type ProfileFormValues = z.infer<typeof profileSchema>;
+
+// ---------------------------------------------------------------------------
+// The profile, one section at a time (the profile editor and onboarding).
+// Each section saves only its own fields, so one never overwrites another.
+// ---------------------------------------------------------------------------
+
+export const aboutSchema = profileSchema.pick({
+  firstName: true,
+  middleName: true,
+  lastName: true,
+  preferredName: true,
+  bio: true,
+  phone: true,
+});
+
+/**
+ * Instruments: each needs its own proficiency (never filled in for the
+ * person), and a list with any instrument has exactly one primary.
+ */
+export const musicSchema = z.object({
+  instruments: z
+    .array(
+      z.object({
+        instrumentId: z.number().int().positive(),
+        proficiency: z.enum(values(PROFICIENCIES), { error: "Please choose how well you play each instrument." }),
+        isPrimary: z.boolean(),
+      }),
+    )
+    .max(20)
+    .refine((list) => new Set(list.map((item) => item.instrumentId)).size === list.length, "Each instrument can be listed once.")
+    .refine((list) => list.length === 0 || list.filter((item) => item.isPrimary).length === 1, "Please choose one primary instrument."),
+  learningStyle: z.literal(LEARNING_STYLES.map((style) => style.value)).nullable(),
+});
+
+/** Questions for everyone who plays or leads - asked once, whichever roles someone holds. */
+export const sharedMusicSchema = profileSchema.pick({ readsSheetMusic: true, voicePart: true, theoryLevel: true });
+
+export const songLeadingSchema = z.object({
+  experience: z.enum(values(LEADING_EXPERIENCE)).nullable(),
+  unfamiliarHymns: z.enum(values(LEADING_COMFORT)).nullable(),
+  unaccompaniedLeading: z.enum(values(LEADING_COMFORT)).nullable(),
+});
+
+export const PROFILE_SECTIONS = ["about", "music", "shared", "leading"] as const;
+export type ProfileSection = (typeof PROFILE_SECTIONS)[number];
+
+export type AboutValues = z.infer<typeof aboutSchema>;
+export type MusicValues = z.infer<typeof musicSchema>;
+export type SharedMusicValues = z.infer<typeof sharedMusicSchema>;
+export type SongLeadingValues = z.infer<typeof songLeadingSchema>;
 
 export const optionLabelSchema = text(PROFILE_LIMITS.optionLabel, "the name").min(1, "Please enter a name.");
 

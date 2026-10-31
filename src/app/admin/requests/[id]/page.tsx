@@ -12,7 +12,7 @@ import { assignableRoles } from "@/lib/auth/assignable-roles";
 import { getAccount } from "@/lib/auth/clerk";
 import { formatDateTime } from "@/lib/auth/format";
 import { reconcileRequests } from "@/lib/auth/reconcile";
-import { requireAnyPermission } from "@/lib/auth/session";
+import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
 import { getRequest } from "@/lib/auth/store";
 
 export const metadata = { title: "Account request" };
@@ -20,7 +20,7 @@ export const metadata = { title: "Account request" };
 /** /admin/requests/[id] - one request, where it is approved or declined. The review email links here. */
 export default async function RequestPage({ params }: PageProps<"/admin/requests/[id]">) {
   const { id } = await params;
-  const viewer = await requireAnyPermission(`/admin/requests/${id}`, ["manage_users"]);
+  const viewer = await requireAnyPermission(`/admin/requests/${id}`, ["manage_users"], PROFILE_GATE_EXEMPT);
   if (!viewer) return <NoAccess />;
 
   const requestId = Number(id);
