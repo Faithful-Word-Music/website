@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { regularKeyFor } from "@/lib/availability/occurrences";
 import { saveServices } from "@/lib/archive-store";
+import { LEADERSHIP_TAG } from "@/lib/leadership/load";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { readSheetSchedule } from "@/lib/google-sheets";
 import { SCHEDULE_TAG, scheduleEnv } from "@/lib/schedule";
@@ -147,6 +148,7 @@ export async function GET(request: Request) {
   if (!dry) {
     revalidateTag(ARCHIVE_TAG, "max");
     revalidateTag(SCHEDULE_TAG, "max");
+    revalidateTag(LEADERSHIP_TAG, "max");
     revalidatePath("/", "layout");
   }
 

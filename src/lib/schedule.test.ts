@@ -32,6 +32,7 @@ function plan(date: string, status: StoredPlan["status"], title: string): Stored
     status,
     insertMode: status === "draft" ? "custom" : "week",
     slots: [planSong({ title, number: "100", key: "G" })],
+    places: ["p1"],
     revision: 1,
     created: stamp,
     updated: stamp,

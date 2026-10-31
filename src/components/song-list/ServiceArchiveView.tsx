@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { Pill } from "@/components/admin/StatusPill";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { ShowMore, useShown } from "@/components/ui/ShowMore";
 import { songListContent } from "@/content/song-list";
 import {
@@ -145,7 +145,7 @@ function ServiceSummary({ service, highlight }: { service: ArchivedService; high
             <li key={index} className="flex items-baseline gap-2">
               <span className="w-8 shrink-0 text-right tabular-nums text-muted">{song.number ?? ""}</span>
               <span className={hit ? "font-medium text-ink" : "text-ink"}>
-                <SongLink {...song} />
+                <SongLink {...songRef(song)} />
               </span>
               {recordedInsert(song) ? <span className="text-[0.65rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span> : null}
               <span className="ml-auto shrink-0 text-muted">{song.key ?? ""}</span>

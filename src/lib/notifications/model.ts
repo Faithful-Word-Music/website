@@ -64,7 +64,9 @@ export function isPriority(value: unknown): value is NotificationPriority {
 export const CHANNEL_STATUS: Record<Channel, "live" | "planned" | "soon"> = {
   in_app: "live",
   push: "live",
-  email: "soon",
+  // Live since song leader scheduling. Opt-in only (OPT_IN_ONLY), and offered only where a
+  // category's policy says so - every category that existed before keeps "unavailable".
+  email: "live",
 };
 
 /**
@@ -162,6 +164,13 @@ export const DEFAULT_CATEGORIES: ReadonlyArray<Omit<NotificationCategory, "activ
     description: "Library indexing, AI budget warnings and other system events.",
     policies: { in_app: "default_on", push: "default_off", email: "unavailable" },
   },
+  {
+    key: "song_leading",
+    name: "Song leading",
+    description: "The songs you are assigned to lead, and changes to them. For schedulers: a leader who becomes unavailable.",
+    // Email only for someone who switches it on: never by default.
+    policies: { in_app: "default_on", push: "default_on", email: "default_off" },
+  },
 ];
 
 /**
@@ -179,6 +188,7 @@ export const CATEGORY_RELEVANCE: Readonly<Record<string, readonly Permission[]>>
   service_plan_published: ["view_service_plans", "manage_service_plans"],
   service_plan_updated: ["view_service_plans", "manage_service_plans"],
   availability_changed: ["view_availability", "manage_availability"],
+  song_leading: ["lead_songs", "manage_service_plans"],
   ai_system: ["use_ai"],
 };
 

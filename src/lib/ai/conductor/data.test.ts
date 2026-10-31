@@ -41,7 +41,7 @@ beforeEach(() => {
   sources.catalog = [];
   sources.plans = [{
     id: 1, date: rawUpcoming.date, slot: "AM", kind: "regular", label: null, startsAt: rawUpcoming.startsAt,
-    status: "draft", insertMode: "week", slots: [{ ...rawUpcoming.songs[0], insert: false }], revision: 1,
+    status: "draft", insertMode: "week", slots: [{ ...rawUpcoming.songs[0], insert: false }], places: ["p1"], revision: 1,
     created: { by: null, at: "2026-10-16T12:00:00-07:00" }, updated: { by: null, at: "2026-10-16T12:00:00-07:00" },
     published: null, publicationId: null,
   }];

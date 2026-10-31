@@ -133,6 +133,33 @@ export const dashboardContent = {
     unavailable: "The list of people could not be loaded just now.",
   },
 
+  /** Song leaders (src/lib/dashboard/leadership.ts). {songs} is "song 5" or "songs 2 and 5". */
+  leading: {
+    /**
+     * Captions over a service card's songs (Dashboard and song list): one above each run of songs
+     * with the same leader, like a printed order of service (leaderCaptions).
+     */
+    ledBy: "Led by {name}",
+    ledByYou: "Led by you",
+    noLeader: "No leader yet",
+    /** On a card whose songs are not posted yet. */
+    youLeadDraft: "You're leading {songs}",
+    /** The viewer's next assignments beyond Coming up. */
+    title: "Your song leading",
+    notPublished: "Song list not published yet",
+    unavailable: "You are marked unavailable",
+    attention: {
+      unled: ["{count} service in the next two weeks has songs without a leader", "{count} services in the next two weeks have songs without a leader"],
+      unledDetail: "{service}: {count} without a leader",
+      conflict: "{name} leads {songs} at {service} but is unavailable",
+      ineligible: "{name} can no longer lead ({songs}) at {service}",
+      mine: "You're leading {songs} at {service} but are marked unavailable",
+      assign: "Assign leaders",
+      resolve: "Resolve",
+      mineAction: "Check availability",
+    },
+  },
+
   comingUp: {
     title: "Coming up",
     fullList: "Full song list",

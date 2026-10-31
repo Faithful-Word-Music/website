@@ -42,6 +42,9 @@ export function notificationStore(
   /** Every message handed to the push service, in order. */
   const sent: Array<{ subscriptionId: number; userId: string; payload: PushPayload; urgency: string; collapse: string | null }> = [];
   const deliveries: DeliveryRecord[] = [];
+  /** Email owed: the outbox rows record() writes (store.ts), and what was handed to email delivery. */
+  const outbox: Array<{ id: string; eventId: number; userId: string; subject: string; text: string; html: string }> = [];
+  const dispatched: string[] = [];
   /**
    * The push service: whether the site has its keys, and what it answers for
    * a device (by subscription id) - a status, null for no answer, or "throw".
@@ -82,6 +85,10 @@ export function notificationStore(
       return options.accountIds ?? Object.keys(options.userRoles ?? {});
     },
     record: async (write) => {
+      // As the database does: the same dedupe key twice records nothing the second time.
+      if (write.dedupeKey && events.some((event) => event.dedupeKey === write.dedupeKey)) {
+        return { eventId: 0, notifications: [], emails: [], duplicate: true };
+      }
       const id = events.length + 1;
       events.push({ ...write, id });
       // As the database does: an unread notification of the same family about the same thing, young enough, is replaced.
@@ -118,7 +125,16 @@ export function notificationStore(
           createdAt: tick(),
         });
       }
-      return { eventId: id, notifications };
+      const emails = write.email
+        ? write.recipients
+            .filter((recipient) => recipient.email)
+            .map((recipient) => {
+              const row = { id: `email-${outbox.length + 1}`, eventId: id, userId: recipient.userId, ...write.email! };
+              outbox.push(row);
+              return row.id;
+            })
+        : [];
+      return { eventId: id, notifications, emails };
     },
     list: async (userId, { before, limit }) =>
       rows
@@ -151,6 +167,7 @@ export function notificationStore(
       const row = rows.find((item) => item.id === id && item.recipient === userId);
       return row ? row.actionUrl : undefined;
     },
+    email: { origin: () => "https://faithfulwordmusic.test", dispatch: (ids) => void dispatched.push(...ids) },
     push: {
       configured: () => push.configured,
       // At once: a test sees what was sent as soon as notify() returns.
@@ -212,7 +229,7 @@ export function notificationStore(
   const stored = (userId: string, category: string, channel: string) =>
     preferences.find((row) => row.userId === userId && row.category === category && row.channel === channel)?.enabled;
 
-  return { deps, categories, policies, preferences, events, rows, calls, stored, advance, subscriptions, sent, deliveries, push, device, deleteAccount };
+  return { deps, categories, policies, preferences, events, rows, calls, stored, advance, subscriptions, sent, deliveries, push, device, deleteAccount, outbox, dispatched };
 }
 
 /**

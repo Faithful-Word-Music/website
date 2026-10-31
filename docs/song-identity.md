@@ -87,3 +87,11 @@ checks.
 - Ask Conductor about each hymn number, its history, sheet music and recommendations.
 - Check member-only files signed out, as a member, and without the required permission.
 - Confirm repeated Preview reads do not duplicate catalog rows or change production data.
+
+## Song identity is not place identity
+
+A song's identity (`songIdentity`, the song ID) says **which song** it is. It is shared by every service, and by the same song twice in one service.
+
+A **place** says **which slot of one service**. Places have their own IDs (`service_plans.place_ids`, `src/lib/service-planner/places.ts`), kept beside `slots`, and that is what a song leader is assigned to. Replacing the song in a place keeps the place, and so keeps its leader. Two places holding the same song are two places, each with its own leader.
+
+`diffSlots` and the song-list notifications still compare by song identity. The leaders compare by place (`diffAssignments`, `src/lib/leadership/model.ts`). See [song-leaders.md](song-leaders.md).

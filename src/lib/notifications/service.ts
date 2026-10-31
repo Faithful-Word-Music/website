@@ -24,6 +24,7 @@ import {
   type NotificationItem,
   type NotificationPriority,
 } from "./model";
+import { DEFAULT_ORIGIN, renderNotificationEmail } from "./email";
 import { pushTag, type PushMessage } from "./push";
 
 /**
@@ -94,7 +95,15 @@ export interface NotificationWrite {
    * row (it is what their push is about, and what a tap marks read), kept
    * out of the list and the unread count.
    */
-  recipients: ReadonlyArray<{ userId: string; inApp: boolean; push: boolean }>;
+  recipients: ReadonlyArray<{ userId: string; inApp: boolean; push: boolean; email?: boolean }>;
+  /**
+   * What happened, once: the same key twice (a retry of the same change)
+   * records nothing the second time - no notification, no push, no email.
+   * Separate from folding, which only decides what people are SHOWN.
+   */
+  dedupeKey?: string | null;
+  /** The email for recipients with email on, written to the outbox with the notification. */
+  email?: { subject: string; text: string; html: string } | null;
   /**
    * Set when the event folds (catalog.ts) and says what it is about. For each
    * recipient, an UNREAD notification of the same family about the same
@@ -123,7 +132,14 @@ export interface NotificationDeps {
    * notification each person now has, and whether it replaced an unread one
    * (an event that folds), so their push can say and replace the same.
    */
-  record(write: NotificationWrite): Promise<{ eventId: number; notifications: Array<{ userId: string; id: number; replaced: boolean }> }>;
+  record(write: NotificationWrite): Promise<{
+    eventId: number;
+    notifications: Array<{ userId: string; id: number; replaced: boolean }>;
+    /** The outbox rows written for email (their IDs), to be sent. */
+    emails?: string[];
+    /** The dedupe key was already recorded: nothing was written this time. */
+    duplicate?: boolean;
+  }>;
   /** A person's own notifications in the app, newest first, older than `before`. */
   list(userId: string, options: { before: number | null; limit: number }): Promise<NotificationItem[]>;
   countUnread(userId: string): Promise<number>;
@@ -137,6 +153,12 @@ export interface NotificationDeps {
   actionUrlOf(userId: string, id: number): Promise<string | null | undefined>;
   /** The person's devices and the push service (delivery.ts). */
   push: PushDeps;
+  /**
+   * Email (email-delivery.ts): the site's address for links, and the
+   * hand-over of outbox rows just written. Without it, rows are still written
+   * and the next drain sends them.
+   */
+  email?: { origin(): string; dispatch(ids: readonly string[]): void };
 }
 
 export type NotificationProblem = "forbidden" | "invalid" | "not-found" | "unknown-category" | "locked" | "unavailable" | "not-allowed";
@@ -294,10 +316,15 @@ export interface NotifyInput {
    * is shown, which is right when only the latest state matters.
    */
   whenCoalesced?: { title?: string; body?: string };
+  /**
+   * What happened, once - for an event that may be sent again (a retry
+   * after a failure): the second time records nothing. Never shown.
+   */
+  dedupeKey?: string;
 }
 
 export type NotifyResult =
-  | { ok: true; eventId: number; recipients: number }
+  | { ok: true; eventId: number; recipients: number; duplicate?: boolean }
   | { ok: false; problem: "invalid" | "unknown-category" };
 
 export interface PlannedRecipient {
@@ -305,6 +332,8 @@ export interface PlannedRecipient {
   /** Whether it shows in their bell and history. */
   inApp: boolean;
   push: boolean;
+  /** Email is opt-in only (model.ts): on only for someone who switched it on, or a mandatory category. */
+  email: boolean;
 }
 
 export type RecipientPlan =
@@ -345,7 +374,16 @@ export async function planRecipients(
   const recipients = matched.flatMap((userId) => {
     const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel)).enabled;
     // Someone with every delivering channel off is not told at all.
-    return live.some(on) ? [{ userId, inApp: live.includes("in_app") && on("in_app"), push: live.includes("push") && on("push") }] : [];
+    return live.some(on)
+      ? [
+          {
+            userId,
+            inApp: live.includes("in_app") && on("in_app"),
+            push: live.includes("push") && on("push"),
+            email: live.includes("email") && on("email"),
+          },
+        ]
+      : [];
   });
   return { ok: true, category, matched, recipients };
 }
@@ -391,7 +429,8 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
   if (!plan.ok) return plan;
   const { category, recipients } = plan;
 
-  const { eventId, notifications } = await deps.record({
+  const emailed = recipients.some((recipient) => recipient.email);
+  const { eventId, notifications, emails, duplicate } = await deps.record({
     category: category.key,
     eventKey: input.event,
     actorUserId: input.actorUserId ?? null,
@@ -404,13 +443,22 @@ export async function notify(input: NotifyInput, deps: NotificationDeps): Promis
     priority,
     recipients,
     coalesce,
+    dedupeKey: input.dedupeKey ?? null,
+    // Written with the notification, in the same statement: a notification made is an email owed.
+    email: emailed
+      ? renderNotificationEmail({ title, body, actionUrl, categoryName: category.name, origin: deps.email?.origin() ?? DEFAULT_ORIGIN })
+      : null,
   });
+  // Already recorded (the same change, told again): nothing more to deliver.
+  if (duplicate) return { ok: true, eventId, recipients: 0, duplicate: true };
+  if (emails && emails.length > 0) deps.email?.dispatch(emails);
 
   // In the app, the row just written IS the delivery. Push goes to each
   // recipient whose setting is on, for every device they have registered,
   // with a notification_deliveries row per attempt (delivery.ts). It is set
   // going and not waited for, and whatever becomes of it stays there: the
-  // notification is already made. Email will hand over here too.
+  // notification is already made. Email was handed over above: its outbox
+  // rows were written with the notification, and email-delivery.ts sends them.
   const written = new Map(notifications.map((notification) => [notification.userId, notification]));
   const messages = recipients.flatMap((recipient): PushMessage[] => {
     const notification = recipient.push ? written.get(recipient.userId) : undefined;

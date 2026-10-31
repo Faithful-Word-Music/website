@@ -327,3 +327,37 @@ export async function sendAccountRequestEmail(request: {
     return { ok: false, reason: "send-failed" };
   }
 }
+
+export type NotificationSendResult =
+  | { ok: true; id: string | null }
+  | { ok: false; reason: "not-configured" }
+  | { ok: false; reason: "refused"; statusCode: number | null; name: string | null };
+
+/**
+ * Sends one notification email (src/lib/notifications/email-delivery.ts),
+ * from the site's verified address. `idempotencyKey` goes to Resend as the
+ * Idempotency-Key header: the same key sent again within a day is recognised
+ * and not delivered twice. One attempt; retrying is the caller's. Throws only
+ * when Resend cannot be reached at all.
+ */
+export async function sendNotificationEmail(message: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  idempotencyKey: string;
+}): Promise<NotificationSendResult> {
+  const resend = getClient();
+  if (!resend) return { ok: false, reason: "not-configured" };
+
+  const { data, error } = await resend.emails.send(
+    { from: siteConfig.mail.from, to: message.to, subject: message.subject, text: message.text, html: message.html },
+    { idempotencyKey: message.idempotencyKey },
+  );
+  if (error) {
+    // The name and status only: never the address, never the message.
+    console.error(`[resend] Notification email failed: ${error.name} (${error.statusCode ?? "no status"})`);
+    return { ok: false, reason: "refused", statusCode: error.statusCode ?? null, name: error.name ?? null };
+  }
+  return { ok: true, id: data?.id ?? null };
+}

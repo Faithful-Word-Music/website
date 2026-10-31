@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { isDateString } from "@/lib/availability/occurrences";
 
+import { PLACE_ID_PATTERN } from "./places";
+
 /**
  * Validation for every Service Planner action. The server actions parse with
  * these; nothing a browser sends is trusted as-is.
@@ -33,16 +35,6 @@ export const songSchema = z.object({
   key: optional(30, "the key"),
   /** Sent by the editor, and not believed: whether a song is an insert is read off its number (planSong). */
   insert: z.boolean().optional(),
-});
-
-export const saveServiceSchema = z.object({
-  anchor: anchorSchema,
-  /** The revision the browser started from; null for a service not stored yet. */
-  revision: z.number().int().positive().nullable(),
-  slots: z.array(songSchema.nullable()).max(MAX_PLACES, `A service can have at most ${MAX_PLACES} places.`),
-  label: optional(80, "the name"),
-  time: timeSchema.nullable().optional(),
-  publish: z.boolean().optional(),
 });
 
 export const publishSchema = z.object({
@@ -83,3 +75,55 @@ export const newSongSchema = z.object({
   collection: optional(120, "the collection"),
   defaultKey: optional(30, "the key"),
 });
+
+/** A Clerk user ID, as the planner's people pickers send it - checked against the leaders on the server. */
+// A guest leader (GUEST_LEADER, src/lib/leadership/model.ts) is the one non-account choice.
+const userIdSchema = z.string().regex(/^(user_[A-Za-z0-9]{1,64}|guest)$/, "That is not a person.");
+const placeIdSchema = z.string().regex(PLACE_ID_PATTERN, "That is not a song in this service.");
+
+/** A service's song leaders, as the planner sends them: the whole set, replacing what is stored. */
+export const leadershipSchema = z.object({
+  /** The leaders' revision the browser started from; 0 for a service given none yet. */
+  revision: z.number().int().min(0),
+  defaultUserId: userIdSchema.nullable(),
+  overrides: z
+    .record(
+      placeIdSchema,
+      z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("assigned"), userId: userIdSchema }),
+        z.object({ kind: z.literal("unassigned") }),
+      ]),
+    )
+    .refine((overrides) => Object.keys(overrides).length <= MAX_PLACES, `A service can have at most ${MAX_PLACES} places.`),
+});
+
+export const saveLeadershipSchema = z.object({
+  anchor: anchorSchema,
+  /** The songs' revision the browser started from (0: not stored yet) - which places exist is theirs to say. */
+  planRevision: z.number().int().min(0),
+  leadership: leadershipSchema,
+});
+
+export const saveServiceSchema = z
+  .object({
+    anchor: anchorSchema,
+    /** The revision the browser started from; null for a service not stored yet. */
+    revision: z.number().int().positive().nullable(),
+    slots: z.array(songSchema.nullable()).max(MAX_PLACES, `A service can have at most ${MAX_PLACES} places.`),
+    /**
+     * Each place's ID, beside `slots` (src/lib/service-planner/places.ts). Left out by a tab
+     * opened before places had IDs; the server then keeps the stored ones place by place.
+     */
+    places: z.array(placeIdSchema).max(MAX_PLACES).optional(),
+    /** The song leaders too, saved with the songs in one go - when they were changed as well. */
+    leadership: leadershipSchema.optional(),
+    label: optional(80, "the name"),
+    time: timeSchema.nullable().optional(),
+    publish: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.places) return;
+    if (value.places.length !== value.slots.length || new Set(value.places).size !== value.places.length) {
+      context.addIssue({ code: "custom", path: ["places"], message: "The songs and their places do not match. Reload the page." });
+    }
+  });

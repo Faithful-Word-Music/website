@@ -4,7 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
 import { SongCapoSetting } from "@/components/song-list/SongCapoSetting";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { SongDetails, SongTimeline, StatBand } from "@/components/song-list/SongStats";
 import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
@@ -71,7 +71,7 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
         <SectionHeading as="h1" title={choices[0].title} className="mt-6" />
         <p className="mt-4 text-muted">Choose the arrangement you want to open.</p>
         <ul className="mt-6 space-y-4">
-          {choices.map((choice) => <li key={choice.id}><SongLink {...choice} /> <span className="text-sm text-muted">{choice.number ? `#${choice.number} · ` : ""}{choice.collection ?? choice.songId}</span></li>)}
+          {choices.map((choice) => <li key={choice.id}><SongLink {...songRef(choice)} /> <span className="text-sm text-muted">{choice.number ? `#${choice.number} · ` : ""}{choice.collection ?? choice.songId}</span></li>)}
         </ul>
       </Container>
     );
@@ -186,7 +186,7 @@ function Companions({ companions }: { companions: Companion[] }) {
               className="flex items-baseline justify-between gap-4 px-5 py-3 sm:px-6"
             >
               <span className="min-w-0">
-                <SongLink {...companion} className="block text-ink" />
+                <SongLink {...songRef(companion)} className="block text-ink" />
                 {companion.number ? (
                   <span className="tnum block text-xs text-muted">
                     {songPage.numberEyebrow.replace("{number}", companion.number)}

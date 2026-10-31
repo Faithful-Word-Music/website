@@ -18,6 +18,7 @@ function plan(date: string, slot: "AM" | "PM", overrides: Partial<StoredPlan> = 
     status: "published",
     insertMode: "week",
     slots: [song("A"), song("B"), song("Psalm 120", true), null, null],
+    places: ["p1", "p2", "p3", "p4", "p5"].slice(0, (overrides.slots ?? [0, 0, 0, 0, 0]).length),
     revision: 1,
     created: { by: null, at: "2026-10-01T00:00:00.000Z" },
     updated: { by: null, at: "2026-10-01T00:00:00.000Z" },
@@ -60,6 +61,14 @@ describe("buildScheduleMonths", () => {
     expect(service.songs[2].insert).toBe(true);
     expect(service.pendingSongs).toBe(2);
     expect(service.pendingPositions).toEqual([3, 4]);
+  });
+
+  it("never carries a place's ID, or anything about who leads, into the public song list", () => {
+    const text = JSON.stringify(months);
+    for (const field of ["places", "placesReset", "leader", "leadership", "defaultUserId", "overrides", "userId"]) {
+      expect(text, field).not.toContain(`"${field}"`);
+    }
+    expect(text).not.toMatch(/"p[1-5]"/);
   });
 
   it("shows regular services not published yet as placeholders - future ones only", () => {

@@ -193,9 +193,11 @@ export function servicePlanStatusChanged(input: {
   after: PlanStatus;
   service: ServiceRef;
   now: number;
+  /** People told another way (the leaders of a cancelled or restored service: events/leadership.ts). */
+  alsoExcept?: readonly string[];
 }): NotifyInput | null {
   const { before, after } = input;
-  const told = { actorId: input.actorId, service: input.service, now: input.now };
+  const told = { actorId: input.actorId, service: input.service, now: input.now, alsoExcept: input.alsoExcept };
   if (before === after) return null;
   if (after === "cancelled") return servicePlanCancelled(told);
   if (before === "cancelled") return servicePlanRestored(told);
@@ -251,7 +253,12 @@ export function servicePlansWithdrawnByInsert(input: {
 const WHOLE_TEAM = anyOf(AUDIENCES.servicePlanViewers, AUDIENCES.musicTeam);
 
 /** A service still to come was cancelled. */
-export function servicePlanCancelled(input: { actorId: string; service: ServiceRef; now: number }): NotifyInput | null {
+export function servicePlanCancelled(input: {
+  actorId: string;
+  service: ServiceRef;
+  now: number;
+  alsoExcept?: readonly string[];
+}): NotifyInput | null {
   const { service } = input;
   if (!upcoming(service, input.now)) return null;
   return {
@@ -261,13 +268,18 @@ export function servicePlanCancelled(input: { actorId: string; service: ServiceR
     body: fill(copy.cancelled.body, words(service)),
     actionUrl: "/availability",
     actorUserId: input.actorId,
-    except: [input.actorId],
+    except: [input.actorId, ...(input.alsoExcept ?? [])],
     entity: entityOf(service),
   };
 }
 
 /** A cancelled service still to come was restored - as a draft, so its songs are not published. */
-export function servicePlanRestored(input: { actorId: string; service: ServiceRef; now: number }): NotifyInput | null {
+export function servicePlanRestored(input: {
+  actorId: string;
+  service: ServiceRef;
+  now: number;
+  alsoExcept?: readonly string[];
+}): NotifyInput | null {
   const { service } = input;
   if (!upcoming(service, input.now)) return null;
   return {
@@ -277,7 +289,7 @@ export function servicePlanRestored(input: { actorId: string; service: ServiceRe
     body: fill(copy.restored.body, words(service)),
     actionUrl: "/availability",
     actorUserId: input.actorId,
-    except: [input.actorId],
+    except: [input.actorId, ...(input.alsoExcept ?? [])],
     entity: entityOf(service),
   };
 }

@@ -15,6 +15,8 @@ import { loadPlannedServices, loadRoster } from "@/lib/availability/load";
 import { addDays, churchDate, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
 import { buildAvailabilitySummary, type AvailabilitySummary } from "@/lib/availability/summary";
+import { leadershipProblems, myAssignments, publishedRosters, type LeadershipProblem, type MyAssignment } from "@/lib/leadership/board";
+import { loadBoard } from "@/lib/leadership/load";
 import { getSchedule } from "@/lib/schedule";
 import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
@@ -22,6 +24,7 @@ import { getReportInputs, songDirectory } from "@/lib/song-archive";
 import { identifySong, referenceEntries, type SongReference } from "@/lib/song-identity";
 import type { DatedService, Service } from "@/types/song-list";
 
+import type { Rosters } from "./leadership";
 import { invitationFollowUps, type InvitationFollowUps, type Person } from "./people";
 
 /**
@@ -137,6 +140,41 @@ export async function loadAvailabilitySummary(viewer: Viewer): Promise<Availabil
     });
   } catch (error) {
     console.error("[dashboard] Could not load availability:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+}
+
+/** What the Dashboard shows of song leaders, already redacted for the viewer. */
+export interface DashboardLeadership {
+  /** By service anchor: what the viewer may see of each service's leaders. */
+  rosters: Rosters;
+  /** The viewer's own assignments from now on. */
+  mine: MyAssignment[];
+  /** For whoever plans the services: what needs attention in the next two weeks. Empty for anyone else. */
+  problems: LeadershipProblem[];
+}
+
+/** How far ahead the leader problems look - the same two weeks as the planner's own items. */
+const LEADERSHIP_ATTENTION_DAYS = 14;
+
+/**
+ * The song leaders the viewer may see (src/lib/leadership/access.ts), for the
+ * Dashboard. Fails soft like the rest: null leaves the leaders out - and
+ * never shows anything unredacted in their place.
+ */
+export async function loadDashboardLeadership(viewer: Viewer): Promise<DashboardLeadership | null> {
+  try {
+    const now = Date.now();
+    const board = await loadBoard(viewer.env, now);
+    return {
+      rosters: publishedRosters(board, viewer),
+      mine: myAssignments(board, viewer, now),
+      problems: viewer.can("manage_service_plans")
+        ? leadershipProblems(board, now, now + LEADERSHIP_ATTENTION_DAYS * 86_400_000)
+        : [],
+    };
+  } catch (error) {
+    console.error("[dashboard] Could not load song leaders:", error instanceof Error ? error.message : "unknown error");
     return null;
   }
 }

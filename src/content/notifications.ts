@@ -65,7 +65,10 @@ export const notificationsContent = {
       name: "Push",
       detail: "Sent to each device you have switched push on for, even when the site is closed.",
     },
-    email: { name: "Email", detail: "Email notifications are not available yet." },
+    email: {
+      name: "Email",
+      detail: "Sent to your account's primary email address, once it is verified - only for what you switch on here.",
+    },
   },
 
   /** /notifications/settings */
@@ -213,6 +216,40 @@ export const notificationsContent = {
       },
       /** Joins the last two of a list of services. */
       and: "and",
+    },
+    /**
+     * Song leading (events/leadership.ts). Never a song's title or key: a draft's songs are not
+     * the leader's to see, and the songs themselves are on the Dashboard once published.
+     * {songs} is "song 5" or "songs 2 and 5"; {before} is how it was.
+     */
+    songLeading: {
+      assigned: {
+        title: "You're leading {songs} at {service}",
+        body: "{date}: you have been assigned to lead {songs}.",
+      },
+      changed: {
+        title: "Your songs at {service} changed",
+        body: "{date}: you now lead {songs} (before: {before}).",
+      },
+      removed: {
+        title: "You're no longer leading at {service}",
+        body: "{date}: you are no longer assigned to lead {before}.",
+      },
+      cancelled: {
+        title: "{service} cancelled",
+        body: "The {service} service on {date} has been cancelled. You were leading {before}; there is nothing to prepare.",
+      },
+      restored: {
+        title: "{service} restored",
+        body: "The {service} service on {date} has been restored. You are leading {songs}.",
+      },
+      /** Added to "assigned" and "changed": whether the songs can be seen yet. */
+      published: "The song list is published: your songs are on your Dashboard.",
+      notPublished: "The song list has not been published yet; you will see your songs once it is.",
+      unavailable: {
+        title: "{name} is unavailable for {service}",
+        body: "{date}: {name} is assigned to lead {songs} but is now unavailable.",
+      },
     },
     availability: {
       /** How a choice reads in a sentence. */
@@ -501,7 +538,10 @@ export const notificationsContent = {
     channels: {
       in_app: { name: "In the app", note: "" },
       push: { name: "Push", note: "Reaches only the devices a member has switched push on for. Mandatory cannot override a browser or device that blocks notifications." },
-      email: { name: "Email", note: "Coming soon. Email notifications cannot be switched on yet." },
+      email: {
+        name: "Email",
+        note: "Never on by default: offer it (off until someone switches it on), require it, or leave it unavailable.",
+      },
     },
     /** A select's accessible name. {category} and {channel} are replaced. */
     selectLabel: "{category}: {channel} policy",

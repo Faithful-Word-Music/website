@@ -6,6 +6,8 @@ import { parseMonthGrid } from "@/lib/song-list";
 import {
   columnSpace,
   layoutMonth,
+  leaderColumn,
+  shortLeaderName,
   monthPdfPath,
   monthSlug,
   pdfFileName,
@@ -122,5 +124,39 @@ describe("monthSlug and friends", () => {
     expect(
       pdfFileName({ title: "October", heading: null, services: [], fallbackRows: null }),
     ).toBe("October Song List.pdf");
+  });
+});
+
+describe("the signed-in PDF's leaders' column", () => {
+  it("is as wide as the longest name, taking the key column's spare room first", () => {
+    const short = leaderColumn(["Guest", null, "Guest"])!;
+    const long = leaderColumn(["Alex Ball", "Guest", "Bartholomew Smith"])!;
+    expect(long.leaderPt).toBeGreaterThan(short.leaderPt);
+    expect(long.keyPt).toBe(short.keyPt);
+    expect(long.titlePt).toBeLessThan(short.titlePt);
+    expect(leaderColumn([null, null])).toBeNull();
+  });
+
+  it("leaves a typical title on one line", () => {
+    const column = leaderColumn(["Alex Ball", "Guest"])!;
+    for (const title of ["Grace Greater Than Our Sin", "Praise Him! Praise Him!", "My Jesus, I Love Thee"]) {
+      expect(titleLines(title, column.titlePt), title).toBe(1);
+    }
+  });
+
+  it("is measured with the titles, so the page still fits - and changes nothing for the public PDF", () => {
+    const one = service("2026-11-01-am", 5);
+    expect(serviceHeight(one, 14, ["Alex Ball", "Guest", "Alex Ball", "Alex Ball", null])).toBeGreaterThanOrEqual(serviceHeight(one, 14));
+    const month = parseMonthGrid("September", september as string[][]);
+    expect(layoutMonth(month, new Map())).toEqual(layoutMonth(month));
+  });
+});
+
+describe("leaders' names on the PDF", () => {
+  it("print the first name in full and the last as an initial", () => {
+    expect(shortLeaderName("Alex Ball")).toBe("Alex B.");
+    expect(shortLeaderName("Mary Ann smith")).toBe("Mary S.");
+    expect(shortLeaderName("  Brian  ")).toBe("Brian");
+    expect(shortLeaderName("Guest")).toBe("Guest");
   });
 });

@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 
-import { deleteSpecialService, publishServices, saveService, setServiceStatus } from "@/app/service-planner/actions";
+import { deleteSpecialService, publishServices, saveService, saveServiceLeaders, setServiceStatus } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Notice } from "@/components/account/Notices";
 import { Pill } from "@/components/admin/StatusPill";
 import { usePlannerDraft } from "@/components/conductor/planner-draft";
 import { useConductorScreen } from "@/components/conductor/screen-context";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { ActionBar } from "@/components/ui/ActionBar";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -34,13 +34,16 @@ import {
   type PlanningSignal,
   type ServiceAvailability,
 } from "@/lib/service-planner/intelligence";
+import { pruneOverrides, sameLeadership, withDefault, withoutOverrides, withPlaceChoice } from "@/lib/leadership/model";
 import { insertPlaces, isInsert, planSong, type PlannerService, type PlanSlots } from "@/lib/service-planner/model";
+import { addPlace, clearSong, movePlace, placeIdsFor, removePlace, setSong, type Places } from "@/lib/service-planner/places";
 import type { PlanEvent } from "@/lib/service-planner/store";
 import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time";
-import { songIdentity, type SongReference } from "@/lib/song-identity";
+import type { SongReference } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
 import { AiGenerate, SparkleIcon, type GeneratedPlan } from "./AiGenerate";
+import { DefaultLeaderBar, LeadersPanel, PlaceLeader, type LeaderDraft, type LeaderPerson } from "./LeaderControls";
 import { requestPlanAi } from "./ai-request";
 import { Disclosure, Panel } from "./Panel";
 import { SongPicker, type ChosenSong } from "./SongPicker";
@@ -72,24 +75,42 @@ export interface WorkspaceProps {
   sheetMusicChecked: boolean;
   availability: ServiceAvailability | null;
   events: Array<PlanEvent & { actorName: string | null }>;
+  /**
+   * The song leaders (src/lib/leadership): who leads by default and each
+   * song, and everyone who could. Null when they could not be read - the
+   * songs can still be planned, and the leaders are left as they are.
+   */
+  leaders: { draft: LeaderDraft; revision: number; people: LeaderPerson[] } | null;
+  /** The service's place IDs had to be given afresh: its leaders need checking (StoredPlan.placesReset). */
+  placesReset: boolean;
+}
+
+const NO_LEADERS: LeaderDraft = { defaultUserId: null, overrides: {} };
+
+/** A service's leaders as they would be saved: only overrides for places that exist. */
+function leadersFor(draft: LeaderDraft, places: readonly string[]): LeaderDraft {
+  return { defaultUserId: draft.defaultUserId, overrides: pruneOverrides(draft.overrides, places).overrides };
 }
 
 /**
  * The planning workspace for one service: its songs, in order, with their
- * keys - the page is mostly this list. Changes stay here until saved; the
- * checks beside it follow every change as it is made.
+ * keys and who leads each - the page is mostly this list. Changes stay here
+ * until saved; the checks beside it follow every change as it is made.
  */
 export function Workspace(props: WorkspaceProps) {
   const { service, locked, candidates, now } = props;
   const router = useRouter();
-  const [slots, setSlots] = useState<PlanSlots>(service.slots);
+  // The songs and each place's ID, changed together (src/lib/service-planner/places.ts).
+  const [state, setState] = useState<Places>({ slots: service.slots, places: service.places });
+  const { slots, places } = state;
+  const [leaders, setLeaders] = useState<LeaderDraft>(props.leaders?.draft ?? NO_LEADERS);
   const [label, setLabel] = useState(service.label ?? "");
   const [time, setTime] = useState(churchTimeOf(service.startsAt));
   const [picker, setPicker] = useState<{ index: number; replacing: string | null } | null>(null);
   const { pending, result, clear, run: runAction, stateOf } = useAction();
   const [conflict, setConflict] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
-  useFlip(listRef, slots);
+  useFlip(listRef, places);
 
   // AI: which songs it must leave alone, what was last asked of it, and what it last did.
   // None of it is part of the plan: it is never saved, and does not make the service "unsaved".
@@ -115,7 +136,7 @@ export function Workspace(props: WorkspaceProps) {
    */
   const [settled, setSettled] = useState(false);
   /** What the last successful save sent: what "unsaved" is measured against until the fresh copy arrives. */
-  const [savedAs, setSavedAs] = useState<string | null>(null);
+  const [savedAs, setSavedAs] = useState<{ songs: string; leaders: LeaderDraft } | null>(null);
   const [shown, setShown] = useState(service);
   if (shown !== service) {
     setShown(service);
@@ -125,13 +146,20 @@ export function Workspace(props: WorkspaceProps) {
 
   const status = service.status;
   const editable = !locked && status !== "cancelled";
-  const initial = useMemo(
-    () => JSON.stringify([service.slots, service.label ?? "", churchTimeOf(service.startsAt)]),
+  const leadersEditable = editable && props.leaders !== null;
+  const initialSongs = useMemo(
+    () => JSON.stringify([service.slots, service.places, service.label ?? "", churchTimeOf(service.startsAt)]),
     [service],
   );
-  const current = JSON.stringify([slots, label, time]);
-  const dirty = current !== (savedAs ?? initial);
+  const initialLeaders = useMemo(() => leadersFor(props.leaders?.draft ?? NO_LEADERS, service.places), [props.leaders, service.places]);
+  const currentSongs = JSON.stringify([slots, places, label, time]);
+  const leadersNow = leadersFor(leaders, places);
+  const songsDirty = currentSongs !== (savedAs?.songs ?? initialSongs);
+  const leadersDirty = props.leaders !== null && !sameLeadership(leadersNow, savedAs?.leaders ?? initialLeaders);
+  const dirty = songsDirty || leadersDirty;
   const filled = slots.filter(Boolean).length;
+  // Places taken away that had a leader of their own: said before saving, never a surprise.
+  const clearing = Object.keys(initialLeaders.overrides).filter((placeId) => !places.includes(placeId)).length;
 
   const candidateMap = useMemo(() => new Map(candidates.map((candidate) => [candidate.id, candidate])), [candidates]);
   const signals = useMemo(
@@ -148,31 +176,28 @@ export function Workspace(props: WorkspaceProps) {
 
   // --- editing -------------------------------------------------------------
 
-  const update = (next: PlanSlots) => {
+  const update = (next: Places) => {
     clear();
-    setSlots(next);
+    setState(next);
     // Edited by hand since: undoing AI's plan would now throw that edit away.
     setAiResult(null);
   };
-  const move = (index: number, by: -1 | 1) => {
-    const target = index + by;
-    if (target < 0 || target >= slots.length) return;
-    const next = [...slots];
-    [next[index], next[target]] = [next[target], next[index]];
-    update(next);
-  };
+  const move = (index: number, by: -1 | 1) => update(movePlace(state, index, by));
   const choose = (index: number, song: ChosenSong) => {
-    const next = [...slots];
     // Whether the song is an insert is the song's own doing (no hymnal number), wherever it is put:
-    // a hymn chosen for the place the insert stood in is an ordinary song there.
-    next[index] = planSong(song);
-    update(next);
+    // a hymn chosen for the place the insert stood in is an ordinary song there. The place - and
+    // whoever leads it - stays.
+    update(setSong(state, index, planSong(song)));
     setPicker(null);
   };
   const setKey = (index: number, key: string) => {
     const song = slots[index];
     if (!song) return;
-    update(slots.map((item, at) => (at === index ? { ...song, key: key.trim() === "" ? null : key } : item)));
+    update(setSong(state, index, { ...song, key: key.trim() === "" ? null : key }));
+  };
+  const editLeaders = (next: LeaderDraft) => {
+    clear();
+    setLeaders(next);
   };
 
   // --- AI ------------------------------------------------------------------
@@ -180,18 +205,18 @@ export function Workspace(props: WorkspaceProps) {
   const aiAvailable = props.canUseAi && editable;
   const lockedNow = useMemo(() => lockedPlaces(slots, locks), [slots, locks]);
 
-  /** AI's plan goes into the editor like any other edit: unsaved until it is saved. */
+  /** AI's plan goes into the editor like any other edit: unsaved until it is saved. Each place keeps its leader. */
   const applyGenerated = (plan: GeneratedPlan) => {
     clear();
     setAiResult({ summary: plan.summary, changed: plan.changed.length, lyricsUsed: plan.lyricsUsed, before: { slots, locks } });
-    setSlots(plan.slots);
+    setState({ slots: plan.slots, places: placeIdsFor(plan.slots.length, places) });
     setLocks(locksAfterGeneration(locks, plan.slots, plan.changed));
     setGenerating(false);
   };
   const undoGenerated = () => {
     if (!aiResult) return;
     clear();
-    setSlots(aiResult.before.slots);
+    setState({ slots: aiResult.before.slots, places: placeIdsFor(aiResult.before.slots.length, places) });
     setLocks(aiResult.before.locks);
     setAiResult(null);
   };
@@ -222,23 +247,35 @@ export function Workspace(props: WorkspaceProps) {
     );
   }
 
+  const leadership = (revision: number) => ({ revision, defaultUserId: leadersNow.defaultUserId, overrides: leadersNow.overrides });
+
+  /**
+   * Songs (and leaders, when they changed too) are saved together, in one
+   * go. Leaders alone are saved on their own: the song list is never
+   * republished, withdrawn or announced for them.
+   */
   const save = (publish: boolean) => {
     // What is being saved, as it is at the press: the measure of "unsaved" from the moment it is.
-    const sent = current;
+    const sent = { songs: currentSongs, leaders: leadersNow };
+    const leaderRevision = props.leaders?.revision ?? 0;
     return run(
       publish ? "publish" : "save",
       () =>
         // Nothing changed: publishing alone, so the history records no empty edit.
         publish && !dirty
           ? publishServices({ anchors: [service.anchor] })
-          : saveService({
-              anchor: service.anchor,
-              revision: props.revision,
-              slots,
-              label: label.trim() === "" ? null : label.trim(),
-              time,
-              publish,
-            }),
+          : !publish && !songsDirty
+            ? saveServiceLeaders({ anchor: service.anchor, planRevision: props.revision ?? 0, leadership: leadership(leaderRevision) })
+            : saveService({
+                anchor: service.anchor,
+                revision: props.revision,
+                slots,
+                places,
+                leadership: leadersDirty ? leadership(leaderRevision) : undefined,
+                label: label.trim() === "" ? null : label.trim(),
+                time,
+                publish,
+              }),
       () => setSavedAs(sent),
     );
   };
@@ -306,12 +343,41 @@ export function Workspace(props: WorkspaceProps) {
               <h2 className="font-display text-xl text-ink">{ws.songs}</h2>
               <span className="text-sm text-muted">{progressLabel(filled, slots.length)}</span>
             </div>
+            {props.leaders ? (
+              <DefaultLeaderBar
+                people={props.leaders.people}
+                draft={leaders}
+                places={places}
+                editable={leadersEditable}
+                onDefault={(userId) => editLeaders(withDefault(leaders, userId))}
+                onClearOverrides={() => editLeaders(withoutOverrides(leaders))}
+              />
+            ) : (
+              <p role="status" className="border-b border-line px-5 py-3 text-sm text-gold-dark sm:px-6">
+                {copy.leaders.loadFailed}
+              </p>
+            )}
 
             <ol ref={listRef} className="divide-y divide-line">
-              {slots.map((song, index) => (
+              {slots.map((song, index) => {
+                // Each place's leader, under its song: the place keeps it wherever the song moves.
+                const leaderLine = props.leaders ? (
+                  <div className="mt-1 flex min-w-0 pl-[2.875rem]">
+                    <PlaceLeader
+                      placeId={places[index]}
+                      position={index + 1}
+                      people={props.leaders.people}
+                      draft={leaders}
+                      editable={leadersEditable}
+                      onChoose={(choice) => editLeaders(withPlaceChoice(leaders, places[index], choice))}
+                    />
+                  </div>
+                ) : null;
+                return (
                 <li
-                  key={song ? `${songIdentity(song, candidates)}-${index}` : `empty-${index}`}
-                  data-flip={song ? `song-${songIdentity(song, candidates)}` : `empty-${index}`}
+                  // A place is known by its own ID, so the same song twice is still two rows.
+                  key={places[index]}
+                  data-flip={`place-${places[index]}`}
                   // On a phone a song's key and buttons take a second line
                   // under its title, so the title keeps the width; from `sm`
                   // it is all one line.
@@ -348,7 +414,7 @@ export function Workspace(props: WorkspaceProps) {
                           {song.number ?? <span aria-hidden="true">·</span>}
                         </span>
                         <span className="min-w-0">
-                          <SongLink {...song} className="text-[0.98rem] font-medium text-ink" />
+                          <SongLink {...songRef(song)} className="text-[0.98rem] font-medium text-ink" />
                           {isInsert(song) ? (
                             <span className="ml-2 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-gold-dark">
                               {ws.insert}
@@ -356,12 +422,14 @@ export function Workspace(props: WorkspaceProps) {
                           ) : null}
                         </span>
                       </div>
+                      {leaderLine}
                     </div>
                   ) : editable ? (
+                    <div className="min-w-0 flex-1 py-1">
                     <button
                       type="button"
                       onClick={() => setPicker({ index, replacing: null })}
-                      className="group flex min-h-11 min-w-0 flex-1 items-center gap-x-2.5 text-left text-[0.95rem] text-muted transition-colors hover:text-ink"
+                      className="group flex min-h-9 w-full min-w-0 items-center gap-x-2.5 text-left text-[0.95rem] text-muted transition-colors hover:text-ink"
                     >
                       {/* In the number column, so "Choose a song" lines up with the titles. */}
                       <span aria-hidden="true" className="flex w-9 shrink-0 justify-end">
@@ -374,8 +442,13 @@ export function Workspace(props: WorkspaceProps) {
                       </span>
                       {ws.chooseSong}
                     </button>
+                    {leaderLine}
+                    </div>
                   ) : (
-                    <span className="min-w-0 flex-1 py-2.5 text-[0.95rem] italic text-muted">{ws.empty}</span>
+                    <div className="min-w-0 flex-1 py-2.5">
+                      <span className="text-[0.95rem] italic text-muted">{ws.empty}</span>
+                      {leaderLine}
+                    </div>
                   )}
 
                   <div
@@ -418,12 +491,12 @@ export function Workspace(props: WorkspaceProps) {
                               {/* The pencil of the admin editors (PencilIcon, OptionListEditor.tsx). */}
                               <path d="M10.5 2.5l3 3L6 13H3v-3l7.5-7.5z" />
                             </IconButton>
-                            <IconButton label={ws.remove} onClick={() => update(slots.map((item, at) => (at === index ? null : item)))}>
+                            <IconButton label={ws.remove} onClick={() => update(clearSong(state, index))}>
                               <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
                             </IconButton>
                           </>
                         ) : (
-                          <IconButton label={ws.removePlace} onClick={() => update(slots.filter((_, at) => at !== index))}>
+                          <IconButton label={ws.removePlace} onClick={() => update(removePlace(state, index))}>
                             <path d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8.5h5l.5-8.5" />
                           </IconButton>
                         )}
@@ -431,14 +504,15 @@ export function Workspace(props: WorkspaceProps) {
                     ) : null}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ol>
 
             {editable ? (
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line px-5 py-3 sm:px-6">
                 <button
                   type="button"
-                  onClick={() => update([...slots, null])}
+                  onClick={() => update(addPlace(state))}
                   disabled={slots.length >= 20}
                   className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-muted transition-colors not-disabled:hover:text-ink disabled:opacity-50"
                 >
@@ -469,9 +543,10 @@ export function Workspace(props: WorkspaceProps) {
                   ) : settled ? (
                     <ActionMessage result={{ ok: true, message: ws.saved }} />
                   ) : dirty ? (
-                    <span className="inline-flex items-center gap-2 text-gold-dark">
+                    <span className="inline-flex flex-wrap items-center gap-x-2 text-gold-dark">
                       <span aria-hidden="true" className="size-1.5 rounded-full bg-gold" />
                       {ws.unsaved}
+                      {clearing > 0 ? <span className="text-ink-soft">{plural(copy.leaders.clearing, clearing)}</span> : null}
                     </span>
                   ) : (
                     <span className="text-muted">
@@ -489,7 +564,7 @@ export function Workspace(props: WorkspaceProps) {
                       onClick={() => save(false)}
                       disabled={locking || !dirty}
                     >
-                      {ws.saveChanges}
+                      {leadersDirty && !songsDirty ? copy.leaders.saveLeaders : ws.saveChanges}
                     </Button>
                   ) : (
                     <>
@@ -504,7 +579,7 @@ export function Workspace(props: WorkspaceProps) {
                           onClick={() => save(false)}
                           disabled={locking}
                         >
-                          {ws.save}
+                          {leadersDirty && !songsDirty ? copy.leaders.saveLeaders : ws.save}
                         </Button>
                       ) : null}
                       <Button
@@ -530,6 +605,9 @@ export function Workspace(props: WorkspaceProps) {
 
         <aside className="space-y-6">
           <Checks signals={signals} sheetMusicChecked={props.sheetMusicChecked} serviceStartsAt={service.startsAt} />
+          {props.leaders ? (
+            <LeadersPanel people={props.leaders.people} draft={leaders} places={places} date={service.date} reset={props.placesReset} />
+          ) : null}
           <Availability availability={props.availability} date={service.date} />
 
           {editable ? (

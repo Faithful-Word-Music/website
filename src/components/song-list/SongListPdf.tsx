@@ -11,11 +11,18 @@ import { serviceSlots } from "@/lib/song-list";
 import {
   COLUMN_WIDTH_PT,
   firstYear,
+  LEADER_SIZE_PT,
+  leaderColumn,
+  shortLeaderName,
   layoutMonth,
   PDF_METRICS,
+  type PrintedLeaders,
   PDF_PAGE,
   printedServiceDate,
 } from "@/lib/song-list-pdf";
+import { dashboardContent } from "@/content/dashboard";
+import type { CardLeader, CardLeaderView } from "@/lib/leadership/board";
+import { GUEST_NAME } from "@/lib/leadership/model";
 import type { Service, SongListMonth } from "@/types/song-list";
 
 /**
@@ -89,7 +96,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     marginTop: 3,
-    fontSize: 7.5,
+    fontSize: LEADER_SIZE_PT,
     letterSpacing: 1.5,
     color: MUTED,
     textTransform: "uppercase",
@@ -118,7 +125,7 @@ const styles = StyleSheet.create({
   },
   slot: {
     width: 22, // the 16pt tag plus the 6pt gap before the date
-    fontSize: 7.5,
+    fontSize: LEADER_SIZE_PT,
     fontWeight: 600,
     lineHeight: "14pt",
     top: 0.73, // (9.5 - 7.5) x 0.36; `top` moves the text without growing the line
@@ -158,6 +165,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: PDF_METRICS.titlePaddingPt,
   },
+  /** Beside the date: who leads the whole service. */
+  serviceLeader: {
+    fontSize: 8,
+    fontWeight: 400,
+    color: MUTED,
+  },
+  /** Before the key: who leads each song, right-aligned so the names line up (leaderColumn sets its width). */
+  leader: {
+    fontSize: LEADER_SIZE_PT,
+    color: MUTED,
+    textAlign: "right",
+  },
   pending: {
     flex: 1,
     fontStyle: "italic",
@@ -194,7 +213,19 @@ const SITE_LABEL = siteConfig.url.replace(/^https?:\/\//, "");
  * laid out like the song list itself. The public month PDF passes one month;
  * the Service Planner's export passes as many as the range covers.
  */
-export function SongListPdf({ months, title }: { months: SongListMonth[]; title?: string }) {
+export function SongListPdf({
+  months,
+  title,
+  leaders,
+}: {
+  months: SongListMonth[];
+  title?: string;
+  /**
+   * Who leads each service's songs, by service id (cardLeaderView) - only in
+   * the signed-in PDF (/api/account/song-list-pdf). Never in the public one.
+   */
+  leaders?: Readonly<Record<string, CardLeaderView>>;
+}) {
   const heading = title ?? months[0]?.heading ?? months[0]?.title ?? songListContent.title;
   return (
     <Document
@@ -206,14 +237,21 @@ export function SongListPdf({ months, title }: { months: SongListMonth[]; title?
       language="en-US"
     >
       {months.map((month) => (
-        <MonthPage key={month.title} month={month} />
+        <MonthPage key={month.title} month={month} leaders={leaders ?? {}} />
       ))}
     </Document>
   );
 }
 
-function MonthPage({ month }: { month: SongListMonth }) {
-  const { rowPt, gapPt, left, right } = layoutMonth(month);
+function MonthPage({ month, leaders }: { month: SongListMonth; leaders: Readonly<Record<string, CardLeaderView>> }) {
+  // Who leads each song, printed after its title when several people lead the service - measured
+  // with the title, so the page still fits (layoutMonth).
+  const printed: PrintedLeaders = new Map(
+    Object.entries(leaders)
+      .filter(([, view]) => !view.service)
+      .map(([id, view]) => [id, Object.keys(view.rows).map(Number).sort((a, b) => a - b).map((position) => printedName(view.rows[position]))]),
+  );
+  const { rowPt, gapPt, left, right } = layoutMonth(month, printed);
   const year = firstYear(month);
   const heading = month.heading ?? month.title;
   const subtitle = `${siteConfig.church.name}${year ? ` · ${year}` : ""}`;
@@ -226,9 +264,9 @@ function MonthPage({ month }: { month: SongListMonth }) {
       </View>
 
       <View style={styles.columns}>
-        <Column services={left} rowPt={rowPt} gapPt={gapPt} />
+        <Column services={left} rowPt={rowPt} gapPt={gapPt} leaders={leaders} />
         {right.length > 0 ? <View style={styles.divider} /> : null}
-        <Column services={right} rowPt={rowPt} gapPt={gapPt} />
+        <Column services={right} rowPt={rowPt} gapPt={gapPt} leaders={leaders} />
       </View>
 
 
@@ -246,7 +284,17 @@ function MonthPage({ month }: { month: SongListMonth }) {
   );
 }
 
-function Column({ services, rowPt, gapPt }: { services: Service[]; rowPt: number; gapPt: number }) {
+function Column({
+  services,
+  rowPt,
+  gapPt,
+  leaders,
+}: {
+  services: Service[];
+  rowPt: number;
+  gapPt: number;
+  leaders: Readonly<Record<string, CardLeaderView>>;
+}) {
   return (
     <View style={styles.column}>
       {services.map((service, index) => (
@@ -254,6 +302,7 @@ function Column({ services, rowPt, gapPt }: { services: Service[]; rowPt: number
           key={service.id}
           service={service}
           rowPt={rowPt}
+          leaders={leaders[service.id] ?? null}
           gapAfter={index < services.length - 1 ? gapPt : 0}
         />
       ))}
@@ -265,21 +314,37 @@ function ServiceBlock({
   service,
   rowPt,
   gapAfter,
+  leaders,
 }: {
   service: Service;
   rowPt: number;
   gapAfter: number;
+  leaders: CardLeaderView | null;
 }) {
   const date = printedServiceDate(service);
   const lineHeight = `${rowPt}pt`;
   const rows = service.songs.length + service.pendingSongs;
+  // Several people lead it: each song names its leader, right-aligned in a column before the key,
+  // as wide as the longest name (leaderColumn) - so the names line up, and titles keep their room.
+  const names = leaders && !leaders.service ? serviceSlots(service).map((_, index) => printedName(leaders.rows[index + 1])) : [];
+  const column = leaderColumn(names);
+  const leaderCell = (index: number) =>
+    column ? <Text style={[styles.leader, { width: column.leaderPt }]}>{names[index] ?? ""}</Text> : null;
+  const keyStyle = column ? [styles.key, { width: column.keyPt }] : styles.key;
+
 
   return (
     // Never split across columns or pages: a service moves whole, or not at all.
     <View wrap={false} style={{ marginBottom: gapAfter }}>
       <View style={styles.serviceHeader}>
         {service.slot ? <Text style={styles.slot}>{service.slot}</Text> : null}
-        <Text style={styles.date}>{date || songListContent.undatedServiceLabel}</Text>
+        <Text style={styles.date}>
+          {date || songListContent.undatedServiceLabel}
+          {/* One person leads every song: said once, beside the date. */}
+          {leaders?.service ? (
+            <Text style={styles.serviceLeader}>{`  ·  ${dashboardContent.leading.ledBy.replace("{name}", printedName(leaders.service)!)}`}</Text>
+          ) : null}
+        </Text>
         {service.startsAt ? (
           <Text style={styles.time}>{formatChurchTime(service.startsAt)}</Text>
         ) : null}
@@ -296,13 +361,15 @@ function ServiceBlock({
               <>
                 <Text style={styles.number}>{song.number ?? ""}</Text>
                 <Text style={styles.title}>{song.title}</Text>
-                <Text style={styles.key}>{song.key ?? ""}</Text>
+                {leaderCell(index)}
+                <Text style={keyStyle}>{song.key ?? ""}</Text>
               </>
             ) : (
               <>
                 <Text style={styles.number} />
                 <Text style={styles.pending}>{songListContent.states.pendingSong}</Text>
-                <Text style={styles.key} />
+                {leaderCell(index)}
+                <Text style={keyStyle} />
               </>
             )}
           </View>
@@ -310,4 +377,10 @@ function ServiceBlock({
       </View>
     </View>
   );
+}
+
+/** A leader as printed: "Alex B." (a guest, "Guest" - never "you"), or null when no one leads the song. */
+function printedName(leader: CardLeader | null | undefined): string | null {
+  if (!leader) return null;
+  return leader.name === GUEST_NAME ? "Guest" : shortLeaderName(leader.name);
 }

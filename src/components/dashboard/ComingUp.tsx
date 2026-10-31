@@ -3,15 +3,21 @@ import Link from "next/link";
 import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { NoServiceSheetMusic } from "@/components/song-list/ServicePackets";
 import { PlannedInsert, ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
+import type { CardLeaders } from "@/lib/dashboard/leadership";
+import type { CardLeader, MyAssignment } from "@/lib/leadership/board";
+import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
+import { positionsLabel } from "@/lib/leadership/model";
+import { serviceHeadline } from "@/lib/service-planner/format";
 import { formatCountdown, splitDateLabel } from "@/lib/service-time";
 import { songIdentity } from "@/lib/song-identity";
 
 const copy = dashboardContent.comingUp;
+const leading = dashboardContent.leading;
 
 /**
  * The next services and their songs. Someone with assigned sheet music types
@@ -23,6 +29,8 @@ export function ComingUp({
   services,
   unavailable,
   now,
+  leaders = {},
+  later = [],
   className,
 }: {
   services: ComingUpService[];
@@ -30,6 +38,10 @@ export function ComingUp({
   unavailable: boolean;
   /** When the page was rendered, for "in 2 days". */
   now: number;
+  /** By service: who leads its songs, as the viewer may see it (src/lib/dashboard/leadership.ts). */
+  leaders?: Record<string, CardLeaders | null>;
+  /** The viewer's own song leading beyond these cards. */
+  later?: MyAssignment[];
   className?: string;
 }) {
   const headingId = "dashboard-coming-up";
@@ -57,16 +69,17 @@ export function ComingUp({
         <ol className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {services.map((service) => (
             <li key={service.id}>
-              <ServiceSummary service={service} now={now} />
+              <ServiceSummary service={service} now={now} leaders={leaders[service.id] ?? null} />
             </li>
           ))}
         </ol>
       )}
+      {later.length > 0 ? <LaterLeading assignments={later} /> : null}
     </section>
   );
 }
 
-function ServiceSummary({ service, now }: { service: ComingUpService; now: number }) {
+function ServiceSummary({ service, now, leaders }: { service: ComingUpService; now: number; leaders: CardLeaders | null }) {
   const { weekday, day } = splitDateLabel(service.dateLabel);
   const flagged = service.status === "now" || service.status === "next";
   const headingId = `dashboard-service-${service.id}`;
@@ -95,9 +108,19 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
         ) : null}
       </p>
 
+      {leaders?.view?.service ? <ServiceLeaderLine leader={leaders.view.service} className="mt-1" /> : null}
+      {!hasSongs && leaders && leaders.mine.length > 0 ? (
+        <p className="mt-2 text-sm font-medium text-gold-dark">{leading.youLeadDraft.replace("{songs}", positionsLabel(leaders.mine))}</p>
+      ) : null}
       <ol aria-labelledby={headingId} className="mt-4 divide-y divide-line border-y border-line">
         {service.slots.map((song, index) => (
-          <SongRow key={index} song={song} showLabel={service.showLabels} />
+          <SongRow
+            key={index}
+            song={song}
+            showLabel={service.showLabels}
+            // Not one person for the whole service: each song says who leads it (cardLeaderView).
+            leader={hasSongs && leaders?.view && !leaders.view.service ? leaders.view.rows[index + 1] : undefined}
+          />
         ))}
         {!hasSongs ? <li className="py-2 text-[0.95rem] italic text-muted">{copy.notPosted}</li> : null}
         {service.plannedInserts.map((song) => (
@@ -127,7 +150,21 @@ function ServiceSummary({ service, now }: { service: ComingUpService; now: numbe
   );
 }
 
-function SongRow({ song, showLabel }: { song: ComingUpSong | null; showLabel: boolean }) {
+/**
+ * One song. `leader`, when given (a service not led by one person
+ * throughout), is a short line of its own under the title: "Led by Brian",
+ * or "Led by you" in gold - the viewer's own, easy to find.
+ */
+function SongRow({
+  song,
+  showLabel,
+  leader,
+}: {
+  song: ComingUpSong | null;
+  showLabel: boolean;
+  leader: CardLeader | null | undefined;
+}) {
+  const note = leader !== undefined ? <SongLeaderNote leader={leader} /> : undefined;
   return (
     <li className="flex items-baseline gap-3 py-2">
       <span className="tnum w-8 shrink-0 text-right font-display text-base text-gold-dark">
@@ -135,8 +172,15 @@ function SongRow({ song, showLabel }: { song: ComingUpSong | null; showLabel: bo
         {song && !song.number ? <span className="sr-only">No number</span> : null}
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
-        {song ? <SongLink {...song} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
-        {song?.sheet ? <SongSheet sheet={song.sheet} showLabel={showLabel} /> : null}
+        {song ? <SongLink {...songRef(song)} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
+        {song?.sheet ? (
+          <>
+            {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
+            <SongSheet sheet={song.sheet} showLabel={showLabel} />
+          </>
+        ) : note ? (
+          <span className="mt-0.5 block text-xs">{note}</span>
+        ) : null}
       </span>
       {song?.key ? (
         <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">
@@ -183,5 +227,51 @@ function SongSheet({ sheet, showLabel }: { sheet: NonNullable<ComingUpSong["shee
         </>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * The viewer's next services as a song leader, beyond the cards above: which
+ * songs they lead, and - once the song list is published - those songs and
+ * their keys. Before then, only their positions: a draft's songs are not
+ * theirs to see yet.
+ */
+function LaterLeading({ assignments }: { assignments: MyAssignment[] }) {
+  return (
+    <div className="mt-6">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-gold-dark">{leading.title}</h3>
+      <ul className="mt-2 divide-y divide-line border-y border-line">
+        {assignments.map((assignment) => (
+          <li key={assignment.anchor} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm">
+            {assignment.published ? (
+              <Link
+                href={`/song-list#${assignment.anchor}`}
+                className="font-medium text-ink underline decoration-line underline-offset-4 transition-colors hover:decoration-gold"
+              >
+                {serviceHeadline(assignment)}
+              </Link>
+            ) : (
+              <span className="font-medium text-ink">{serviceHeadline(assignment)}</span>
+            )}
+            <span className="text-ink-soft">{positionsLabel(assignment.positions)}</span>
+            {assignment.songs && assignment.songs.length > 0 ? (
+              <span className="min-w-0 text-muted">
+                {assignment.songs
+                  .map((song) => [song.number, song.title].filter(Boolean).join(" ") + (song.key ? ` (${song.key})` : ""))
+                  .join(" · ")}
+              </span>
+            ) : !assignment.published ? (
+              <span className="text-muted">{leading.notPublished}</span>
+            ) : null}
+            {assignment.unavailable ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-dark">
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-gold" />
+                {leading.unavailable}
+              </span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

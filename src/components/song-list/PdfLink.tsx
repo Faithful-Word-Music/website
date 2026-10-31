@@ -3,7 +3,8 @@
 import { useActiveMonth } from "@/components/song-list/active-month";
 import { buttonClasses } from "@/components/ui/Button";
 import { songListContent } from "@/content/song-list";
-import { monthPdfPath } from "@/lib/song-list-pdf";
+import { memberPdfPath, monthPdfPath } from "@/lib/song-list-pdf";
+import { useLeadersAuthorized } from "@/components/song-list/SongLeaders";
 
 /**
  * Opens the open month as a PDF in a new tab (see SongListPdf), where the
@@ -16,11 +17,13 @@ import { monthPdfPath } from "@/lib/song-list-pdf";
 export function PdfLink({ months }: { months: Array<string | null> }) {
   const { activeIndex } = useActiveMonth();
   const title = months[activeIndex];
+  // Signed in and preparing from the song lists: the PDF with who leads the songs (its own private address).
+  const withLeaders = useLeadersAuthorized();
   if (!title) return null;
 
   return (
     <a
-      href={monthPdfPath(title)}
+      href={withLeaders ? memberPdfPath(title) : monthPdfPath(title)}
       target="_blank"
       rel="noopener"
       className={buttonClasses("secondary")}

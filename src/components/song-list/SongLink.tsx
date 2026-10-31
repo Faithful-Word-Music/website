@@ -47,3 +47,17 @@ export function SongLink({ className, ...song }: SongReference & { className?: s
     </Link>
   );
 }
+
+/**
+ * Only what a song link needs, for `<SongLink {...songRef(song)} />`. A song
+ * object also carries its musical `key`, which, spread into JSX, React would
+ * take as its own `key` prop (and warn about) - so songs are never spread whole.
+ */
+export function songRef(song: SongReference): SongReference {
+  return {
+    title: song.title,
+    ...(song.number !== undefined ? { number: song.number } : {}),
+    ...(song.songId !== undefined ? { songId: song.songId } : {}),
+    ...(song.collection !== undefined ? { collection: song.collection } : {}),
+  };
+}

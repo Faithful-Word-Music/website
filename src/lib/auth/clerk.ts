@@ -49,6 +49,8 @@ export interface AccountSummary {
   fullName: string;
   email: string | null;
   emails: string[];
+  /** The primary address, only when Clerk has verified it: the only address notifications are emailed to. */
+  verifiedEmail: string | null;
   imageUrl: string;
   hasImage: boolean;
   banned: boolean;
@@ -69,6 +71,8 @@ export function summarize(user: User): AccountSummary {
     fullName: [firstName, lastName].filter(Boolean).join(" ") || email || "Unnamed account",
     email,
     emails: user.emailAddresses.map((item) => item.emailAddress),
+    verifiedEmail:
+      user.primaryEmailAddress?.verification?.status === "verified" ? user.primaryEmailAddress.emailAddress : null,
     imageUrl: user.imageUrl,
     hasImage: user.hasImage,
     banned: user.banned,

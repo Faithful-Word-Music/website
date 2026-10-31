@@ -1,12 +1,12 @@
 import "server-only";
 
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
-import type { PermissionOverride } from "@/lib/auth/permissions";
+import type { Permission, PermissionOverride } from "@/lib/auth/permissions";
 import type { ServiceAvailability } from "@/lib/auth/profile-options";
 import { db } from "@/lib/auth/store";
 import type { ServiceSlot } from "@/types/song-list";
 
-import { availabilityRosterIds } from "./access";
+import { explicitHolderIds, PARTICIPANT_PERMISSION } from "./access";
 import type { ExceptionRecord } from "./board";
 import type { ExceptionStatus } from "./effective";
 
@@ -115,11 +115,12 @@ export interface RosterRecord {
 }
 
 /**
- * Everyone on the availability board (see availabilityRosterIds), with their
+ * Everyone holding `wanted` on purpose - by default the availability board
+ * (see availabilityRosterIds); also the song leaders (lead_songs) - with their
  * normal services - in one round trip for the permissions, one for profiles.
  * Names are not here: they belong to Clerk.
  */
-export async function loadRosterRecords(env: ClerkEnv): Promise<RosterRecord[]> {
+export async function loadRosterRecords(env: ClerkEnv, wanted: Permission = PARTICIPANT_PERMISSION): Promise<RosterRecord[]> {
   const sql = await db(env);
   const [row] = (await sql.query(
     `SELECT
@@ -147,7 +148,7 @@ export async function loadRosterRecords(env: ClerkEnv): Promise<RosterRecord[]> 
     overrides.set(user, [...(overrides.get(user) ?? []), { permission, effect }]);
   }
 
-  const ids = availabilityRosterIds(userRoles, rolePermissions, overrides);
+  const ids = explicitHolderIds(wanted, userRoles, rolePermissions, overrides);
   if (ids.length === 0) return [];
   const profiles = (await sql.query(
     `SELECT clerk_user_id, service_availability, preferred_name FROM user_profiles

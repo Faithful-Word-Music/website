@@ -125,6 +125,43 @@ export const servicePlannerContent = {
     leaveConfirm: "Leave without saving",
   },
 
+  /** Song leaders, in the workspace (Workspace.tsx) and its actions. */
+  leaders: {
+    title: "Song leaders",
+    defaultLabel: "Leads by default",
+    /** The default selector's "nobody" choice. */
+    noDefault: "No default leader",
+    /** A song's selector: follow the default. {name} is the default leader. */
+    inherit: "Default ({name})",
+    inheritNone: "Default (no one)",
+    nobody: "No one",
+    leaderFor: "Leader for song {n}",
+    clearOverrides: "Use the default for every song",
+    /** The one-line summary: "5 songs led · 1 without a leader · 1 unavailable". */
+    led: ["{count} song led", "{count} songs led"],
+    unled: ["{count} without a leader", "{count} without a leader"],
+    conflicts: ["{count} unavailable", "{count} unavailable"],
+    ineligible: ["{count} can no longer lead", "{count} can no longer lead"],
+    unavailable: "Unavailable",
+    notEligible: "Can no longer lead",
+    /** A person listed only because they are already assigned. */
+    formerOption: "{name} (can no longer lead)",
+    conflictLine: "{name} is unavailable for this service ({songs}).",
+    ineligibleLine: "{name} can no longer lead ({songs}). Choose someone else.",
+    resolve: "Open availability",
+    clearing: ["Removing a place clears {count} song leader assignment.", "Removing places clears {count} song leader assignments."],
+    reset: "This service was changed by an older version of the site, so its song leaders could not be matched to their songs. Check the leaders before saving.",
+    noLeaders: "Nobody can lead songs yet. Give someone the Song Leader role (or the Lead songs permission) to assign them.",
+    saveLeaders: "Save leaders",
+    /** The leaders could not be read: none are shown, and none can be changed until they can be. */
+    loadFailed: "Song leaders could not be loaded, so they are not shown here. Saving songs keeps them - except the leader of any place you remove. Reload to try again.",
+    saved: "Song leaders saved.",
+    unchanged: "Nothing to save.",
+    placeGone: "A song in this service was removed since you opened it. Reload to see it as it is.",
+    notLeader: "Someone you chose can no longer lead songs. Reload and choose again.",
+    history: "Song leaders changed",
+  },
+
   picker: {
     title: "Choose a song",
     replaceTitle: "Replace {title}",
@@ -282,6 +319,7 @@ export const servicePlannerContent = {
     cancelled: "Cancelled",
     restored: "Restored",
     unpublished: "Returned to draft",
+    leaders: "Song leaders changed",
     by: "by {name}",
     someone: "someone",
     imported: "the old song list",

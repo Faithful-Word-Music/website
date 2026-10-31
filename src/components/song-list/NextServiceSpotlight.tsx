@@ -3,8 +3,10 @@
 import { songIdentity } from "@/lib/song-identity";
 
 import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
-import { SongLink } from "@/components/song-list/SongLink";
+import { useCardLeaders } from "@/components/song-list/SongLeaders";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { songListContent } from "@/content/song-list";
 import { formatCountdown, formatShortDate, splitDateLabel } from "@/lib/service-time";
@@ -37,6 +39,8 @@ export function NextServiceSpotlight({
 }) {
   const { spotlight } = songListContent;
   const featured = current ?? next;
+  // Signed in: who leads it (SongLeaders.tsx, cardLeaderView) - asked before anything returns early.
+  const leaders = useCardLeaders(featured?.id ?? "", featured ? serviceSlots(featured) : []);
 
   if (!featured || !featured.startsAt) {
     return (
@@ -88,6 +92,7 @@ export function NextServiceSpotlight({
                 </p>
               ) : null}
             </div>
+            {leaders?.service ? <ServiceLeaderLine leader={leaders.service} className="mt-3 sm:mt-4 sm:text-base" /> : null}
 
             {isNow && next?.startsAt ? (
               <div className="mt-4 border-t border-line pt-3 sm:mt-6 sm:pt-4">
@@ -107,28 +112,36 @@ export function NextServiceSpotlight({
           <div>
             <ol className="divide-y divide-line border-y border-line lg:border-t-0">
               {serviceSlots(featured).map((song, index) => {
+                // Not one person for the whole service: each song says who leads it, first on its
+                // small grey line; the viewer's own says "Led by you", in gold.
+                const leader = leaders && !leaders.service ? leaders.rows[index + 1] : undefined;
+                const note = leader !== undefined ? <SongLeaderNote leader={leader} /> : undefined;
+                const row = "flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5";
                 // A slot not filled in yet keeps its place among the songs.
                 if (!song) {
                   return (
-                    <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                    <li key={index} className={row}>
                       <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
-                      <span className="text-base italic text-muted sm:text-xl">
-                        {songListContent.states.pendingSong}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-base italic text-muted sm:text-xl">{songListContent.states.pendingSong}</span>
+                        {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
                       </span>
                     </li>
                   );
                 }
                 const hint =
                   plays && !isNow ? songHint(plays[songIdentity(song)], featured.startsAt!, now, { insert: song.insert }) : null;
-  
+
                 return (
-                  <li key={index} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
+                  <li key={index} className={row}>
                     <span className="tnum w-9 shrink-0 text-right font-display text-lg text-gold-dark sm:w-12 sm:text-2xl">
                       {song.number ?? <span aria-hidden="true">·</span>}
                       {song.number ? null : <span className="sr-only">No number</span>}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink {...song} /></span>
+                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink {...songRef(song)} /></span>
+                      {/* Who leads it, on a line of its own - "Last sung" is the song's, not the leader's. */}
+                      {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
                       {hint ? <SongHintText hint={hint} now={now} /> : null}
                     </span>
                     {song.key ? (

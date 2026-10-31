@@ -8,6 +8,7 @@ import { capoRulesOrNone, sheetMusicTypesForUsers } from "@/lib/auth/store";
 import { loadRoster } from "@/lib/availability/load";
 import { addDays, churchDate, findOccurrence, serviceOccurrences } from "@/lib/availability/occurrences";
 import { listExceptions } from "@/lib/availability/store";
+import { loadServiceLeaders, type ServiceLeadersData } from "@/lib/leadership/load";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { toArchive } from "@/lib/service-archive";
 import { serviceAnchor } from "@/lib/site-search";
@@ -104,6 +105,8 @@ export interface WorkspaceData {
   sheetMusicChecked: boolean;
   availability: ServiceAvailability | null;
   events: Array<PlanEvent & { actorName: string | null }>;
+  /** Song leaders: null when they could not be read. */
+  leaders: (Omit<ServiceLeadersData, "changes"> & { changes: Array<ServiceLeadersData["changes"][number] & { actorName: string | null }> }) | null;
   createdBy: string | null;
   publishedBy: string | null;
   updatedBy: string | null;
@@ -210,9 +213,13 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
   const { now, service, inserts, candidates, past, planned } = context;
   const plan = service.plan;
 
-  const events = plan ? await listPlanEvents(viewer.env, plan.id) : [];
+  const [events, leaders] = await Promise.all([
+    plan ? listPlanEvents(viewer.env, plan.id) : Promise.resolve([]),
+    loadServiceLeaders(viewer.env, service),
+  ]);
   const names = await namesFor([
     ...events.map((event) => event.actor),
+    ...(leaders?.changes ?? []).map((change) => change.actor),
     plan?.created.by ?? null,
     plan?.updated.by ?? null,
     plan?.published?.by ?? null,
@@ -232,6 +239,13 @@ export async function loadWorkspace(viewer: Viewer, anchor: string): Promise<Wor
     sheetMusicChecked: context.sheetMusicChecked,
     availability: context.availability,
     events: events.map((event) => ({ ...event, actorName: event.actor ? (names.get(event.actor) ?? null) : null })),
+    leaders: leaders
+      ? {
+          leadership: leaders.leadership,
+          people: leaders.people,
+          changes: leaders.changes.map((change) => ({ ...change, actorName: change.actor ? (names.get(change.actor) ?? null) : null })),
+        }
+      : null,
     createdBy: plan?.created.by ? (names.get(plan.created.by) ?? null) : null,
     publishedBy: plan?.published?.by ? (names.get(plan.published.by) ?? null) : null,
     updatedBy: plan?.updated.by ? (names.get(plan.updated.by) ?? null) : null,

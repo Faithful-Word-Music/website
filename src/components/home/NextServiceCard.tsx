@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { PlannedInsert, ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { useNow } from "@/components/song-list/use-now";
 import { buttonClasses } from "@/components/ui/Button";
 import { homeContent } from "@/content/home";
@@ -75,7 +75,7 @@ export function NextServiceCard({ services, serverNow }: { services: Service[]; 
               {song && !song.number ? <span className="sr-only">No number</span> : null}
             </span>
             <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
-              {song ? <SongLink {...song} /> : <span className="italic text-muted">{states.pendingSong}</span>}
+              {song ? <SongLink {...songRef(song)} /> : <span className="italic text-muted">{states.pendingSong}</span>}
             </span>
             {song?.key ? (
               <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">

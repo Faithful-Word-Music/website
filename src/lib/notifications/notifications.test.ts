@@ -37,7 +37,7 @@ const CATEGORY = "availability_changed";
 /** Someone on the music team: the categories about services and availability concern them. */
 const musician = (userId: string) => actor(userId, "view_availability", "view_service_plans");
 /** Someone every starting category concerns. */
-const everything = actor("user_everything", "view_availability", "view_service_plans", "use_ai");
+const everything = actor("user_everything", "view_availability", "view_service_plans", "use_ai", "lead_songs");
 
 /** A test notification to these people, in a category of the test's choosing. */
 const send = (to: string[], extra: Partial<NotifyInput> = {}): NotifyInput => ({
@@ -67,14 +67,18 @@ describe("the effective setting", () => {
     }
   });
 
-  it("never switches email on: it is not offered yet, whatever its policy or a stored choice says", () => {
-    for (const policy of ["mandatory", "default_on", "default_off", "unavailable"] as const) {
-      expect(effectiveSetting("email", policy, true)).toEqual({ enabled: false, locked: true, available: false });
-    }
+  it("never switches email on by default: only the person's own choice (or a mandatory category) does", () => {
+    // A "default on" policy for email (only ever stored by older code) still leaves it off.
+    expect(effectiveSetting("email", "default_on", null)).toEqual({ enabled: false, locked: false, available: true });
+    expect(effectiveSetting("email", "default_off", null)).toEqual({ enabled: false, locked: false, available: true });
+    expect(effectiveSetting("email", "default_off", true)).toEqual({ enabled: true, locked: false, available: true });
+    expect(effectiveSetting("email", "mandatory", null)).toEqual({ enabled: true, locked: true, available: true });
+    // Not offered: off, whatever the person once chose.
+    expect(effectiveSetting("email", "unavailable", true)).toEqual({ enabled: false, locked: true, available: false });
   });
 
-  it("offers an administrator only 'unavailable' for email", () => {
-    expect(allowedPolicies("email")).toEqual(["unavailable"]);
+  it("offers an administrator email as required, off by default, or not offered - never on by default", () => {
+    expect(allowedPolicies("email")).toEqual(["mandatory", "default_off", "unavailable"]);
     expect(allowedPolicies("in_app")).toHaveLength(4);
     expect(allowedPolicies("push")).toHaveLength(4);
   });
@@ -84,7 +88,18 @@ describe("the starting categories", () => {
   it("start announcements as mandatory in the app and by push, and nothing by email", () => {
     const announcements = DEFAULT_CATEGORIES.find((category) => category.key === "admin_announcement");
     expect(announcements?.policies).toEqual({ in_app: "mandatory", push: "mandatory", email: "unavailable" });
-    for (const category of DEFAULT_CATEGORIES) expect(category.policies.email).toBe("unavailable");
+  });
+
+  it("offer email only for song leading, and only to someone who switches it on", () => {
+    // Every category from before email keeps it not offered: nobody is enrolled by its launch.
+    for (const category of DEFAULT_CATEGORIES.filter((item) => item.key !== "song_leading")) {
+      expect(category.policies.email, category.key).toBe("unavailable");
+    }
+    expect(DEFAULT_CATEGORIES.find((category) => category.key === "song_leading")?.policies).toEqual({
+      in_app: "default_on",
+      push: "default_on",
+      email: "default_off",
+    });
   });
 
   it("have a policy for every channel, and distinct keys", () => {
@@ -154,14 +169,14 @@ describe("changing a policy", () => {
     expect(await setPreference(john, { category: "admin_announcement", channel: "in_app", enabled: true }, deps)).toEqual({ ok: true });
   });
 
-  it("cannot make email available, and refuses what it does not know", async () => {
+  it("can never make email on by default, and refuses what it does not know", async () => {
     const { deps, policies } = notificationStore();
-    for (const policy of ["mandatory", "default_on", "default_off"]) {
-      expect(await setPolicy(director, { category: CATEGORY, channel: "email", policy }, deps)).toEqual({ ok: false, problem: "not-allowed" });
-    }
+    expect(await setPolicy(director, { category: CATEGORY, channel: "email", policy: "default_on" }, deps)).toEqual({ ok: false, problem: "not-allowed" });
+    expect(policies.find((row) => row.category === CATEGORY && row.channel === "email")?.policy).toBe("unavailable");
+    // Offered for someone to switch on is allowed.
+    expect(await setPolicy(director, { category: CATEGORY, channel: "email", policy: "default_off" }, deps)).toEqual({ ok: true });
     expect(await setPolicy(director, { category: CATEGORY, channel: "in_app", policy: "sometimes" }, deps)).toEqual({ ok: false, problem: "invalid" });
     expect(await setPolicy(director, { category: "no_such_category", channel: "in_app", policy: "mandatory" }, deps)).toEqual({ ok: false, problem: "unknown-category" });
-    expect(policies.filter((row) => row.channel === "email").every((row) => row.policy === "unavailable")).toBe(true);
   });
 
   it("keeps a person's choice through mandatory and back", async () => {

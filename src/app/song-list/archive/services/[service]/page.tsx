@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Pill } from "@/components/admin/StatusPill";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { BackLink } from "@/components/ui/BackLink";
 import { buttonClasses } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
@@ -79,7 +79,7 @@ export default async function ArchivedServicePage(props: PageProps<"/song-list/a
               <span className="w-5 shrink-0 text-sm tabular-nums text-muted">{position + 1}</span>
               <span className="w-10 shrink-0 text-sm tabular-nums text-muted">{song.number ?? ""}</span>
               <span className="min-w-0 flex-1 text-lg text-ink">
-                <SongLink {...song} />
+                <SongLink {...songRef(song)} />
                 {recordedInsert(song) ? (
                   <span className="ml-2 align-middle text-[0.7rem] uppercase tracking-wider text-gold-dark">{copy.insert}</span>
                 ) : null}

@@ -32,7 +32,8 @@ import {
 import { collectAttention } from "@/lib/dashboard/attention";
 import { buildComingUp, servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
-import { loadAvailabilitySummary, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
+import { cardLeaders, laterAssignments, leadershipAttention, myLeadingAttention } from "@/lib/dashboard/leadership";
+import { loadAvailabilitySummary, loadDashboardLeadership, loadInvitationFollowUps, loadMusicData, loadPeople } from "@/lib/dashboard/load";
 import { loadPlannerWork } from "@/lib/service-planner/load";
 import { newSheetMusic } from "@/lib/dashboard/new-sheet-music";
 import { groupPeople, musiciansWithoutInstruments } from "@/lib/dashboard/people";
@@ -106,7 +107,9 @@ export default async function DashboardPage() {
   ]);
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
 
-  const [music, capoRules, requests, people, invitations, availability, plannerWork] = await Promise.all([
+  // Song leaders: for whoever plans them, leads, or prepares from the published song lists.
+  const followsLeaders = focus.plansServices || viewer.can("lead_songs") || viewer.can("view_service_plans");
+  const [music, capoRules, requests, people, invitations, availability, plannerWork, leading] = await Promise.all([
     loadMusicData(),
     focus.managesSheetMusic ? capoRulesOrNone(viewer.env) : undefined,
     focus.reviewsAccounts ? countRequestsByStatus(viewer.env).catch(() => null) : null,
@@ -114,6 +117,7 @@ export default async function DashboardPage() {
     focus.reviewsAccounts ? loadInvitationFollowUps() : null,
     focus.tracksAvailability ? loadAvailabilitySummary(viewer) : null,
     focus.plansServices ? loadPlannerWork(viewer) : null,
+    followsLeaders ? loadDashboardLeadership(viewer) : null,
   ]);
   const now = music.loadedAt;
   const { hymnalCollection } = siteConfig.sheetMusic;
@@ -166,6 +170,8 @@ export default async function DashboardPage() {
 
   const attention = collectAttention(
     servicePlannerAttention(focus, plannerWork, now),
+    leadershipAttention(focus, leading?.problems ?? null, now),
+    myLeadingAttention(leading?.mine ?? null, now),
     accountRequestAttention(focus, requests?.pending ?? null),
     invitationAttention(focus, invitations),
     sheetGapAttention(focus, gaps),
@@ -231,7 +237,14 @@ export default async function DashboardPage() {
 
         {attention.length > 0 ? <AttentionList items={attention} className="mt-10" /> : null}
 
-        <ComingUp services={comingUp} unavailable={!music.services} now={now} className="mt-10" />
+        <ComingUp
+          services={comingUp}
+          unavailable={!music.services}
+          now={now}
+          leaders={leading ? Object.fromEntries(comingUp.map((service) => [service.id, cardLeaders(service, leading.rosters)])) : {}}
+          later={leading ? laterAssignments(leading.mine, new Set(comingUp.map((service) => service.id))) : []}
+          className="mt-10"
+        />
         {packetSeed ? <ServicePacketsSeed userId={viewer.userId} packets={packetSeed} /> : null}
 
         {focus.tracksAvailability ? <AvailabilitySummary summary={availability} now={now} className="mt-14" /> : null}

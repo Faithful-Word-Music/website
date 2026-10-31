@@ -16,6 +16,7 @@ import {
   type NotificationItem,
   type NotificationPriority,
 } from "./model";
+import { emailHandoff } from "./email-store";
 import { pushDeps } from "./push-store";
 import type { NotificationDeps, PolicyRow, PreferenceRow } from "./service";
 
@@ -199,7 +200,53 @@ const SCHEMA = [
      updated_at timestamptz NOT NULL DEFAULT now()
    )`,
   `CREATE INDEX IF NOT EXISTS notification_templates_env ON notification_templates (clerk_env, id)`,
+  // dedupe_key: what happened, once (NotifyInput.dedupeKey). A second event with the same key -
+  // a retry of the same change - records nothing. Null for every event that never repeats.
+  `ALTER TABLE notification_events ADD COLUMN IF NOT EXISTS dedupe_key text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS notification_events_dedupe
+     ON notification_events (clerk_env, dedupe_key) WHERE dedupe_key IS NOT NULL`,
+  // Email (email-delivery.ts): one row per person to email, written in the same statement as
+  // their notification, so a notification made is an email owed even if the server stops right
+  // after. The row's id is the email provider's idempotency key: sending it again (after an
+  // answer that was lost) is recognised and not delivered twice. The address is never stored:
+  // it is looked up, verified, when the email is sent.
+  `CREATE TABLE IF NOT EXISTS notification_email_outbox (
+     id               uuid        PRIMARY KEY,
+     ${ENV},
+     event_id         bigint      NOT NULL REFERENCES notification_events (id) ON DELETE CASCADE,
+     notification_id  bigint,
+     clerk_user_id    text        NOT NULL,
+     dedupe_key       text        NOT NULL,
+     supersede_key    text,
+     subject          text        NOT NULL,
+     text_body        text        NOT NULL,
+     html_body        text        NOT NULL,
+     status           text        NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'skipped', 'superseded', 'unknown')),
+     attempts         integer     NOT NULL DEFAULT 0,
+     max_attempts     integer     NOT NULL DEFAULT 5,
+     next_attempt_at  timestamptz NOT NULL DEFAULT now(),
+     lease_until      timestamptz,
+     provider_id      text,
+     last_error       text,
+     last_status_code integer,
+     created_at       timestamptz NOT NULL DEFAULT now(),
+     updated_at       timestamptz NOT NULL DEFAULT now(),
+     sent_at          timestamptz,
+     UNIQUE (clerk_env, dedupe_key)
+   )`,
+  `CREATE INDEX IF NOT EXISTS notification_email_outbox_due
+     ON notification_email_outbox (clerk_env, next_attempt_at) WHERE status IN ('pending', 'sending')`,
+  `CREATE INDEX IF NOT EXISTS notification_email_outbox_supersede
+     ON notification_email_outbox (clerk_env, supersede_key, clerk_user_id) WHERE status = 'pending'`,
 ];
+
+/**
+ * Whether SCHEMA has been applied here already (applySchema in src/lib/db.ts):
+ * the LAST thing it makes exists. A statement added to SCHEMA goes at the end,
+ * and this names what it makes instead.
+ */
+const SCHEMA_READY = `SELECT to_regclass('notification_email_outbox_supersede') IS NOT NULL AS ready`;
 
 let schemaReady = false;
 const seeded = new Set<ClerkEnv>();
@@ -208,7 +255,7 @@ const seeded = new Set<ClerkEnv>();
 export async function notificationSql(env: ClerkEnv): Promise<Sql> {
   const sql = await db(env);
   if (!schemaReady) {
-    await applySchema(sql, SCHEMA);
+    await applySchema(sql, SCHEMA, SCHEMA_READY);
     schemaReady = true;
   }
   if (!seeded.has(env)) {
@@ -400,17 +447,28 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
     // a new row, so it is the newest in their list, and their unread count
     // stays as it was. A notification already read is not matched, and the
     // earlier events are never touched - only what people are shown.
+    //
+    // With a dedupe key already recorded, nothing at all is written - no
+    // event, no notification, nothing replaced - and the call says so.
+    //
+    // Recipients with email on get an outbox row in the same statement
+    // (email-delivery.ts sends it). One about the same thing still waiting to
+    // be sent (the same family and entity: a change folded into this one) is
+    // superseded, so a quick second change sends one email, not two.
     async record(write) {
       const sql = await notificationSql(env);
+      const supersedeKey = write.coalesce && write.entityType ? `${write.coalesce.family}|${write.entityType}|${write.entityId}` : null;
       const [row] = (await sql.query(
         `WITH event AS (
-           INSERT INTO notification_events (clerk_env, category_key, event_key, actor_user_id, entity_type, entity_id, payload, group_key)
-           VALUES ($1, $2, $3, $4, $5::text, $6::text, $7::jsonb, $13::text)
+           INSERT INTO notification_events
+             (clerk_env, category_key, event_key, actor_user_id, entity_type, entity_id, payload, group_key, dedupe_key)
+           VALUES ($1, $2, $3, $4, $5::text, $6::text, $7::jsonb, $13::text, $17::text)
+           ON CONFLICT (clerk_env, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
            RETURNING id
          ), replaced AS (
            DELETE FROM notifications n
             USING notification_events e
-            WHERE $13::text IS NOT NULL
+            WHERE $13::text IS NOT NULL AND EXISTS (SELECT 1 FROM event)
               AND e.id = n.event_id AND e.clerk_env = $1 AND n.clerk_env = $1
               AND e.group_key = $13::text AND e.entity_type = $5::text AND e.entity_id = $6::text
               AND n.in_app AND n.read_at IS NULL
@@ -425,13 +483,32 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
                   $10, $11, r.in_app
              FROM event CROSS JOIN jsonb_to_recordset($12::jsonb) AS r(user_id text, in_app boolean)
            RETURNING id, recipient_user_id
+         ), emailed AS (
+           INSERT INTO notification_email_outbox
+             (id, clerk_env, event_id, notification_id, clerk_user_id, dedupe_key, supersede_key, subject, text_body, html_body)
+           SELECT gen_random_uuid(), $1, event.id, sent.id, sent.recipient_user_id,
+                  COALESCE($17::text, 'event:' || event.id) || ':' || sent.recipient_user_id,
+                  $21::text, $18::text, $19::text, $20::text
+             FROM event
+             JOIN sent ON true
+             JOIN jsonb_to_recordset($12::jsonb) AS r(user_id text, in_app boolean, email boolean)
+               ON r.user_id = sent.recipient_user_id
+            WHERE r.email AND $18::text IS NOT NULL
+           ON CONFLICT (clerk_env, dedupe_key) DO NOTHING
+           RETURNING id
+         ), superseded AS (
+           UPDATE notification_email_outbox o
+              SET status = 'superseded', updated_at = now()
+            WHERE $21::text IS NOT NULL AND EXISTS (SELECT 1 FROM event)
+              AND o.clerk_env = $1 AND o.status = 'pending' AND o.supersede_key = $21::text
+              AND o.clerk_user_id IN (SELECT recipient_user_id FROM sent)
          )
-         SELECT event.id,
+         SELECT (SELECT id FROM event) AS id,
                 COALESCE((SELECT json_agg(json_build_object(
                             'id', sent.id, 'user', sent.recipient_user_id,
                             'replaced', sent.recipient_user_id IN (SELECT recipient_user_id FROM replaced)))
-                            FROM sent), '[]') AS sent
-           FROM event`,
+                            FROM sent), '[]') AS sent,
+                COALESCE((SELECT json_agg(emailed.id::text) FROM emailed), '[]') AS emails`,
         [
           env,
           write.category,
@@ -444,16 +521,25 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
           write.body,
           write.actionUrl,
           write.priority,
-          JSON.stringify(write.recipients.map((recipient) => ({ user_id: recipient.userId, in_app: recipient.inApp }))),
+          JSON.stringify(
+            write.recipients.map((recipient) => ({ user_id: recipient.userId, in_app: recipient.inApp, email: recipient.email === true })),
+          ),
           write.coalesce?.family ?? null,
           write.coalesce?.windowMinutes ?? 0,
           write.coalesce?.title ?? write.title,
           write.coalesce?.body ?? write.body,
+          write.dedupeKey ?? null,
+          write.email?.subject ?? null,
+          write.email?.text ?? null,
+          write.email?.html ?? null,
+          supersedeKey,
         ],
-      )) as Array<{ id: string | number; sent: Array<{ id: number; user: string; replaced: boolean }> }>;
+      )) as Array<{ id: string | number | null; sent: Array<{ id: number; user: string; replaced: boolean }>; emails: string[] }>;
+      if (row.id === null) return { eventId: 0, notifications: [], emails: [], duplicate: true };
       return {
         eventId: Number(row.id),
         notifications: row.sent.map((sent) => ({ userId: sent.user, id: Number(sent.id), replaced: sent.replaced })),
+        emails: row.emails,
       };
     },
 
@@ -511,6 +597,7 @@ export function notificationDeps(env: ClerkEnv): NotificationDeps {
     },
 
     push: pushDeps(env, () => notificationSql(env)),
+    email: emailHandoff(env),
   };
 }
 
@@ -524,6 +611,7 @@ export async function deleteNotificationData(env: ClerkEnv, userId: string): Pro
   await sql.transaction((txn) => [
     txn.query(`DELETE FROM push_subscriptions WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
     txn.query(`DELETE FROM notification_deliveries WHERE clerk_env = $1 AND recipient_user_id = $2`, [env, userId]),
+    txn.query(`DELETE FROM notification_email_outbox WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
     txn.query(`DELETE FROM notifications WHERE clerk_env = $1 AND recipient_user_id = $2`, [env, userId]),
     txn.query(`DELETE FROM user_notification_preferences WHERE clerk_env = $1 AND clerk_user_id = $2`, [env, userId]),
   ]);

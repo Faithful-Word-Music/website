@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingIncludes: {
     "/song-list/pdf/[month]": ["./assets/fonts/*.ttf"],
+    // Its signed-in twin, with the song leaders.
+    "/api/account/song-list-pdf/[month]": ["./assets/fonts/*.ttf"],
     // The Service Planner's PDF export draws the same song list.
     "/service-planner/export": ["./assets/fonts/*.ttf"],
     // The planning philosophy lives in the database, but an environment's FIRST version is copied

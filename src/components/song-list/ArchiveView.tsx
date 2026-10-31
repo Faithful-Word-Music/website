@@ -11,7 +11,7 @@ import { ShowMore, useShown } from "@/components/ui/ShowMore";
 import { StatTile } from "@/components/ui/StatTile";
 import { cn } from "@/components/ui/cn";
 import { siteConfig } from "@/config/site";
-import { SongLink } from "@/components/song-list/SongLink";
+import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { songListContent } from "@/content/song-list";
 import {
   DEFAULT_SORT,
@@ -250,7 +250,7 @@ function ArchiveRow({
         {row.number ?? <span aria-hidden="true">·</span>}
       </td>
       <td className="py-3 pr-2 sm:pr-3">
-        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base"><SongLink {...row} /></span>
+        <span className="block text-[0.95rem] leading-snug text-ink sm:text-base"><SongLink {...songRef(row)} /></span>
         {/* Below 860px the keys column folds under the title: the least
             important detail, so the one that gives up its column. */}
         {keyText ? (

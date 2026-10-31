@@ -29,29 +29,52 @@ import {
 export const PARTICIPANT_PERMISSION = "view_availability" satisfies Permission;
 export const LEADER_PERMISSION = "manage_availability" satisfies Permission;
 
+/**
+ * Whether one person holds `permission` on purpose: through a role other than
+ * the Administrator's implicit "all permissions", or an individual grant -
+ * and not taken away by an individual deny.
+ */
+export function holdsExplicitly(
+  permission: Permission,
+  roleKeys: readonly string[],
+  rolePermissions: ReadonlyMap<string, readonly string[]>,
+  overrides: readonly PermissionOverride[] = [],
+): boolean {
+  const roles = roleKeys.filter((key) => key !== ADMIN_ROLE);
+  return resolvePermissions(roles, rolePermissions, overrides).has(permission);
+}
+
 /** Whether one person is on the availability board. */
 export function isAvailabilityParticipant(
   roleKeys: readonly string[],
   rolePermissions: ReadonlyMap<string, readonly string[]>,
   overrides: readonly PermissionOverride[] = [],
 ): boolean {
-  // Everything but the Administrator role's implicit "all permissions".
-  const roles = roleKeys.filter((key) => key !== ADMIN_ROLE);
-  return resolvePermissions(roles, rolePermissions, overrides).has(PARTICIPANT_PERMISSION);
+  return holdsExplicitly(PARTICIPANT_PERMISSION, roleKeys, rolePermissions, overrides);
 }
 
 /**
- * Everyone on the board, from every person's roles and individual
- * permission exceptions. Someone with neither holds only Member - which by
- * design is not a participant - so they are not looked at.
+ * Everyone holding `permission` on purpose (holdsExplicitly), from every
+ * person's roles and individual permission exceptions. Someone with neither
+ * holds only Member, so they are not looked at.
  */
-export function availabilityRosterIds(
+export function explicitHolderIds(
+  permission: Permission,
   userRoles: ReadonlyMap<string, readonly string[]>,
   rolePermissions: ReadonlyMap<string, readonly string[]>,
   overrides: ReadonlyMap<string, readonly PermissionOverride[]>,
 ): string[] {
   const ids = new Set([...userRoles.keys(), ...overrides.keys()]);
-  return [...ids].filter((id) => isAvailabilityParticipant(userRoles.get(id) ?? [], rolePermissions, overrides.get(id) ?? []));
+  return [...ids].filter((id) => holdsExplicitly(permission, userRoles.get(id) ?? [], rolePermissions, overrides.get(id) ?? []));
+}
+
+/** Everyone on the board. */
+export function availabilityRosterIds(
+  userRoles: ReadonlyMap<string, readonly string[]>,
+  rolePermissions: ReadonlyMap<string, readonly string[]>,
+  overrides: ReadonlyMap<string, readonly PermissionOverride[]>,
+): string[] {
+  return explicitHolderIds(PARTICIPANT_PERMISSION, userRoles, rolePermissions, overrides);
 }
 
 export type AvailabilityTarget =

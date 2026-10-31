@@ -67,6 +67,17 @@ export interface PlanSong extends SongReference {
 /** A service's places, in order; null is a place not filled yet. */
 export type PlanSlots = Array<PlanSong | null>;
 
+/**
+ * Each place's own ID, in the same order as its PlanSlots: what a song
+ * leader is assigned to. A place keeps its ID when it moves, when its song is
+ * replaced or its key changed, and when its song is taken out (an empty place
+ * can still be led); a new place gets a new one (src/lib/service-planner/places.ts).
+ */
+export type PlaceIds = string[];
+
+/** Makes a new place ID that none of `taken` uses. */
+export type NewPlaceId = (taken: readonly string[]) => string;
+
 /** Who did something, and when. */
 export interface Stamp {
   by: string | null;
@@ -84,6 +95,14 @@ export interface StoredPlan {
   status: PlanStatus;
   insertMode: InsertMode;
   slots: PlanSlots;
+  /** Each place's ID, beside `slots`. */
+  places: PlaceIds;
+  /**
+   * The stored IDs no longer matched the places (an older version of the site
+   * changed the songs), so new ones were given: any leader assigned to a song
+   * must be checked again. Never set otherwise.
+   */
+  placesReset?: boolean;
   /** Bumped on every save, so two people editing at once never overwrite each other. */
   revision: number;
   created: Stamp;
@@ -124,6 +143,8 @@ export interface PlannerService {
   status: PlannerStatus;
   insertMode: InsertMode;
   slots: PlanSlots;
+  /** Each place's ID, beside `slots`. */
+  places: PlaceIds;
   /** Places with a song. */
   filled: number;
   /** All places, filled or not. */
@@ -206,7 +227,23 @@ export function insertSongs(inserts: readonly InsertWeek[]): PlanSong[] {
  * week reads the same way round as the Inserts page.
  */
 export function placeInserts(slots: PlanSlots, inserts: readonly PlanSong[]): PlanSlots {
+  return placeInsertsWithPlaces(slots, positionalPlaceIds(slots.length), inserts, (taken) => `tmp${taken.length}`).slots;
+}
+
+/**
+ * placeInserts(), keeping each place's ID: an insert put where another stood
+ * takes over that place - and whoever leads it - and a place that has to be
+ * made for one gets a new ID (`newId`). No place is ever taken away here, so
+ * no song leader's assignment is lost.
+ */
+export function placeInsertsWithPlaces(
+  slots: PlanSlots,
+  places: PlaceIds,
+  inserts: readonly PlanSong[],
+  newId: NewPlaceId,
+): { slots: PlanSlots; places: PlaceIds } {
   const result = [...slots];
+  const ids = [...places];
   const previous = insertPlaces(result);
   for (const index of previous) result[index] = null;
 
@@ -221,12 +258,26 @@ export function placeInserts(slots: PlanSlots, inserts: readonly PlanSong[]): Pl
       result[target] = insert;
       last = target;
     } else {
-      while (result.length < usual) result.push(null);
+      while (result.length < usual) {
+        result.push(null);
+        ids.push(newId(ids));
+      }
       last = Math.min(usual, result.length);
       result.splice(last, 0, insert);
+      ids.splice(last, 0, newId(ids));
     }
   });
-  return result;
+  return { slots: result, places: ids };
+}
+
+/**
+ * The IDs places have before any were stored: "p1", "p2", ... by position.
+ * Always the same for the same number of places, so a service nobody has
+ * saved (or saved before places had IDs) shows the same IDs every time it is
+ * opened - until its first save stores them.
+ */
+export function positionalPlaceIds(count: number): PlaceIds {
+  return Array.from({ length: Math.max(0, count) }, (_, index) => `p${index + 1}`);
 }
 
 /** The places a service no one has planned yet starts with. */
@@ -349,6 +400,7 @@ export function plannerService(
   inserts: readonly InsertWeek[],
 ): PlannerService {
   const slots = plan ? plan.slots : startingSlots(occurrence.date, occurrence.slot, inserts);
+  const places = plan ? plan.places : positionalPlaceIds(slots.length);
   return {
     anchor: serviceAnchor(occurrence.date, occurrence.slot),
     date: occurrence.date,
@@ -359,6 +411,7 @@ export function plannerService(
     status: plan ? plan.status : "not-started",
     insertMode: plan?.insertMode ?? "week",
     slots,
+    places,
     filled: slots.filter(Boolean).length,
     target: slots.length,
     plan,

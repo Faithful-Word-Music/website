@@ -38,6 +38,19 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
   const data = await loadWorkspace(viewer, anchor);
   if (!data) notFound();
   const plan = data.service.plan;
+  // The songs' history and the leaders' changes, as one list, newest first.
+  const history = [
+    ...data.events,
+    ...(data.leaders?.changes ?? []).map((change) => ({
+      type: "leaders",
+      status: plan?.status ?? ("draft" as const),
+      actor: change.actor,
+      actorName: change.actorName,
+      at: change.at,
+      publicationId: null,
+      changes: [],
+    })),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   return (
     <PageTransition>
@@ -46,7 +59,7 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
         <div className="mt-6">
           <Workspace
             // A fresh copy of the editor whenever the stored service changes (after a save, or someone else's).
-            key={`${plan?.revision ?? 0}-${plan?.status ?? "new"}`}
+            key={`${plan?.revision ?? 0}-${plan?.status ?? "new"}-${data.leaders?.leadership.revision ?? "x"}`}
             now={data.now}
             service={withoutPlan(data.service)}
             revision={plan?.revision ?? null}
@@ -58,7 +71,17 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
             planned={data.planned}
             sheetMusicChecked={data.sheetMusicChecked}
             availability={data.availability}
-            events={data.events}
+            events={history}
+            leaders={
+              data.leaders
+                ? {
+                    draft: { defaultUserId: data.leaders.leadership.defaultUserId, overrides: data.leaders.leadership.overrides },
+                    revision: data.leaders.leadership.revision,
+                    people: data.leaders.people,
+                  }
+                : null
+            }
+            placesReset={plan?.placesReset === true}
           />
         </div>
       </Container>

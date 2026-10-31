@@ -57,6 +57,8 @@ One Next.js app on Vercel. There's no separate backend or CMS. The song list is 
 | `POST /api/contact` | The contact form's endpoint |
 | `GET /api/cron/sync-archive` | Nightly job that saves past services to the archive database |
 | `GET /api/cron/quarterly-report` | Emails the music director a report on the quarter just ended |
+| `GET /api/cron/notifications` | Daily safety net: tells song leaders about any change not yet told, and sends notification emails still owed |
+| `GET /api/account/song-leaders` | Signed in: who leads the songs of each published service, for the song list. Private and never cached |
 | `GET /api/cron/import-sheet-schedule` | **Temporary, run once:** copies the retired Google Sheet's upcoming services into the Service Planner (see [Retiring the Google Sheet](#retiring-the-google-sheet)) |
 | `/login` | Member log in (Clerk). Linked only from the footer, never the main navigation |
 | `/request-access` | Ask for an account. Creates a request for an administrator to review, never an account |
@@ -117,7 +119,8 @@ All of these are **server-only secrets** except `NEXT_PUBLIC_CLERK_PUBLISHABLE_K
 | `GOOGLE_SHEETS_API_KEY` | **Retired.** Only the one-time import of the old song-list sheet; delete it with that route | `src/lib/google-sheets.ts` | Production, until the import has run |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
 | `GOOGLE_PRIVATE_KEY` | Sheet music on song pages (optional) | `src/lib/google-auth.ts` | Development, Preview, Production |
-| `RESEND_API_KEY` | The contact form and archive alerts | `src/lib/resend.ts` | Development, Preview, Production |
+| `RESEND_API_KEY` | The contact form, archive alerts and notification emails | `src/lib/resend.ts` | Development, Preview, Production |
+| `NOTIFICATION_EMAIL_ENABLED` | Notification emails (not a secret). Set to `1` to send them. When unset, emails people opted into are kept in the outbox and never sent, which is how Local and Preview stay silent. See [NOTIFICATIONS.md](NOTIFICATIONS.md#email) | `src/lib/notifications/email-store.ts` | Production only |
 | `DATABASE_URL` | The song list (Service Planner), the permanent archive and accounts | `src/lib/db.ts` | All, and added automatically by the Neon integration |
 | `CRON_SECRET` | Protects the cron jobs (and the one-time import) | `src/lib/cron-auth.ts` | Production, and locally if you run them by hand |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Member accounts (optional). **Public**, and a **different value per environment** | Clerk SDK, `src/lib/auth/clerk-env.ts` | Local + Preview: `pk_test_…` · Production: `pk_live_…` |
@@ -300,11 +303,21 @@ Special service (created) ─┘
 | Permission | Default roles | Gets |
 |---|---|---|
 | `manage_service_plans` | Music Director | The Service Planner: drafts, inserts, special services, publishing, editing published services, exports, the planner's Dashboard items, and the audit details on archived services |
-| `view_service_plans` | Song Leader, Musician, Music Director | Published service plans and what to prepare for them (the Dashboard's Coming up, sheet music) |
+| `view_service_plans` | Song Leader, Musician, Music Director | Published service plans and what to prepare for them (the Dashboard's Coming up, sheet music), and who leads each published song |
+| `lead_songs` | Song Leader, Music Director | Can be chosen to lead songs. Sees their own assignments; before publication, only which songs they lead |
 
 Every page and every server action checks the permission on the server (`src/app/service-planner/actions.ts`, each wrapped in `withPermission("manage_service_plans")`); hiding the link is never the protection.
 
 **The tables** (created on first use, `lib/service-planner/store.ts`; each row tagged `clerk_env`): `service_plans` (one row per touched service: places as `jsonb`, status, insert mode, revision, created/updated/published by and at), `publications`, `service_plan_events`, `week_inserts` (a week's inserts in order: `insert_index` 1, and 2 for a second), `catalog_songs`. `insert_weeks` is what `week_inserts` replaced, from when a week had exactly one insert: its rows are copied across once per environment, as each week's first insert, the first time that environment's planner runs this code (a `schema_fixups` row records it), and it is then left alone - never read, written or dropped. A new table rather than a new key on the old one, because Local, Preview and Production share the database and a deployment still on the older code keeps writing the old table by its old key until it is redeployed.
+
+### Song leaders
+
+Who leads the singing is set in the Service Planner, beside each service's songs. Each service has a default leader, and any song can have someone else or no one. The Dashboard and the song list show it, and the notifications announce it. There is no separate page. Full details are in [docs/song-leaders.md](docs/song-leaders.md).
+
+- **Places, not songs.** A leader belongs to a song's place in the service. Each place has its own ID (`service_plans.place_ids`, kept beside `slots`). Moving a song, replacing it or changing its key keeps its leader, and only removing the place removes the leader.
+- **Saved on their own.** "Save leaders" never republishes, withdraws or announces the song list. When songs and leaders change together, they are saved in one transaction, against both revisions.
+- **Private before publication.** A leader sees only which positions they lead until the song list is published. After that, people with `view_service_plans` see every song's leader. The public song list, its cache, PDF and share images never contain leaders. Signed-in pages fetch them from `/api/account/song-leaders`.
+- **Availability.** Leaders who are away are flagged in the planner and on the Dashboard, and schedulers are notified. Nobody is ever reassigned automatically.
 
 ### Next and Now
 
@@ -843,7 +856,7 @@ For anything visual (the page, the PDF, the pictures, the planner), run `npm run
 
 ### 1. Import the repository
 1. Push to GitHub, then in Vercel choose **Add New → Project** and import the repo.
-2. The framework (Next.js) is detected automatically. Leave the build settings as the defaults. `vercel.json` only declares the nightly cron job.
+2. The framework (Next.js) is detected automatically. Leave the build settings as the defaults. `vercel.json` only declares the cron jobs.
 3. Add the environment variables **before** the first deploy.
 
 ### 2. Environment variables

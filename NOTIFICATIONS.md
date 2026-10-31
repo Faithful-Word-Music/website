@@ -11,9 +11,9 @@ The authoritative description of the notification system, and the handoff betwee
 | 3 | Web Push to every device a person switched it on for, delivery tracking, the service worker, and the app-icon unread badge | **Built** |
 | 4 | Manual notification centre: composer, audiences, templates, send history and delivery results | **Built** |
 | 5 | Reliability, scheduling, reminders, AI budget alerts, advanced preferences | Next |
-| 6 | Email through Resend | Later |
+| 6 | Email through Resend: an opt-in channel with a durable outbox, retries and idempotent sends. First offered for song leading (see docs/song-leaders.md) | **Built** |
 
-**Not built yet:** scheduled and delayed sends, reminders, recurring sends, digests, retries of a failed push, AI budget alerts, notification email, offline use, and sheet-music report events (the report feature itself does not exist yet; its category is ready).
+**Not built yet:** scheduled and delayed sends, reminders, recurring sends, digests, retries of a failed push, AI budget alerts, offline use, and sheet-music report events. The report feature itself does not exist yet, though its category is ready.
 
 ## The idea
 
@@ -104,7 +104,7 @@ Channels: `in_app`, `push`, `email`. `CHANNEL_STATUS` in `model.ts` says how far
 |---|---|---|
 | `in_app` | `live` | Delivered now |
 | `push` | `live` | Delivered to every device the person switched push on for |
-| `email` | `soon` | Not offered: no policy but `unavailable` can be chosen, and nothing can switch it on |
+| `email` | `live` | Opt-in only (`OPT_IN_ONLY`). Offered only where a category's policy says so. Sent from the outbox (see Email below) |
 
 Policies, per category and channel, set under **Admin → Notifications → Policies**:
 
@@ -130,6 +130,7 @@ Starting policies (data, changeable; nothing is mandatory in code):
 | `account_access` | mandatory | default on | unavailable |
 | `sheet_music_report` | default on | default off | unavailable |
 | `ai_system` | default on | default off | unavailable |
+| `song_leading` | default on | default on | **default off** (offered: each person switches it on) |
 
 ## The effective setting
 
@@ -350,6 +351,86 @@ Every device is attempted whatever happens to the others. Nothing is retried. Th
 - **A push is a few hundred milliseconds behind the action**, because it is sent after the response.
 - **Clearing the browser's site data** drops the subscription and the owner mark: push is off there until enabled again, and the old row is retired on its next attempt.
 
+## Email
+
+Email is a channel like push. A notification decides whether each person gets an email by `effectiveSetting()`, and nothing else does. Email is **opt-in only**: it is on only for someone who switched it on, or for a mandatory category.
+
+Every category that existed before email keeps the email policy `unavailable`, so its launch enrolled nobody. `song_leading` starts as `default_off`: offered, and off until each person switches it on.
+
+### The outbox
+
+`record()` writes an outbox row (`notification_email_outbox`) for each person with email on, **in the same statement** as their notification. A notification made is therefore an email owed, even if the server stops straight after.
+
+Each row holds the rendered email (`email.ts`: subject, text and HTML, with the same wording as the notification). It never holds the address. When a new change folds into an unread notification, a row still waiting for the same person, family and entity is marked `superseded`, so two quick changes send one email.
+
+### Delivery
+
+Delivery is `email-delivery.ts`. Its rules take their dependencies as arguments, and `email-store.ts` supplies the real ones.
+
+1. **Claim.** `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED)` takes due rows for a 2-minute lease and counts the attempt. Two workers never hold the same row.
+2. **Address.** The address comes from Clerk at send time: the primary address, **only once it is verified**, and only for an account that is not disabled or locked. If there is none, the row is `skipped`.
+3. **Send.** The row is sent through Resend, with **the row's ID as the `Idempotency-Key`**.
+4. **Settle.** The outcome is one of:
+   - `sent`
+   - `pending` again with a wait (1, 5, 30, 120, then 720 minutes) after a failure that may pass: no answer, 429, 5xx, or a quota
+   - `failed` after a refusal that will not pass (other 4xx) or after the 5th attempt
+
+   Every attempt is also a `notification_deliveries` row with `channel = 'email'`.
+
+**When a row is sent**
+
+- straight after the notification, using `after()`
+- after any later Service Planner change, while the database is awake anyway
+- daily from `GET /api/cron/notifications` (`vercel.json`, 10:05 UTC, just after the archive sync, so the database is woken once for both)
+
+Nothing polls. Under the Neon Free plan's awake-time billing this is deliberate, and it means a retry can wait until the next of these.
+
+**Lost answers.** If Resend accepted an email but the outcome could not be recorded, the row's lease runs out and it is sent again with the same idempotency key, which Resend recognises. Resend remembers a key for 24 hours. So a row more than **23 hours** old is never sent again. One that was handed to the provider with no answer recorded is marked **`unknown`** ("outcome unknown; not sent again"), because it may well have been delivered. One that never got an attempt is marked `failed` ("expired before it could be sent"). Delivery is therefore **at most once per row**, and in practice once. It is never claimed to be exactly once.
+
+**Outcomes:**
+
+| Status | Meaning |
+|---|---|
+| `sent` | Accepted by the provider |
+| `pending` | Waiting, or waiting to retry |
+| `sending` | Claimed by a worker now |
+| `failed` | Not delivered |
+| `skipped` | No verified address |
+| `superseded` | A later email replaced it |
+| `unknown` | May have been delivered |
+
+**Only the current claim settles a row.** A settle matches the row's attempt number as well as `sending`. A worker so slow that its lease ran out, and another worker took the row, cannot overwrite what the newer claim recorded, whether its own late answer was a success or a failure.
+
+**Who is emailed.** Email follows the notification's recipients, and only verified primary addresses of accounts that are not disabled or locked are used. Song leading's notices are also checked again when told: only people who may lead now receive them (`docs/song-leaders.md`).
+
+**Switching it on.** Sending happens only where `NOTIFICATION_EMAIL_ENABLED=1` and `RESEND_API_KEY` are set. Anywhere else, rows are written and left `pending` ("held"). They expire after 23 hours and nothing is sent. Local and Preview copies of the site therefore never email anyone by accident. The sender is `siteConfig.mail.from` (`contact@faithfulwordmusic.com`, already a Resend-verified domain). Links point to this deployment's own address.
+
+**A failure never touches the change it is about.** The change was saved first, every step here is logged rather than thrown, and the outbox keeps what is still owed.
+
+### Telling the same thing twice
+
+A `NotifyInput` may carry a `dedupeKey`. `notification_events.dedupe_key` is unique for each environment, so a second event with the same key records nothing: no notification, no push and no email.
+
+This is what makes retries safe. Song leading's changes are recorded in the same transaction as the change itself, and are told once each with the key `leadership:<change>:<user>`. A change not yet marked as told is told again by the next drain (`src/lib/leadership/notify.ts`).
+
+The dedupe key is separate from folding. Folding only decides what a person is **shown**.
+
+### Testing it
+
+`email-delivery.test.ts` uses an in-memory outbox and provider. It covers:
+
+- holding when email is switched off
+- missing addresses
+- transient and permanent failures, and running out of attempts
+- two workers at once
+- an answer lost and then sent again with the same key
+- the 23-hour limit
+- accounts that cannot be read
+- environments kept apart
+- escaping
+
+`events/leadership.test.ts` checks that the same change told twice is recorded once. `src/lib/leadership/leadership.integration.test.ts` runs the outbox and dedupe SQL on an isolated PGlite. No test can send an email.
+
 ## Events
 
 The principle: **notify about consequences, not clicks.** One real-world action is one notification, the person who did it is not told, and draft or internal work is silent.
@@ -368,6 +449,9 @@ The principle: **notify about consequences, not clicks.** One real-world action 
 | `account.access_changed` | Someone else changes a person's roles or individual permissions. One per save | that person | important | `account:<userId>` |
 | `ai.library_index_problem` | A refresh of the library index leaves song files that **newly** failed | `aiUsers` | important | `library-index:failures` |
 | `admin.announcement` | Someone sends a notification from Admin → Notifications | the audience they chose, **themselves included** | whatever they chose (normal by default) | `admin_announcement:<uuid>` |
+| `song_leading.assigned` / `changed` / `removed` | A saved change to who leads a service's songs changed this person's part. **One per person per change**, however many songs. A former leader and a new one are told different things | that leader | normal | `service_leading:<anchor>` |
+| `song_leading.service_cancelled` / `service_restored` | A service someone leads songs in is cancelled or restored. They are left out of `service_plan.cancelled`/`restored`, so each hears once | its leaders | important | `service_leading:<anchor>` |
+| `song_leading.leader_unavailable` | An assigned leader became unavailable for that service (`src/lib/availability/change.ts`) | `planners`, except the leader. **Folds into the `availability.service_changed` notice the same change sends** (same family and entity), so a director who gets both is shown one notice, naming the songs | important | `availability:<userId>:<anchor>` |
 | `system.test` | The development test button | the person pressing it | normal | none |
 
 An anchor is a service's address, `2026-10-11-am`. In every row but `admin.announcement` the actor is left out (`except`). Nothing is `critical`: that is kept for the exceptional.
@@ -597,4 +681,4 @@ There is no history table. A send is its `notification_events` row (`event_key =
 ## Later phases
 
 - **Phase 5 (scheduling and reliability):** scheduled, delayed and recurring manual sends, which can reuse the composer as it is: a scheduled send is a stored `AnnouncementDraft` (the shape a template already keeps) handed to `sendAnnouncement()` when its time comes, so the audience is resolved then. Also retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
-- **Phase 6 (email):** set `CHANNEL_STATUS.email` to `planned` then `live`. `allowedPolicies("email")` then offers mandatory, default off and unavailable; "default on" is never offered for email.
+- **Email, beyond song leading:** email is live. Offering it for another category is an administrator's policy change, from `unavailable` to `default_off` or `mandatory`, with no code needed. `allowedPolicies("email")` never offers "default on".

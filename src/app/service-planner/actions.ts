@@ -14,6 +14,24 @@ import {
   servicePlansWithdrawnByInsert,
   type ServiceRef,
 } from "@/lib/notifications/events/service-plan";
+import { LEADERSHIP_TAG, loadLeaderPeople } from "@/lib/leadership/load";
+import {
+  diffAssignments,
+  GUEST_LEADER,
+  leadersIn,
+  pruneOverrides,
+  sameLeadership,
+  snapshot,
+  type Leadership,
+} from "@/lib/leadership/model";
+import { tellChangeSoon } from "@/lib/leadership/notify";
+import {
+  changeStatement,
+  getLeadership,
+  leadershipStatements,
+  saveLeadership,
+  type ChangeWrite,
+} from "@/lib/leadership/store";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import { plural } from "@/lib/plural";
 import { SCHEDULE_TAG } from "@/lib/schedule";
@@ -22,10 +40,12 @@ import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { CATALOG_TAG } from "@/lib/song-archive";
 import { identifySong, indexEntries, referenceEntries, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import { startsAtAt } from "@/lib/service-planner/format";
+import { newPlaceId, placeIdsFor } from "@/lib/service-planner/places";
 import {
   insertWeekSchema,
   newSongSchema,
   publishSchema,
+  saveLeadershipSchema,
   saveServiceSchema,
   specialServiceSchema,
   statusSchema,
@@ -40,7 +60,8 @@ import {
   isInsert,
   isLocked,
   parseAnchor,
-  placeInserts,
+  placeInsertsWithPlaces,
+  positionalPlaceIds,
   planSong,
   startingSlots,
   slotSongs,
@@ -60,7 +81,9 @@ import {
   listPlans,
   publishPlans,
   savePlan,
+  savePlanWith,
   setPlanStatus,
+  setPlanStatusWith,
   setWeekInserts,
 } from "@/lib/service-planner/store";
 import type { ServiceSlot } from "@/types/song-list";
@@ -92,10 +115,17 @@ const MESSAGES = {
   notSunday: "An insert week starts on a Sunday.",
   insertNumbered: copy.inserts.numberedSong,
   insertTwice: copy.inserts.twice,
+  placeGone: copy.leaders.placeGone,
+  notLeader: copy.leaders.notLeader,
 } as const;
 
-/** Only the planner (and the Dashboard, which summarises it) shows drafts. */
+/**
+ * Only the planner (and the Dashboard, which summarises it) shows drafts.
+ * Song leaders are read from their own cache (src/lib/leadership/load.ts),
+ * which any change to a service's songs, status or leaders makes stale.
+ */
 function refreshPlanner() {
+  updateTag(LEADERSHIP_TAG);
   revalidatePath("/service-planner", "layout");
   revalidatePath("/dashboard");
 }
@@ -103,7 +133,39 @@ function refreshPlanner() {
 /** Something on the song list changed: the stored schedule, and every page that shows it. */
 function refreshEverything() {
   updateTag(SCHEDULE_TAG);
+  updateTag(LEADERSHIP_TAG);
   revalidatePath("/", "layout");
+}
+
+/** Everyone a set of leaders names: the default and each person assigned to a song. */
+function namedIn(leadership: Pick<Leadership, "defaultUserId" | "overrides">): string[] {
+  return [
+    ...new Set([
+      ...(leadership.defaultUserId ? [leadership.defaultUserId] : []),
+      ...Object.values(leadership.overrides).flatMap((override) => (override.kind === "assigned" ? [override.userId] : [])),
+    ]),
+  ];
+}
+
+/**
+ * Whether everyone newly named can lead: holds lead_songs (on purpose) with
+ * an account that is not disabled - checked here, never taken from the
+ * browser. Someone already assigned who can no longer lead may stay, so
+ * saving something else never silently drops them; they are flagged in the
+ * planner instead.
+ */
+async function refuseNewLeaders(
+  viewer: Viewer,
+  before: Pick<Leadership, "defaultUserId" | "overrides">,
+  after: Pick<Leadership, "defaultUserId" | "overrides">,
+): Promise<string | null> {
+  const already = new Set(namedIn(before));
+  // A guest (GUEST_LEADER) has no account to check.
+  const added = namedIn(after).filter((id) => !already.has(id) && id !== GUEST_LEADER);
+  if (added.length === 0) return null;
+  const people = await loadLeaderPeople(viewer.env, added);
+  const able = new Set(people.filter((person) => person.eligible).map((person) => person.id));
+  return added.every((id) => able.has(id)) ? null : MESSAGES.notLeader;
 }
 
 /** The service held at this date and slot - regular, or stored as special - or null. */
@@ -145,7 +207,7 @@ export async function saveService(
     const where = parseAnchor(anchor)!;
     const now = Date.now();
 
-    const current = await getPlan(viewer.env, where.date, where.slot);
+    const [current, leadersBefore] = await Promise.all([getPlan(viewer.env, where.date, where.slot), getLeadership(viewer.env, where)]);
     const occurrence = occurrenceFor(where.date, where.slot, current);
     if (!occurrence) return { ok: false, error: MESSAGES.notFound };
     if (current?.status === "cancelled") return { ok: false, error: MESSAGES.cancelled };
@@ -154,17 +216,48 @@ export async function saveService(
 
     const week = current ? [] : await weekFor(viewer, where.date);
     const previous = current?.slots ?? startingSlots(where.date, where.slot, week);
+    const placesBefore = current?.places ?? positionalPlaceIds(previous.length);
     const identities = await knownSongs(viewer, [...previous, ...parsed.data.slots].filter((song) => song !== null));
     const before = previous.map((song) => song ? identifySong(song, identities) : null);
     // Each song is made here from its title, number and key: whether it is an insert is not the browser's to say.
     const slots: PlanSlots = parsed.data.slots.map((song) => (song ? planSong(identifySong(song, identities)) : null));
+    // Each place keeps its ID (src/lib/service-planner/places.ts). A tab opened before places had
+    // IDs sends none: the stored ones are kept place by place.
+    const places = parsed.data.places ?? placeIdsFor(slots.length, placesBefore);
     // A service follows its week's inserts until one of its own is changed here: moved, replaced
     // (by another insert, or by a hymn, which is then no insert at all), removed or added to.
     const insertChanged = insertPlacementIdentity(before, identities) !== insertPlacementIdentity(slots, identities);
     const insertMode = current?.insertMode === "custom" || insertChanged ? "custom" : "week";
 
+    // Song leaders, saved with the songs when they were changed too. A place removed takes its
+    // own leader with it; every other assignment stays with its place, wherever it moved.
+    const submitted = parsed.data.leadership;
+    if (submitted && submitted.revision !== leadersBefore.revision) return { ok: false, error: MESSAGES.conflict };
+    if (submitted && Object.keys(submitted.overrides).some((placeId) => !places.includes(placeId))) {
+      return { ok: false, error: MESSAGES.placeGone };
+    }
+    const wanted = submitted ?? leadersBefore;
+    const { overrides, dropped } = pruneOverrides(wanted.overrides, places);
+    const leadersAfter = { defaultUserId: wanted.defaultUserId, overrides };
+    if (submitted) {
+      const refused = await refuseNewLeaders(viewer, leadersBefore, leadersAfter);
+      if (refused) return { ok: false, error: refused };
+    }
+    // Removing a place is checked against the leaders' revision too, even when it had no leader of
+    // its own when read: someone may have just given it one, and that must not be left pointing
+    // at a place that is gone (or its leader never told). Every removed place's override goes.
+    const removedPlaces = placesBefore.filter((placeId) => !places.includes(placeId));
+    const leadersChanged = (submitted ? !sameLeadership(leadersBefore, leadersAfter) : dropped.length > 0) || removedPlaces.length > 0;
+    const rosterBefore = snapshot(placesBefore, leadersBefore);
+    const rosterAfter = snapshot(places, leadersAfter);
+    const leaderChange: ChangeWrite | null =
+      diffAssignments(rosterBefore, rosterAfter).length > 0
+        ? { cause: submitted && leadersChanged ? "assignment" : "songs", details: { before: rosterBefore, after: rosterAfter } }
+        : null;
+
     const kind = current?.kind ?? occurrence.kind;
-    const saved = await savePlan(
+    let changeId: string | null = null;
+    const saved = await savePlanWith(
       viewer.env,
       {
         date: where.date,
@@ -175,12 +268,33 @@ export async function saveService(
         startsAt: time ? startsAtAt(where.date, time) : (current?.startsAt ?? occurrence.startsAt),
         insertMode,
         slots,
+        places,
       },
       current?.revision ?? null,
       viewer.userId,
       diffSlots(before, slots),
+      // In the same transaction as the songs: never songs saved with leaders pointing at places
+      // that are gone, or leaders saved for songs that were not.
+      (sql) => {
+        if (leadersChanged) {
+          const built = leadershipStatements(sql, viewer.env, where, {
+            expectedRevision: leadersBefore.revision,
+            write: submitted ? leadersAfter : null,
+            dropped: removedPlaces,
+            actor: viewer.userId,
+            change: leaderChange,
+          });
+          changeId = built.changeId;
+          return built.statements;
+        }
+        if (!leaderChange) return [];
+        const built = changeStatement(sql, viewer.env, where, leaderChange, viewer.userId);
+        changeId = built.changeId;
+        return [built.statement];
+      },
     );
     if (!saved.ok) return { ok: false, error: MESSAGES.conflict };
+    tellChangeSoon(viewer.env, changeId);
 
     let plan = saved.plan;
     let publicationId: string | null = null;
@@ -284,7 +398,7 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const where = parseAnchor(parsed.data.anchor)!;
 
-    const current = await getPlan(viewer.env, where.date, where.slot);
+    const [current, leaders] = await Promise.all([getPlan(viewer.env, where.date, where.slot), getLeadership(viewer.env, where)]);
     const occurrence = occurrenceFor(where.date, where.slot, current);
     if (!occurrence) return { ok: false, error: MESSAGES.notFound };
     if (isLocked(current?.startsAt ?? occurrence.startsAt, Date.now())) return { ok: false, error: MESSAGES.locked };
@@ -306,10 +420,29 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
       );
     }
 
-    const plan = await setPlanStatus(viewer.env, where, parsed.data.status, viewer.userId);
+    // Its leaders, as they stand: told in their own words when the service is cancelled or
+    // restored (and left out of the general notice, so each hears it once).
+    const roster = snapshot(current?.places ?? positionalPlaceIds(startingSlots(where.date, where.slot, []).length), leaders);
+    const leading = leadersIn(roster);
+    const before = current?.status ?? null;
+    const cancelling = parsed.data.status === "cancelled" && before !== "cancelled";
+    const restoring = parsed.data.status === "draft" && before === "cancelled";
+    const leaderChange: ChangeWrite | null =
+      leading.length > 0 && (cancelling || restoring)
+        ? { cause: "status", details: { before: roster, after: roster, status: { from: before, to: parsed.data.status } } }
+        : null;
+    let changeId: string | null = null;
+
+    const plan = await setPlanStatusWith(viewer.env, where, parsed.data.status, viewer.userId, (sql) => {
+      if (!leaderChange) return [];
+      const built = changeStatement(sql, viewer.env, where, leaderChange, viewer.userId);
+      changeId = built.changeId;
+      return [built.statement];
+    });
     if (!plan) return { ok: false, error: MESSAGES.notFound };
     // Leaving or entering the song list, or appearing/vanishing in Availability.
     refreshEverything();
+    tellChangeSoon(viewer.env, changeId);
 
     // A song list people were given has gone, or a service they expected has: those are told.
     // A draft made a draft again, or a cancelled service cancelled again, is not.
@@ -317,10 +450,11 @@ export async function setServiceStatus(input: unknown): Promise<ActionResult<{ s
       viewer.env,
       servicePlanStatusChanged({
         actorId: viewer.userId,
-        before: current?.status ?? null,
+        before,
         after: plan.status,
         service: plan,
         now: Date.now(),
+        alsoExcept: leaderChange ? leading : [],
       }),
     );
     return {
@@ -504,10 +638,11 @@ async function passInsertOn(
     const plan = { ...stored, slots: stored.slots.map((song) => song ? identifySong(song, known) : null) };
     const what = decide(plan, identifiedWeek, now);
     if (what === "leave") continue;
-    const slots = placeInserts(plan.slots, insertSongs(identifiedWeek));
+    // An insert taking over a place keeps that place - and whoever leads it; no place is removed.
+    const { slots, places } = placeInsertsWithPlaces(plan.slots, plan.places, insertSongs(identifiedWeek), newPlaceId);
     const saved = await savePlan(
       viewer.env,
-      { ...plan, slots, insertMode: "week" },
+      { ...plan, slots, places, insertMode: "week" },
       plan.revision,
       viewer.userId,
       diffSlots(plan.slots, slots),
@@ -551,3 +686,66 @@ export async function createSong(
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// Song leaders
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves who leads a service's songs - on their own: the songs, keys, status
+ * and publication are never touched, the song list is not republished or
+ * withdrawn, and nobody is told the song list changed. Works for a service
+ * not stored yet (its places are "p1" to "p5") without making it a draft.
+ *
+ * Refused when the leaders OR the songs were saved by anyone since the page
+ * was opened (which places exist is the songs' to say), when a song it names
+ * is gone, or when someone it newly names cannot lead. A save that changes
+ * nothing records nothing and tells nobody.
+ */
+export async function saveServiceLeaders(input: unknown): Promise<ActionResult<{ revision: number }>> {
+  return withPermission(PERMISSION, async (viewer) => {
+    const parsed = saveLeadershipSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+    const { anchor, planRevision, leadership } = parsed.data;
+    const where = parseAnchor(anchor)!;
+
+    const [current, before] = await Promise.all([getPlan(viewer.env, where.date, where.slot), getLeadership(viewer.env, where)]);
+    const occurrence = occurrenceFor(where.date, where.slot, current);
+    if (!occurrence) return { ok: false, error: MESSAGES.notFound };
+    if (current?.status === "cancelled") return { ok: false, error: MESSAGES.cancelled };
+    if (isLocked(current?.startsAt ?? occurrence.startsAt, Date.now())) return { ok: false, error: MESSAGES.locked };
+    if ((current?.revision ?? 0) !== planRevision || before.revision !== leadership.revision) {
+      return { ok: false, error: MESSAGES.conflict };
+    }
+
+    const places = current?.places ?? positionalPlaceIds(startingSlots(where.date, where.slot, []).length);
+    if (Object.keys(leadership.overrides).some((placeId) => !places.includes(placeId))) return { ok: false, error: MESSAGES.placeGone };
+
+    const after = { defaultUserId: leadership.defaultUserId, overrides: leadership.overrides };
+    if (sameLeadership(before, after)) return { ok: true, value: { revision: before.revision }, message: copy.leaders.unchanged };
+    const refused = await refuseNewLeaders(viewer, before, after);
+    if (refused) return { ok: false, error: refused };
+
+    const rosterBefore = snapshot(places, before);
+    const rosterAfter = snapshot(places, after);
+    const saved = await saveLeadership(viewer.env, where, current?.revision ?? 0, {
+      expectedRevision: before.revision,
+      write: after,
+      dropped: [],
+      actor: viewer.userId,
+      change:
+        diffAssignments(rosterBefore, rosterAfter).length > 0
+          ? { cause: "assignment", details: { before: rosterBefore, after: rosterAfter } }
+          : null,
+      // Stored with the leaders, so they never point at IDs that were only worked out (a service
+      // saved before places had IDs, or whose IDs were given afresh). Not stored yet: "p1"... stand.
+      places: current ? places : null,
+    });
+    if (!saved.ok) return { ok: false, error: MESSAGES.conflict };
+
+    // The planner and the Dashboard; the song list's leaders are read through LEADERSHIP_TAG.
+    refreshPlanner();
+    tellChangeSoon(viewer.env, saved.changeId);
+    return { ok: true, value: { revision: saved.revision }, message: copy.leaders.saved };
+  });
+}

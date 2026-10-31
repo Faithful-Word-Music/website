@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ActiveMonthProvider } from "@/components/song-list/active-month";
 import { PdfLink } from "@/components/song-list/PdfLink";
 import { SongListError } from "@/components/song-list/SongListStates";
+import { SongLeadersProvider } from "@/components/song-list/SongLeaders";
 import { ServicePacketsProvider } from "@/components/song-list/ServicePackets";
 import { SongListView } from "@/components/song-list/SongListView";
 import { Container } from "@/components/ui/Container";
@@ -38,6 +39,8 @@ export default async function SongListPage() {
   return (
     <PageTransition>
       <ActiveMonthProvider initialIndex={openingMonthIndex(months, loadedAt)}>
+        {/* Signed in: who leads the songs, for the cards and the PDF button alike (SongLeaders.tsx). */}
+        <SongLeadersProvider>
         <Container className="pb-14 pt-10 sm:pb-20 sm:pt-14">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <SectionHeading
@@ -75,6 +78,7 @@ export default async function SongListPage() {
             )}
           </div>
         </Container>
+        </SongLeadersProvider>
       </ActiveMonthProvider>
     </PageTransition>
   );

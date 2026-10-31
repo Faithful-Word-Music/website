@@ -95,6 +95,51 @@ export const NOTIFICATION_EVENTS = {
     coalesce: within("availability.normal"),
   },
 
+  /**
+   * Song leading (src/lib/notifications/events/leadership.ts): told to the
+   * leader themself, never with a song's title or key - a draft's songs are
+   * not theirs to see. Each folds with the next change to the same service.
+   */
+  "song_leading.assigned": {
+    category: "song_leading",
+    priority: "normal",
+    actionUrl: "/dashboard",
+    coalesce: within("song_leading.service"),
+  },
+  "song_leading.changed": {
+    category: "song_leading",
+    priority: "normal",
+    actionUrl: "/dashboard",
+    coalesce: within("song_leading.service"),
+  },
+  "song_leading.removed": {
+    category: "song_leading",
+    priority: "normal",
+    actionUrl: "/dashboard",
+    coalesce: within("song_leading.service"),
+  },
+  "song_leading.service_cancelled": {
+    category: "song_leading",
+    priority: "important",
+    actionUrl: "/dashboard",
+    coalesce: within("song_leading.status"),
+  },
+  "song_leading.service_restored": {
+    category: "song_leading",
+    priority: "important",
+    actionUrl: "/dashboard",
+    coalesce: within("song_leading.status"),
+  },
+  /** For schedulers: someone assigned to lead songs is now unavailable for that service. */
+  "song_leading.leader_unavailable": {
+    category: "song_leading",
+    priority: "important",
+    actionUrl: "/service-planner",
+    // Folds into the availability notice the same change has just sent (the same family and entity):
+    // a director who reads both kinds is shown one notice - this one, which also names the songs.
+    coalesce: within("availability.service"),
+  },
+
   /** Someone asked for an account. */
   "account.request_created": { category: "account_access", priority: "important", actionUrl: "/admin/requests" },
   /** Someone's roles or individual permissions were changed by someone else. */

@@ -14,6 +14,8 @@ import {
 } from "@/lib/notifications/events/availability";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import type { NotifyInput } from "@/lib/notifications/service";
+import { LEADERSHIP_DAYS } from "@/lib/leadership/load";
+import { warnLeaderUnavailable } from "@/lib/leadership/notify";
 import { plural } from "@/lib/plural";
 
 import { availabilityTarget, isEditable } from "./access";
@@ -127,6 +129,7 @@ export async function changeServiceAvailability(viewer: Viewer, input: unknown):
       choice: status,
     }),
   );
+  await warnSchedulers(viewer, target.person, standing, { from: date, to: date }, target.person.normal);
   return { ok: true, value: null, message: messages.saved };
 }
 
@@ -165,6 +168,7 @@ export async function changeRangeAvailability(viewer: Viewer, input: unknown): P
       choice: status,
     }),
   );
+  await warnSchedulers(viewer, target.person, standing, { from, to }, target.person.normal);
   const count = occurrences.length;
   return { ok: true, value: { count }, message: plural(messages.rangeSaved, count) };
 }
@@ -177,9 +181,15 @@ export async function changeNormalAvailability(viewer: Viewer, input: unknown): 
   const target = await resolveTarget(viewer, parsed.data.userId);
   if (!target.ok) return target;
 
+  // Their exceptions to come, as they stand, for telling the schedulers what the new pattern
+  // means for the services they lead songs in.
+  const today = churchDate(Date.now());
+  const ahead = { from: today, to: addDays(today, LEADERSHIP_DAYS) };
+  const standing = await standingExceptions(viewer, target.person, ahead.from, ahead.to);
   await setNormalAvailability(viewer.env, target.person.id, parsed.data.services);
   refreshAvailability();
   revalidatePath("/profile");
+  await warnSchedulers(viewer, target.person, standing, ahead, parsed.data.services);
   await announce(viewer, target.person, new Map(), (person) =>
     availabilityNormalChanged({
       actorId: viewer.userId,
@@ -262,4 +272,32 @@ export async function loadMyAvailability(viewer: Viewer): Promise<{ onBoard: boo
     onBoard: true,
     services: myServices({ occurrences: serviceOccurrences(today, to, planned), person, exceptions, now }),
   };
+}
+
+/**
+ * After a change: the schedulers are told of each service the person leads
+ * songs in and can no longer come to (src/lib/leadership/notify.ts).
+ */
+async function warnSchedulers(
+  viewer: Viewer,
+  record: RosterRecord,
+  standing: Standing | null,
+  range: { from: string; to: string },
+  normalAfter: RosterRecord["normal"],
+): Promise<void> {
+  if (!standing) return;
+  await warnLeaderUnavailable(viewer.env, {
+    actorId: viewer.userId,
+    person: {
+      id: record.id,
+      name: async () => {
+        if (record.preferredName.trim()) return record.preferredName.trim();
+        const account = await getAccount(record.id);
+        return (account.ok && (account.value.fullName || account.value.firstName)) || "A song leader";
+      },
+    },
+    range,
+    before: { normal: record.normal, exceptions: standing },
+    normalAfter,
+  });
 }

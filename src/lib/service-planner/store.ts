@@ -2,6 +2,8 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import type { NeonQueryPromise } from "@neondatabase/serverless";
+
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { applySchema, getSql } from "@/lib/db";
 import { toChurchIso } from "@/lib/service-time";
@@ -11,14 +13,17 @@ import type { ServiceSlot, Song } from "@/types/song-list";
 
 import {
   planSong,
+  positionalPlaceIds,
   type InsertMode,
   type InsertWeek,
+  type PlaceIds,
   type PlanSlots,
   type PlanStatus,
   type ServiceKind,
   type SongChange,
   type StoredPlan,
 } from "./model";
+import { derivePlaceIds, validPlaceIds } from "./places";
 
 /**
  * Reading and writing the Service Planner's tables. Every table carries the
@@ -157,7 +162,96 @@ const SCHEMA = [
   `ALTER TABLE catalog_songs_v2 ADD COLUMN IF NOT EXISTS indexed_song_id text`,
   `ALTER TABLE week_inserts ADD COLUMN IF NOT EXISTS song_id text`,
   `ALTER TABLE week_inserts ADD COLUMN IF NOT EXISTS collection text`,
+  // Each place's ID, beside `slots` (src/lib/service-planner/places.ts). NULL on rows saved before
+  // places had IDs: they read as "p1", "p2", ... until their next save stores them.
+  `ALTER TABLE service_plans ADD COLUMN IF NOT EXISTS place_ids jsonb`,
+  // Song leaders (src/lib/leadership). Keyed by the service, not its service_plans row, so a
+  // service nobody has planned yet can be given its leaders without becoming a draft.
+  `CREATE TABLE IF NOT EXISTS service_leadership (
+     ${ENV},
+     service_date    date        NOT NULL,
+     slot            text        NOT NULL CHECK (slot IN ('AM', 'PM')),
+     default_user_id text,
+     revision        integer     NOT NULL DEFAULT 0,
+     updated_by      text,
+     updated_at      timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, service_date, slot)
+   )`,
+  `CREATE INDEX IF NOT EXISTS service_leadership_default
+     ON service_leadership (clerk_env, default_user_id) WHERE default_user_id IS NOT NULL`,
+  // One row per place that does NOT follow the service's default leader: someone else, or no one.
+  `CREATE TABLE IF NOT EXISTS service_leader_overrides (
+     ${ENV},
+     service_date date        NOT NULL,
+     slot         text        NOT NULL CHECK (slot IN ('AM', 'PM')),
+     place_id     text        NOT NULL,
+     kind         text        NOT NULL CHECK (kind IN ('assigned', 'unassigned')),
+     user_id      text,
+     updated_by   text,
+     updated_at   timestamptz NOT NULL DEFAULT now(),
+     PRIMARY KEY (clerk_env, service_date, slot, place_id),
+     CHECK ((kind = 'assigned') = (user_id IS NOT NULL)),
+     FOREIGN KEY (clerk_env, service_date, slot)
+       REFERENCES service_leadership (clerk_env, service_date, slot) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS service_leader_overrides_user
+     ON service_leader_overrides (clerk_env, user_id) WHERE user_id IS NOT NULL`,
+  // What happened to who leads a service, kept for the record - and, until notified_at is set,
+  // the proof that the people it affects are still to be told (src/lib/leadership/notify.ts).
+  `CREATE TABLE IF NOT EXISTS service_leadership_changes (
+     id           uuid        PRIMARY KEY,
+     ${ENV},
+     service_date date        NOT NULL,
+     slot         text        NOT NULL CHECK (slot IN ('AM', 'PM')),
+     cause        text        NOT NULL CHECK (cause IN ('assignment', 'songs', 'status')),
+     actor        text,
+     at           timestamptz NOT NULL DEFAULT now(),
+     details      jsonb       NOT NULL DEFAULT '{}',
+     notified_at  timestamptz
+   )`,
+  `CREATE INDEX IF NOT EXISTS service_leadership_changes_service
+     ON service_leadership_changes (clerk_env, service_date, slot, at)`,
+  `CREATE INDEX IF NOT EXISTS service_leadership_changes_pending
+     ON service_leadership_changes (clerk_env, at) WHERE notified_at IS NULL`,
+  // Aborts the transaction it runs in unless `ok`: how one request's several statements stay
+  // all-or-nothing when what they were based on has changed (see LOCK_CONFLICT).
+  // Looked up by its exact signature, where queries will find it (the search path), and created
+  // only when missing - never replaced, so a deployment never changes it under another. Two
+  // servers starting at once may both find it missing: the second's "already exists" is caught
+  // here, so their other statements are not undone by it.
+  `DO $outer$ BEGIN
+     IF to_regprocedure('fwm_require(boolean, text)') IS NULL THEN
+       BEGIN
+         CREATE FUNCTION fwm_require(ok boolean, code text) RETURNS boolean LANGUAGE plpgsql AS $fn$
+         BEGIN
+           IF ok IS NOT TRUE THEN RAISE EXCEPTION 'fwm:%', code; END IF;
+           RETURN true;
+         END
+         $fn$;
+       EXCEPTION WHEN duplicate_function OR unique_violation THEN NULL;
+       END;
+     END IF;
+   END $outer$`,
 ];
+
+/**
+ * Whether SCHEMA has been applied here already, so nothing in it needs running
+ * (applySchema in src/lib/db.ts). It names the LAST thing SCHEMA makes: the
+ * statements run in one transaction, so that being there means all of them
+ * were. A statement added to SCHEMA goes at the end, and this names it instead.
+ */
+const SCHEMA_READY = `SELECT to_regprocedure('fwm_require(boolean, text)') IS NOT NULL AS ready`;
+
+/** The message fwm_require() raises when what a write was based on has changed since. */
+export const LOCK_CONFLICT = "fwm:conflict";
+
+/** Whether a failed write failed because someone else changed the same thing first. */
+export function isWriteConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { message, code } = error as { message?: unknown; code?: unknown };
+  // 23505: a service stored by someone else at the same moment (unique violation).
+  return (typeof message === "string" && message.includes(LOCK_CONFLICT)) || code === "23505";
+}
 
 export class PlannerUnavailableError extends Error {
   constructor() {
@@ -168,11 +262,12 @@ export class PlannerUnavailableError extends Error {
 
 let schemaReady = false;
 
-async function plannerSql() {
+/** The planner's connection, its tables in place - shared with the song leaders' store. */
+export async function plannerSql() {
   const sql = getSql();
   if (!sql) throw new PlannerUnavailableError();
   if (!schemaReady) {
-    await applySchema(sql, SCHEMA);
+    await applySchema(sql, SCHEMA, SCHEMA_READY);
     schemaReady = true;
   }
   return sql;
@@ -232,6 +327,7 @@ interface PlanRow {
   status: PlanStatus;
   insert_mode: InsertMode;
   slots: PlanSlots | string;
+  place_ids: unknown[] | string | null;
   revision: number;
   created_by: string | null;
   created_at: Date | string;
@@ -243,7 +339,7 @@ interface PlanRow {
 }
 
 const PLAN_COLUMNS = `id, to_char(service_date, 'YYYY-MM-DD') AS date, slot, kind, label, starts_at, status,
-  insert_mode, slots, revision, created_by, created_at, updated_by, updated_at, published_by, published_at,
+  insert_mode, slots, place_ids, revision, created_by, created_at, updated_by, updated_at, published_by, published_at,
   publication_id`;
 
 const iso = (value: Date | string) => new Date(value).toISOString();
@@ -267,6 +363,9 @@ function readSlots(value: PlanSlots | string): PlanSlots {
 }
 
 function toPlan(row: PlanRow): StoredPlan {
+  const slots = readSlots(row.slots);
+  const stored: unknown = typeof row.place_ids === "string" ? JSON.parse(row.place_ids) : row.place_ids;
+  const { places, reset } = derivePlaceIds(slots.length, Array.isArray(stored) ? stored : stored == null ? null : [], row.revision);
   return {
     id: row.id,
     date: row.date,
@@ -276,7 +375,9 @@ function toPlan(row: PlanRow): StoredPlan {
     startsAt: toChurchIso(new Date(row.starts_at).getTime()),
     status: row.status,
     insertMode: row.insert_mode,
-    slots: readSlots(row.slots),
+    slots,
+    places,
+    ...(reset ? { placesReset: true } : {}),
     revision: row.revision,
     created: { by: row.created_by, at: iso(row.created_at) },
     updated: { by: row.updated_by, at: iso(row.updated_at) },
@@ -321,9 +422,83 @@ export interface PlanWrite {
   startsAt: string;
   insertMode: InsertMode;
   slots: PlanSlots;
+  /** Each place's ID; "p1", "p2", ... when not given (a service stored with nothing assigned yet). */
+  places?: PlaceIds;
 }
 
 export type SaveOutcome = { ok: true; plan: StoredPlan } | { ok: false; reason: "conflict" };
+
+type Sql = Awaited<ReturnType<typeof plannerSql>>;
+/** One statement, not yet sent: what a transaction is made of. */
+export type PendingQuery = NeonQueryPromise<false, false>;
+
+function placesOf(write: PlanWrite): PlaceIds {
+  return write.places && validPlaceIds(write.places, write.slots.length) ? write.places : positionalPlaceIds(write.slots.length);
+}
+
+/**
+ * The statement that saves a service's places (see savePlan). `strict` is for
+ * a transaction: a service someone else stored first is an error, which undoes
+ * the whole transaction, rather than nothing happening.
+ */
+function planWriteQuery(
+  sql: Sql,
+  env: ClerkEnv,
+  write: PlanWrite,
+  expectedRevision: number | null,
+  actor: string,
+  changes: SongChange[],
+  strict: boolean,
+): PendingQuery {
+  const slots = JSON.stringify(write.slots);
+  const places = JSON.stringify(placesOf(write));
+  const details = JSON.stringify({ changes });
+
+  return expectedRevision === null
+    ? sql.query(
+        `WITH saved AS (
+           INSERT INTO service_plans
+             (clerk_env, service_date, slot, kind, label, starts_at, insert_mode, slots, place_ids, created_by, updated_by)
+           VALUES ($1, $2::date, $3, $4, $5, $6::timestamptz, $7, $8::jsonb, $11::jsonb, $9, $9)
+           ${strict ? "" : "ON CONFLICT (clerk_env, service_date, slot) DO NOTHING"}
+           RETURNING *
+         ), logged AS (
+           INSERT INTO service_plan_events (clerk_env, plan_id, type, status, actor, details)
+           SELECT clerk_env, id, 'created', status, $9, $10::jsonb FROM saved
+         )
+         SELECT ${PLAN_COLUMNS} FROM saved`,
+        [env, write.date, write.slot, write.kind, write.label, write.startsAt, write.insertMode, slots, actor, details, places],
+      )
+    : sql.query(
+        `WITH saved AS (
+           UPDATE service_plans
+              SET kind = $4, label = $5, starts_at = $6::timestamptz, insert_mode = $7, slots = $8::jsonb,
+                  place_ids = $12::jsonb, updated_by = $9, updated_at = now(), revision = revision + 1
+            WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3 AND revision = $11
+            RETURNING *
+         ), logged AS (
+           INSERT INTO service_plan_events (clerk_env, plan_id, type, status, actor, details)
+           SELECT clerk_env, id, CASE WHEN status = 'published' THEN 'published_edited' ELSE 'edited' END,
+                  status, $9, $10::jsonb
+             FROM saved
+         )
+         SELECT ${PLAN_COLUMNS} FROM saved`,
+        [
+          env,
+          write.date,
+          write.slot,
+          write.kind,
+          write.label,
+          write.startsAt,
+          write.insertMode,
+          slots,
+          actor,
+          details,
+          expectedRevision,
+          places,
+        ],
+      );
+}
 
 /**
  * Saves a service's places (and its name and time).
@@ -343,56 +518,49 @@ export async function savePlan(
   changes: SongChange[],
 ): Promise<SaveOutcome> {
   const sql = await plannerSql();
-  const slots = JSON.stringify(write.slots);
-  const details = JSON.stringify({ changes });
-
-  const rows = (
-    expectedRevision === null
-      ? await sql.query(
-          `WITH saved AS (
-             INSERT INTO service_plans
-               (clerk_env, service_date, slot, kind, label, starts_at, insert_mode, slots, created_by, updated_by)
-             VALUES ($1, $2::date, $3, $4, $5, $6::timestamptz, $7, $8::jsonb, $9, $9)
-             ON CONFLICT (clerk_env, service_date, slot) DO NOTHING
-             RETURNING *
-           ), logged AS (
-             INSERT INTO service_plan_events (clerk_env, plan_id, type, status, actor, details)
-             SELECT clerk_env, id, 'created', status, $9, $10::jsonb FROM saved
-           )
-           SELECT ${PLAN_COLUMNS} FROM saved`,
-          [env, write.date, write.slot, write.kind, write.label, write.startsAt, write.insertMode, slots, actor, details],
-        )
-      : await sql.query(
-          `WITH saved AS (
-             UPDATE service_plans
-                SET kind = $4, label = $5, starts_at = $6::timestamptz, insert_mode = $7, slots = $8::jsonb,
-                    updated_by = $9, updated_at = now(), revision = revision + 1
-              WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3 AND revision = $11
-              RETURNING *
-           ), logged AS (
-             INSERT INTO service_plan_events (clerk_env, plan_id, type, status, actor, details)
-             SELECT clerk_env, id, CASE WHEN status = 'published' THEN 'published_edited' ELSE 'edited' END,
-                    status, $9, $10::jsonb
-               FROM saved
-           )
-           SELECT ${PLAN_COLUMNS} FROM saved`,
-          [
-            env,
-            write.date,
-            write.slot,
-            write.kind,
-            write.label,
-            write.startsAt,
-            write.insertMode,
-            slots,
-            actor,
-            details,
-            expectedRevision,
-          ],
-        )
-  ) as PlanRow[];
-
+  const rows = (await planWriteQuery(sql, env, write, expectedRevision, actor, changes, false)) as PlanRow[];
   return rows[0] ? { ok: true, plan: toPlan(rows[0]) } : { ok: false, reason: "conflict" };
+}
+
+/**
+ * savePlan(), and `more` - the song leaders' statements that must stand or
+ * fall with it (src/lib/leadership/store.ts) - as ONE transaction. Before
+ * anything is written the service is locked and its revision checked, so if
+ * anyone saved it since, nothing at all is written.
+ */
+export async function savePlanWith(
+  env: ClerkEnv,
+  write: PlanWrite,
+  expectedRevision: number | null,
+  actor: string,
+  changes: SongChange[],
+  more: (sql: Sql) => PendingQuery[],
+): Promise<SaveOutcome> {
+  const sql = await plannerSql();
+  const guard =
+    expectedRevision === null
+      ? []
+      : [
+          sql.query(
+            `SELECT fwm_require(
+               (SELECT revision FROM service_plans
+                 WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3 FOR UPDATE) = $4,
+               'conflict')`,
+            [env, write.date, write.slot, expectedRevision],
+          ),
+        ];
+  try {
+    const results = (await sql.transaction([
+      ...guard,
+      planWriteQuery(sql, env, write, expectedRevision, actor, changes, true),
+      ...more(sql),
+    ])) as unknown[][];
+    const rows = results[guard.length] as PlanRow[];
+    return rows[0] ? { ok: true, plan: toPlan(rows[0]) } : { ok: false, reason: "conflict" };
+  } catch (error) {
+    if (isWriteConflict(error)) return { ok: false, reason: "conflict" };
+    throw error;
+  }
 }
 
 /**
@@ -445,8 +613,35 @@ export async function setPlanStatus(
   status: "draft" | "cancelled",
   actor: string,
 ): Promise<StoredPlan | null> {
+  return setPlanStatusWith(env, service, status, actor, () => []);
+}
+
+/**
+ * setPlanStatus(), and `more` (a record of what it did to the song leaders)
+ * in the same transaction. Nothing is added when there is no `more`.
+ */
+export async function setPlanStatusWith(
+  env: ClerkEnv,
+  service: { date: string; slot: ServiceSlot },
+  status: "draft" | "cancelled",
+  actor: string,
+  more: (sql: Sql) => PendingQuery[],
+): Promise<StoredPlan | null> {
   const sql = await plannerSql();
-  const rows = (await sql.query(
+  const statement = statusQuery(sql, env, service, status, actor);
+  const extra = more(sql);
+  const rows = (extra.length === 0 ? await statement : ((await sql.transaction([statement, ...extra])) as unknown[][])[0]) as PlanRow[];
+  return rows[0] ? toPlan(rows[0]) : null;
+}
+
+function statusQuery(
+  sql: Sql,
+  env: ClerkEnv,
+  service: { date: string; slot: ServiceSlot },
+  status: "draft" | "cancelled",
+  actor: string,
+): PendingQuery {
+  return sql.query(
     `WITH before AS (
        SELECT id, status FROM service_plans WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3
      ), saved AS (
@@ -466,8 +661,7 @@ export async function setPlanStatus(
      )
      SELECT ${PLAN_COLUMNS} FROM saved`,
     [env, service.date, service.slot, status, actor],
-  )) as PlanRow[];
-  return rows[0] ? toPlan(rows[0]) : null;
+  );
 }
 
 /** Stores a service with no songs yet, if it is not stored already (cancelling or publishing a virtual one). */
@@ -476,25 +670,38 @@ export async function ensurePlan(env: ClerkEnv, write: PlanWrite, actor: string)
   await sql.query(
     `WITH saved AS (
        INSERT INTO service_plans
-         (clerk_env, service_date, slot, kind, label, starts_at, insert_mode, slots, created_by, updated_by)
-       VALUES ($1, $2::date, $3, $4, $5, $6::timestamptz, $7, $8::jsonb, $9, $9)
+         (clerk_env, service_date, slot, kind, label, starts_at, insert_mode, slots, place_ids, created_by, updated_by)
+       VALUES ($1, $2::date, $3, $4, $5, $6::timestamptz, $7, $8::jsonb, $10::jsonb, $9, $9)
        ON CONFLICT (clerk_env, service_date, slot) DO NOTHING
        RETURNING id, clerk_env, status
      )
      INSERT INTO service_plan_events (clerk_env, plan_id, type, status, actor, details)
      SELECT clerk_env, id, 'created', status, $9, '{}'::jsonb FROM saved`,
-    [env, write.date, write.slot, write.kind, write.label, write.startsAt, write.insertMode, JSON.stringify(write.slots), actor],
+    [
+      env, write.date, write.slot, write.kind, write.label, write.startsAt, write.insertMode,
+      JSON.stringify(write.slots), actor, JSON.stringify(placesOf(write)),
+    ],
   );
 }
 
-/** Deletes a special service that was never published. Regular services are cancelled instead. */
+/**
+ * Deletes a special service that was never published. Regular services are
+ * cancelled instead. Its song leaders go with it, in the same statement - a
+ * new service later made at the same date and time starts with none.
+ */
 export async function deleteDraftSpecial(env: ClerkEnv, date: string, slot: ServiceSlot): Promise<boolean> {
   const sql = await plannerSql();
   const rows = (await sql.query(
-    `DELETE FROM service_plans
-      WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3
-        AND kind = 'special' AND published_at IS NULL
-      RETURNING id`,
+    `WITH deleted AS (
+       DELETE FROM service_plans
+        WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3
+          AND kind = 'special' AND published_at IS NULL
+        RETURNING id
+     ), leaders AS (
+       DELETE FROM service_leadership
+        WHERE clerk_env = $1 AND service_date = $2::date AND slot = $3 AND EXISTS (SELECT 1 FROM deleted)
+     )
+     SELECT id FROM deleted`,
     [env, date, slot],
   )) as Array<{ id: number }>;
   return rows.length > 0;

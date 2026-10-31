@@ -10,6 +10,7 @@ import { listNotifications, notify, notifySafely, type NotificationDeps, type No
 import { accountAccessChanged, accountRequestCreated } from "./account";
 import { adminAnnouncement } from "./announcement";
 import { availabilityNormalChanged, availabilityRangeChanged, availabilityServiceChanged } from "./availability";
+import { leaderUnavailableNotice, leadershipChangeNotices, type LeadershipServiceRef } from "./leadership";
 import { libraryIndexProblem } from "./library";
 import {
   servicePlanPublished,
@@ -26,6 +27,11 @@ const [occurrence] = regularOccurrences("2026-10-18", "2026-10-18");
 const JOHN = { id: "user_john", name: "John" };
 
 const told = (rows: Array<{ recipient: string }>) => rows.map((row) => row.recipient).sort();
+const roster = (leaders: Array<string | null>) => ({
+  defaultUserId: null,
+  places: leaders.map((userId, index) => ({ id: `p${index + 1}`, userId })),
+});
+const leaderService: LeadershipServiceRef = { ...sundayAm, status: "draft" };
 
 describe("account requests", () => {
   it("tell whoever reviews them, naming nobody", async () => {
@@ -142,6 +148,29 @@ describe("every real event", () => {
       audience: users("user_john"),
       snapshot: (told) => ({ recipients: told.recipients }),
     }),
+    // Mary moves from song 2 to song 1, John takes song 3, the assistant leads nothing any more.
+    ...leadershipChangeNotices({
+      change: {
+        id: "change-1",
+        cause: "assignment",
+        actor: DIRECTOR,
+        before: roster([null, "user_mary", "user_assistant"]),
+        after: roster(["user_mary", null, "user_john"]),
+      },
+      service: leaderService,
+      now: NOW,
+    }),
+    ...leadershipChangeNotices({
+      change: { id: "change-2", cause: "status", actor: DIRECTOR, before: roster(["user_mary"]), after: roster(["user_mary"]), status: { from: "draft", to: "cancelled" } },
+      service: leaderService,
+      now: NOW,
+    }),
+    ...leadershipChangeNotices({
+      change: { id: "change-3", cause: "status", actor: DIRECTOR, before: roster(["user_mary"]), after: roster(["user_mary"]), status: { from: "cancelled", to: "draft" } },
+      service: leaderService,
+      now: NOW,
+    }),
+    leaderUnavailableNotice({ actorId: "user_john", leader: { id: "user_john", name: "John" }, service: leaderService, positions: [3], now: NOW })!,
   ];
 
   it("is built by a feature, and says what it is about", () => {
@@ -175,9 +204,9 @@ describe("every real event", () => {
     expect(JSON.stringify(item)).not.toContain("anchor");
   });
 
-  it("is delivered in the app and by push, and never by email", async () => {
-    expect(CHANNEL_STATUS).toEqual({ in_app: "live", push: "live", email: "soon" });
-    const { deps, preferences, rows, sent, device } = notificationStore(TEAM);
+  it("is delivered in the app and by push, and by email only where it is offered and chosen", async () => {
+    expect(CHANNEL_STATUS).toEqual({ in_app: "live", push: "live", email: "live" });
+    const { deps, preferences, rows, sent, device, outbox } = notificationStore(TEAM);
     for (const userId of ["user_john", "user_mary", "user_assistant"]) device(userId);
     // In the app off, push on: John is told, by push alone.
     preferences.push({ userId: "user_john", category: "service_plan_published", channel: "in_app", enabled: false });
@@ -190,8 +219,31 @@ describe("every real event", () => {
     expect(rows.find((row) => row.recipient === "user_john")!.inApp).toBe(false);
     expect((await listNotifications(actor("user_john"), {}, deps)).items).toEqual([]);
     expect(sent.map((message) => message.userId).sort()).toEqual(["user_assistant", "user_john"]);
-    // And nothing in what notify() is given can send an email.
-    expect(Object.keys(deps).some((name) => /email|mail/i.test(name))).toBe(false);
+    // John chose email, but this category does not offer it: no email is owed.
+    expect(outbox).toEqual([]);
+  });
+
+  it("emails only someone who switched email on for song leading, and never by default", async () => {
+    const { deps, preferences, outbox, dispatched } = notificationStore(TEAM);
+    const [assigned] = leadershipChangeNotices({
+      change: { id: "change-9", cause: "assignment", actor: DIRECTOR, before: roster([null]), after: roster(["user_mary"]) },
+      service: leaderService,
+      now: NOW,
+    });
+    await notify(assigned, deps);
+    expect(outbox).toEqual([]);
+
+    preferences.push({ userId: "user_mary", category: "song_leading", channel: "email", enabled: true });
+    const [again] = leadershipChangeNotices({
+      change: { id: "change-10", cause: "assignment", actor: DIRECTOR, before: roster([null]), after: roster(["user_mary"]) },
+      service: leaderService,
+      now: NOW,
+    });
+    await notify(again, deps);
+    expect(outbox.map((row) => row.userId)).toEqual(["user_mary"]);
+    expect(dispatched).toEqual([outbox[0].id]);
+    expect(outbox[0].subject).toBe(again.title);
+    expect(outbox[0].html).toContain("https://faithfulwordmusic.test/dashboard");
   });
 
   it("is pushed with nothing of its payload, and only ever to a page on this site", async () => {

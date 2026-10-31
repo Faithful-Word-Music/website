@@ -80,6 +80,12 @@ export const PERMISSIONS = {
       "Appear on the shared availability board, keep your own normal services and exceptions, and see everyone else's.",
     group: "music",
   },
+  lead_songs: {
+    label: "Lead songs",
+    description:
+      "Can be assigned to lead songs in services, and sees their own assignments - before a song list is published, only which songs they lead.",
+    group: "music",
+  },
   manage_availability: {
     label: "Manage availability",
     description: "Change anyone's normal services and availability exceptions on their behalf.",
@@ -198,6 +204,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
       "manage_songs",
       "manage_service_plans",
       "manage_sheet_music",
+      "lead_songs",
       "view_availability",
       "manage_availability",
       "view_analytics",
@@ -214,7 +221,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: SONG_LEADER_ROLE,
     label: "Song Leader",
     description: "Leads congregational singing.",
-    permissions: ["view_availability", "view_service_plans", "view_member_resources"],
+    permissions: ["lead_songs", "view_availability", "view_service_plans", "view_member_resources"],
   },
   {
     key: MUSICIAN_ROLE,
@@ -248,6 +255,8 @@ export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readon
   },
   { key: "2026-10-notifications-permission", permissions: ["manage_notifications"] },
   { key: "2026-10-send-notifications-permission", permissions: ["send_notifications"] },
+  // Song leader scheduling: who can be assigned to lead songs in a service.
+  { key: "2026-10-lead-songs-permission", permissions: ["lead_songs"] },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

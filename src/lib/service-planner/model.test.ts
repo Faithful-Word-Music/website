@@ -50,6 +50,7 @@ function plan(overrides: Partial<StoredPlan> & Pick<StoredPlan, "date" | "slot">
     status: "draft",
     insertMode: "week",
     slots: emptySlots(),
+    places: Array.from({ length: (overrides.slots ?? emptySlots()).length }, (_, index) => `p${index + 1}`),
     revision: 1,
     created: { by: "u1", at: "2026-10-01T00:00:00.000Z" },
     updated: { by: "u1", at: "2026-10-01T00:00:00.000Z" },
