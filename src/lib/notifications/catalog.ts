@@ -150,6 +150,62 @@ export const NOTIFICATION_EVENTS = {
     coalesce: within("account.access"),
   },
 
+  /**
+   * Support requests (src/lib/notifications/events/support.ts), under the category kept for them
+   * since Phase 1 (`sheet_music_report`, now shown as "Support requests"). Each leads to the
+   * request's own page, which checks access again. Every one folds into an unread notice about the
+   * same request, so a reply and a resolution a minute apart are one notice.
+   */
+  "support.request_created": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.request_assigned": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.manager_replied": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.info_requested": {
+    category: "sheet_music_report",
+    priority: "important",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.submitter_replied": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.request_resolved": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+  "support.status_changed": {
+    category: "sheet_music_report",
+    priority: "normal",
+    actionUrl: "/contact",
+    coalesce: within("support.request"),
+  },
+
+  /**
+   * To the submitter: their request arrived (supportAcknowledgment). Email only, under its own
+   * category so it can be turned off by itself. It never folds, so a manager's quick reply can
+   * never supersede it.
+   */
+  "support.request_received": { category: "support_confirmation", priority: "normal", actionUrl: "/contact" },
+
   /** A refresh of the library index left song files it could not read. */
   "ai.library_index_problem": {
     category: "ai_system",

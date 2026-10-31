@@ -38,22 +38,29 @@ export const contactContent = {
   },
 
   /**
-   * The short acknowledgement emailed to the visitor after they send a message.
-   * It deliberately does not repeat their message back to them: if it did, the
-   * form could be used to send any text to any address.
+   * The short acknowledgement emailed to the visitor after they send a message
+   * (src/lib/contact-email.ts). It never repeats their message: if it did, the
+   * form could be used to send any text to any address. Their name and subject
+   * appear only when they hold no link or address (safeEcho); otherwise the
+   * plain fallbacks below are used. Promise no response time.
    */
   confirmation: {
     subject: "We received your message",
+    heading: "We received your message",
     greeting: "Hello {name},",
-    body: "Thank you for contacting Faithful Word Music. Your message has reached us, and we will reply to this email address.",
-    subjectLabel: "Your subject:",
+    greetingFallback: "Hello,",
+    body: "Thank you for contacting Faithful Word Music. Your message has reached us, and we will reply to this email address as soon as possible.",
+    subjectLine: "Subject: {subject}",
+    replyNote: "If you would like to add anything, simply reply to this email.",
     signOff: "Faithful Word Music",
+    footer:
+      "You are receiving this because this address was used to send a message through our website. If that was not you, you can safely ignore this email.",
   },
 
   status: {
     successTitle: "Message sent",
     successBody:
-      "Thank you - your message is on its way. We have emailed you a confirmation, and we will reply to the address you gave us.",
+      "Thank you - your message is on its way. We have emailed you a confirmation, and we will reply to the address you gave us as soon as possible.",
     sendAnother: "Send another message",
 
     errorTitle: "Your message could not be sent",

@@ -10,7 +10,10 @@ import {
   CHANNELS,
   COALESCE_MINUTES,
   DEFAULT_CATEGORIES,
+  EMAIL_ON_BY_DEFAULT,
   NOTIFICATION_LIMITS,
+  SUPPORT_CATEGORY,
+  SUPPORT_CATEGORY_FIXUP,
   allowedPolicies,
   badgeLabel,
   effectiveSetting,
@@ -37,7 +40,7 @@ const CATEGORY = "availability_changed";
 /** Someone on the music team: the categories about services and availability concern them. */
 const musician = (userId: string) => actor(userId, "view_availability", "view_service_plans");
 /** Someone every starting category concerns. */
-const everything = actor("user_everything", "view_availability", "view_service_plans", "use_ai", "lead_songs");
+const everything = actor("user_everything", "view_availability", "view_service_plans", "use_ai", "lead_songs", "submit_support_requests");
 
 /** A test notification to these people, in a category of the test's choosing. */
 const send = (to: string[], extra: Partial<NotifyInput> = {}): NotifyInput => ({
@@ -79,8 +82,18 @@ describe("the effective setting", () => {
 
   it("offers an administrator email as required, off by default, or not offered - never on by default", () => {
     expect(allowedPolicies("email")).toEqual(["mandatory", "default_off", "unavailable"]);
+    expect(allowedPolicies("email", "song_leading")).toEqual(["mandatory", "default_off", "unavailable"]);
     expect(allowedPolicies("in_app")).toHaveLength(4);
     expect(allowedPolicies("push")).toHaveLength(4);
+  });
+
+  it("lets email be on by default for confirmations only, and the person can still turn it off", () => {
+    expect(EMAIL_ON_BY_DEFAULT).toEqual(["support_confirmation"]);
+    expect(allowedPolicies("email", "support_confirmation")).toContain("default_on");
+    expect(effectiveSetting("email", "default_on", null, "support_confirmation")).toEqual({ enabled: true, locked: false, available: true });
+    expect(effectiveSetting("email", "default_on", false, "support_confirmation").enabled).toBe(false);
+    // Anywhere else a stored "default on" for email still means off.
+    expect(effectiveSetting("email", "default_on", null, "sheet_music_report").enabled).toBe(false);
   });
 });
 
@@ -90,9 +103,10 @@ describe("the starting categories", () => {
     expect(announcements?.policies).toEqual({ in_app: "mandatory", push: "mandatory", email: "unavailable" });
   });
 
-  it("offer email only for song leading, and only to someone who switches it on", () => {
-    // Every category from before email keeps it not offered: nobody is enrolled by its launch.
-    for (const category of DEFAULT_CATEGORIES.filter((item) => item.key !== "song_leading")) {
+  it("offer email only for song leading and support requests, and only to someone who switches it on", () => {
+    // Every other category keeps it not offered: nobody is enrolled by its launch.
+    const offered = ["song_leading", "sheet_music_report", "support_confirmation"];
+    for (const category of DEFAULT_CATEGORIES.filter((item) => !offered.includes(item.key))) {
       expect(category.policies.email, category.key).toBe("unavailable");
     }
     expect(DEFAULT_CATEGORIES.find((category) => category.key === "song_leading")?.policies).toEqual({
@@ -100,6 +114,26 @@ describe("the starting categories", () => {
       push: "default_on",
       email: "default_off",
     });
+    expect(DEFAULT_CATEGORIES.find((category) => category.key === "sheet_music_report")?.policies).toEqual({
+      in_app: "default_on",
+      push: "default_off",
+      email: "default_off",
+    });
+    // The one confirmation: by email only, on unless the person turns it off (EMAIL_ON_BY_DEFAULT).
+    expect(DEFAULT_CATEGORIES.find((category) => category.key === "support_confirmation")?.policies).toEqual({
+      in_app: "unavailable",
+      push: "unavailable",
+      email: "default_on",
+    });
+  });
+
+  it("move a site that had the Phase 1 report category over to support requests, without touching an administrator's choices", () => {
+    const category = DEFAULT_CATEGORIES.find((item) => item.key === SUPPORT_CATEGORY_FIXUP.category)!;
+    expect(category.name).toBe(SUPPORT_CATEGORY.name);
+    expect(SUPPORT_CATEGORY_FIXUP.previous.name).not.toBe(SUPPORT_CATEGORY.name);
+    // Only "unavailable" is replaced (the store also requires that nobody saved the policy), and never by "default on".
+    expect(SUPPORT_CATEGORY_FIXUP.email).toEqual({ from: "unavailable", to: "default_off" });
+    expect(allowedPolicies("email")).toContain(SUPPORT_CATEGORY_FIXUP.email.to);
   });
 
   it("have a policy for every channel, and distinct keys", () => {
@@ -175,6 +209,8 @@ describe("changing a policy", () => {
     expect(policies.find((row) => row.category === CATEGORY && row.channel === "email")?.policy).toBe("unavailable");
     // Offered for someone to switch on is allowed.
     expect(await setPolicy(director, { category: CATEGORY, channel: "email", policy: "default_off" }, deps)).toEqual({ ok: true });
+    // A confirmation may be emailed by default.
+    expect(await setPolicy(director, { category: "support_confirmation", channel: "email", policy: "default_on" }, deps)).toEqual({ ok: true });
     expect(await setPolicy(director, { category: CATEGORY, channel: "in_app", policy: "sometimes" }, deps)).toEqual({ ok: false, problem: "invalid" });
     expect(await setPolicy(director, { category: "no_such_category", channel: "in_app", policy: "mandatory" }, deps)).toEqual({ ok: false, problem: "unknown-category" });
   });
@@ -216,18 +252,21 @@ describe("changing a policy", () => {
 
 describe("which categories a person is asked about", () => {
   const keys = async (who: ReturnType<typeof actor>) => (await preferencesFor(who, notificationStore().deps)).map((category) => category.key);
-  const FOR_EVERYONE = ["admin_announcement", "account_access", "sheet_music_report"];
+  const FOR_EVERYONE = ["admin_announcement", "account_access"];
 
   it("leaves out what could never reach them", async () => {
-    // A member with no part in the music: announcements, their account, sheet music.
+    // Someone holding nothing at all: announcements and their account.
     expect(await keys(john)).toEqual(FOR_EVERYONE);
+    // A member (who may send support requests, as every member may by default) is asked about those too.
+    expect(await keys(actor("user_john", "submit_support_requests"))).toEqual([...FOR_EVERYONE, "sheet_music_report", "support_confirmation"]);
+    expect(await keys(actor("user_x", "manage_support_requests"))).toContain("sheet_music_report");
+    expect(await keys(actor("user_x", "manage_support_requests"))).toContain("support_confirmation");
     expect(await keys(musician("user_john"))).toEqual([
       "admin_announcement",
       "service_plan_published",
       "service_plan_updated",
       "availability_changed",
       "account_access",
-      "sheet_music_report",
     ]);
     expect(await keys(actor("user_x", "use_ai"))).toEqual([...FOR_EVERYONE, "ai_system"]);
     expect(await keys(actor("user_x", "manage_availability"))).toContain("availability_changed");

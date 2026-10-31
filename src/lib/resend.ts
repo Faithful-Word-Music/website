@@ -4,7 +4,8 @@ import { Resend } from "resend";
 
 import { siteConfig } from "@/config/site";
 import { accountContent } from "@/content/account";
-import { contactContent } from "@/content/contact";
+import { renderContactConfirmation } from "@/lib/contact-email";
+import type { ProviderSendResult } from "@/lib/email-retry";
 import { escapeHtml } from "@/lib/html";
 import type { ContactFormValues } from "@/lib/validation";
 
@@ -48,7 +49,8 @@ export type SendResult =
  */
 export async function sendContactEmail(
   values: ContactFormValues,
-): Promise<SendResult> {
+  idempotencyKey: string,
+): Promise<ProviderSendResult> {
   const resend = getClient();
   if (!resend) return { ok: false, reason: "not-configured" };
 
@@ -73,14 +75,18 @@ export async function sendContactEmail(
   `.trim();
 
   try {
-    const { error } = await resend.emails.send({
-      from: siteConfig.mail.from,
-      to: [siteConfig.mail.to],
-      replyTo: email,
-      subject: `[${siteConfig.name}] ${subject}`,
-      text,
-      html,
-    });
+    const { error } = await resend.emails.send(
+      {
+        from: siteConfig.mail.from,
+        to: [siteConfig.mail.to],
+        replyTo: email,
+        subject: `[${siteConfig.name}] ${subject}`,
+        text,
+        html,
+      },
+      // The same submission sent again is recognised by Resend and delivered once.
+      { idempotencyKey },
+    );
 
     if (error) {
       // The reason only - never the visitor's message contents, never the key.
@@ -92,7 +98,7 @@ export async function sendContactEmail(
         "[contact] Resend rejected the message:",
         `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
       );
-      return { ok: false, reason: "send-failed" };
+      return { ok: false, reason: "send-failed", statusCode: error.statusCode ?? null, name: error.name ?? null };
     }
 
     return { ok: true };
@@ -101,68 +107,52 @@ export async function sendContactEmail(
       "[contact] Could not reach Resend:",
       caught instanceof Error ? caught.message : "unknown error",
     );
-    return { ok: false, reason: "send-failed" };
+    return { ok: false, reason: "send-failed", statusCode: null, name: null };
   }
 }
 
 /**
- * Emails the visitor a short "we received your message" note.
+ * Emails the visitor a short "we received your message" note
+ * (renderContactConfirmation, src/lib/contact-email.ts).
  *
  * Only called after the ministry's copy has gone out, so a visitor is never
- * told a message arrived when it did not. The message body is deliberately
- * not echoed back - otherwise the form would let anyone send arbitrary text
- * to any address. Only the name and subject appear, both short and capped.
+ * told a message arrived when it did not. Their message is never echoed back,
+ * and their name and subject only when they carry no link or address - so the
+ * form cannot be used to send anything of use to a spammer to a stranger.
  *
- * Reply-To is the ministry inbox, so answering the confirmation still works.
+ * From is the site's verified address (named Faithful Word Music); Reply-To is
+ * the ministry inbox, so answering the confirmation still reaches someone.
  */
 export async function sendContactConfirmation(
   values: ContactFormValues,
-): Promise<SendResult> {
+  idempotencyKey: string,
+): Promise<ProviderSendResult> {
   const resend = getClient();
   if (!resend) return { ok: false, reason: "not-configured" };
+  // The schema requires one; this only guards a caller that skipped it.
+  if (!values.email?.trim()) return { ok: false, reason: "no-address" };
 
-  const { confirmation } = contactContent;
-  const { name, email, subject } = values;
-  const greeting = confirmation.greeting.replace("{name}", name);
-
-  const text = [
-    greeting,
-    "",
-    confirmation.body,
-    "",
-    `${confirmation.subjectLabel} ${subject}`,
-    "",
-    confirmation.signOff,
-    siteConfig.url,
-  ].join("\n");
-
-  const html = `
-    <div style="font-family:ui-sans-serif,system-ui,sans-serif;color:#111;line-height:1.6">
-      <p style="margin:0 0 16px">${escapeHtml(greeting)}</p>
-      <p style="margin:0 0 16px">${escapeHtml(confirmation.body)}</p>
-      <p style="margin:0 0 16px"><strong>${escapeHtml(confirmation.subjectLabel)}</strong> ${escapeHtml(subject)}</p>
-      <hr style="border:none;border-top:1px solid #e5e5e2;margin:0 0 16px" />
-      <p style="margin:0">${escapeHtml(confirmation.signOff)}<br />
-        <a href="${siteConfig.url}" style="color:#111">${siteConfig.url.replace(/^https?:\/\//, "")}</a></p>
-    </div>
-  `.trim();
+  const { subject, text, html } = renderContactConfirmation(values);
 
   try {
-    const { error } = await resend.emails.send({
-      from: siteConfig.mail.from,
-      to: [email],
-      replyTo: siteConfig.mail.to,
-      subject: `${confirmation.subject} - ${siteConfig.name}`,
-      text,
-      html,
-    });
+    const { error } = await resend.emails.send(
+      {
+        from: siteConfig.mail.from,
+        to: [values.email.trim()],
+        replyTo: siteConfig.mail.to,
+        subject,
+        text,
+        html,
+      },
+      { idempotencyKey },
+    );
 
     if (error) {
       console.error(
         "[contact] Resend rejected the confirmation:",
         `${error.name} (${error.statusCode ?? "no status"}) - ${error.message}`,
       );
-      return { ok: false, reason: "send-failed" };
+      return { ok: false, reason: "send-failed", statusCode: error.statusCode ?? null, name: error.name ?? null };
     }
 
     return { ok: true };
@@ -171,7 +161,7 @@ export async function sendContactConfirmation(
       "[contact] Could not reach Resend for the confirmation:",
       caught instanceof Error ? caught.message : "unknown error",
     );
-    return { ok: false, reason: "send-failed" };
+    return { ok: false, reason: "send-failed", statusCode: null, name: null };
   }
 }
 
@@ -351,7 +341,15 @@ export async function sendNotificationEmail(message: {
   if (!resend) return { ok: false, reason: "not-configured" };
 
   const { data, error } = await resend.emails.send(
-    { from: siteConfig.mail.from, to: message.to, subject: message.subject, text: message.text, html: message.html },
+    {
+      from: siteConfig.mail.from,
+      to: message.to,
+      // Answering any notification (a support acknowledgment, say) reaches the monitored ministry inbox.
+      replyTo: siteConfig.mail.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    },
     { idempotencyKey: message.idempotencyKey },
   );
   if (error) {

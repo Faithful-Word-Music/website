@@ -26,7 +26,7 @@ The website of **Faithful Word Music**, the music ministry of
 5. [How it works](#how-it-works)
    - [The song list](#the-song-list) · [The Service Planner](#the-service-planner) · [Next and Now](#next-and-now) · [Song history and the archive](#song-history-and-the-archive)
    - [The year in song](#the-year-in-song)
-   - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form)
+   - [The printable PDF](#the-printable-pdf) · [Sharing services](#sharing-services) · [The contact form](#the-contact-form) · [The Support Center](#the-support-center)
    - [Sheet music](#sheet-music) · [Member accounts](#member-accounts) · [The signed-in experience](#the-signed-in-experience) · [The site search](#the-site-search) · [Availability](#availability) · [AI](#ai)
 6. [Design conventions](#design-conventions)
 7. [Testing](#testing)
@@ -230,6 +230,7 @@ src/
 | `library-content/` | The library index, the songs' lyrics (see [AI.md](./AI.md)): `musescore.ts` reads lyrics out of a `.mscz`, `lyrics.ts` turns them into verses and a refrain, `plan.ts` decides what a refresh must do, `directory.ts` finds a song and folds its copies (all pure); `indexer.ts`, `store.ts`, `search.ts` (server-only) |
 | `notifications/` | Notifications (see [NOTIFICATIONS.md](./NOTIFICATIONS.md)): `model` (channels, policies, the effective-setting rule), `audience` (who is told), `catalog` (the events), `service` (every rule, over `deps`), `format`, `push` (the push payload, folding tag, subscription checks, device state), `delivery` (sending to a person's devices and registering them, over `PushDeps`) (pure); `push-store.ts` (VAPID and the `web-push` sender; server-only); `events/` (what each feature's notifications say, to whom, and when to say nothing; pure); `store.ts` and `send.ts` (`notifyBestEffort`, what features call) (server-only); `manual.ts` (a manual notification's draft, audience selection, snapshot and delivery summary; pure), `manual-service.ts` (preview, send, history and templates, over `deps`) and `manual-store.ts` (server-only) |
 | `availability/` | Availability: `occurrences` (which services happen), `effective` (normal + exception = effective, the one rule), `board`, `summary`, `range`, `access` (who is on the board, whose records someone may change), `forms`, `format` (pure); `store.ts` and `load.ts` (server-only) |
+| `support/` | The Support Center (see [docs/support-center.md](docs/support-center.md)): `model` (kinds, lifecycle, limits, request IDs), `access` (who may do what), `context` (references, snapshots, redaction), `display` (pure); `service` (every rule, over `deps`); `store`, `context-load`, `notify`, `deps`, `people` (server-only) |
 
 **`src/components/song-list`, the main pieces:** `SongListView` (the interactive page),
 `NextServiceSpotlight`, `ServiceCard`, `MonthTabs`, `SongSearch`/`KeySearch`, `PdfLink`,
@@ -394,8 +395,18 @@ Phones only allow a share right after a tap, so the picture is fetched as soon a
 visitor → /contact → POST /api/contact → BotID → honeypot → Zod validation → Resend → contact@faithfulwordmusic.com
 ```
 
+Signed out, `/contact` is this public form, unchanged. **Signed in, it is the Music Ministry Support Center** (described below and in [docs/support-center.md](docs/support-center.md)). The page is rendered per request so it can tell the two apart, and the proxy's matcher includes `/contact`. A signed-out visit reads nothing from the database, and if the session cannot be read the public form is shown.
+
 - **Validation:** the same Zod schema checks the form in the browser and again on the server.
 - **Addressing:** email is sent **from** the site's verified address, **to** the ministry inbox, with **Reply-To** set to the visitor, so pressing Reply answers them directly.
+- **Confirmation:** once the ministry's copy has gone out, the visitor is emailed "We received your message" (`renderContactConfirmation`, `src/lib/contact-email.ts`). It comes from Faithful Word Music, with Reply-To set to the ministry inbox, and says the ministry will reply "as soon as possible". No response time is ever promised.
+  - **Not a relay:** the confirmation goes to whatever address was typed in, so it never repeats the message. It greets the visitor by name and names the subject only when neither contains a link, an address or a domain (`safeEcho`). Otherwise it says "Hello," and leaves the subject out.
+  - **A failed confirmation never fails the message:** the visitor is still told it was sent, and the failure is logged without contents.
+- **Sent once, retried briefly:**
+  - The form makes a `submissionKey` when a message is first sent, and keeps it until the message goes through.
+  - The route turns that key, together with the message's words, into two Resend idempotency keys: one for the ministry's copy, one for the confirmation (`contactIdempotencyKeys`). A double click, a retry or a refresh within a day delivers nothing twice.
+  - Each email is tried up to 3 times within the request (`sendWithRetry`, `src/lib/email-retry.ts`), and only for failures that may pass: no answer, 429, 5xx, or the same key still in flight. A refusal like a bad address stops at once.
+  - Nothing is stored in the database, so a signed-out visit still never wakes Neon.
 - **Status codes:** `200` sent · `400` invalid · `403` blocked by BotID · `502` Resend rejected it · `503` not configured. Responses never include stack traces, and message contents are never logged.
 
 **Spam protection:** three layers, none of which asks the visitor to do anything.
@@ -408,6 +419,19 @@ visitor → /contact → POST /api/contact → BotID → honeypot → Zod valida
 3. **A firewall rate limit,** set in the Vercel dashboard rather than in code (an in-memory limit wouldn't hold across serverless instances):
    - **Firewall → Configure → New Rule:** Request Path equals `/api/contact` **and** Method equals `POST` → **Rate Limit**, Fixed Window, `600s`, `10` requests, keyed on IP.
    - Leave the exceeded-action on **Log** for the first week, then switch it to **Deny**.
+
+### The Support Center
+
+Signed-in members report problems, request sheet music, suggest improvements and ask questions at `/contact`, and follow each request on its own page (`/contact/requests/R-XXXXXXXX`). Whoever holds `manage_support_requests` (the Music Director by default; anyone else by role or grant) sees every request under **Manage requests** on the same page: replies, internal notes that only managers see, status, priority, assignment, resolve, close and reopen.
+
+- **Permissions:** `submit_support_requests` (Member) and `manage_support_requests` (Music Director), given to existing sites once by `PERMISSION_FIXUPS`.
+- **Tables:** `support_requests`, `support_messages` and `support_events`, all scoped by `clerk_env`, with composite foreign keys. Sending and replying are idempotent, and workflow changes are checked against a revision.
+- **Context:** what a request is about is checked against what the person may see, and kept as a snapshot. A place ID plus the song in it, so a later change never retargets the report. Unpublished details are hidden from readers who couldn't see them.
+- **Notifications:** under the Phase 1 `sheet_music_report` category, now shown as "Support requests". Told durably through `support_events`, with no user-written text in any notification.
+- **Acknowledgment:** whoever sends a request is emailed "We received your support request", with its title, reference (`R-…`), status and a link to its page. It is a notification of its own, "Support request confirmations" (`support_confirmation`): email only, on by default, and anyone can turn it off in Notification settings. It is sent once, from the new request's `created` event, through the same durable outbox, and never for a reply or any later change.
+- **Dashboard:** "Needs your attention" counts for replies owed and unassigned or waiting requests.
+
+Reports start from the song list's cards, a library song's page, the Service Planner's side panel and the Dashboard's song leading. Full details are in [docs/support-center.md](docs/support-center.md).
 
 ### Sheet music
 
@@ -841,6 +865,8 @@ Vitest covers the pure logic in `src/lib`:
 - manual notifications: the announcement event (its category, no folding), who may send and that sending and configuring are separate permissions, every refused input (title, message, priority, off-site link, malformed or stale audience), each audience kind and combinations told once, the sender included, the audience resolved again at send, the Announcements policy obeyed, templates (create, edit, duplicate, delete, use, never changed by a send, never changing history), the history's snapshot and paging, push results added up, and no device address or key in anything returned (`notifications/manual.test.ts`, `notifications/manual-service.test.ts`)
 - push: who is pushed to (in-app off with push on, push off, mandatory, unavailable, no keys), several devices with one failing or dead, failures never escaping, folding tags, what a payload holds, links kept on the site, the push-service allowlist, a device's owner always being the session's, a browser moving between accounts, the app-badge rule and this device's push state (`notifications/push.test.ts`, `notifications/delivery.test.ts`); and the service worker itself, `public/sw.js`, run against a pretend browser (`notifications/sw.test.ts`)
 - notification events: one notification per publication, drafts and reordering silent, added/removed/replaced/key/time changes told, quick edits folded, withdrawal, cancellation and restoration, the week's insert; availability told to its managers only, the person told when a leader changed theirs, a range as one, no-op choices silent, the page and the quick action sharing one write path; account requests and access changes; the library index; every event having an entity, payloads staying on the server, push and email sending nothing, and a failed notification never throwing (`notifications/events/*.test.ts`)
+- the Support Center: kinds, the lifecycle and reply effects, link and key validation, who may read and manage what (own requests only, delegated and revoked managers), internal notes never reaching a submitter, idempotent sending and replying, concurrent replies both kept, revision conflicts, context checks (duplicate titles and occurrences, reordered, replaced and removed places, drafts, a leader's own positions only, sheet music the person may open), redaction, its notifications (recipients, no self-notification, no user-written text, dedupe, email only when opted in) and its Dashboard items (`support/*.test.ts`, `notifications/events/support.test.ts`, `dashboard/support-attention.test.ts`). `support/support.integration.test.ts` runs its SQL on isolated PGlite (set `SUPPORT_PGLITE`, see docs/support-center.md)
+- the acknowledgment emails: the public contact form's idempotency keys, in-request retries (provider rejection, 5xx, 429, no answer, giving up), the relay guard and wording (`email-retry.test.ts`), and the route itself, where a failed confirmation still answers 200 and a failed ministry copy sends no confirmation (`api/contact/route.test.ts`). A support request's acknowledgment is built only from its `created` event, goes to the submitter alone, is on by default, can be turned off, and is recorded once (`notifications/events/support.test.ts`)
 - availability: the four effective states, generating services (special ones included), date ranges, the roster and who may change whose records, the board and Dashboard summary, and the forms (`availability/*.test.ts`)
 
 Some older tests still read real sheet tabs saved in `src/lib/__fixtures__/`; they go with the parser once the import has been run.

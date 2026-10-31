@@ -20,7 +20,8 @@ const copy = notificationsContent.admin;
 const field =
   "min-h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink transition-colors not-disabled:hover:border-muted/50 disabled:cursor-not-allowed disabled:opacity-60";
 
-type Allowed = Record<string, ChannelPolicy[]>;
+/** For each category, the policies each channel may take. */
+type Allowed = Record<string, Record<string, ChannelPolicy[]>>;
 
 /**
  * Every notification category, each with a policy to choose per channel.
@@ -47,6 +48,11 @@ export function NotificationPolicyEditor({ categories, allowed }: { categories: 
       </ul>
     </>
   );
+}
+
+/** A value saved before a channel's choices narrowed is still shown. */
+function optionsFor(allowed: ChannelPolicy[], current: ChannelPolicy): ChannelPolicy[] {
+  return allowed.includes(current) ? allowed : [current, ...allowed];
 }
 
 function CategoryPolicyForm({ category, allowed }: { category: CategoryPolicyView; allowed: Allowed }) {
@@ -77,8 +83,7 @@ function CategoryPolicyForm({ category, allowed }: { category: CategoryPolicyVie
               channel={channel}
               categoryName={category.name}
               value={policies[channel]}
-              // A value saved before a channel's choices narrowed is still shown.
-              options={allowed[channel].includes(policies[channel]) ? allowed[channel] : [policies[channel], ...allowed[channel]]}
+              options={optionsFor(allowed[category.key]?.[channel] ?? ["unavailable"], policies[channel])}
               onChange={(policy) => {
                 clear();
                 setPolicies((now) => ({ ...now, [channel]: policy }));

@@ -2,6 +2,8 @@ import { checkBotId } from "botid/server";
 import { NextResponse } from "next/server";
 
 import { contactContent } from "@/content/contact";
+import { contactIdempotencyKeys } from "@/lib/contact-email";
+import { sendWithRetry } from "@/lib/email-retry";
 import { sendContactConfirmation, sendContactEmail } from "@/lib/resend";
 import {
   contactFormSchema,
@@ -75,7 +77,13 @@ export async function POST(request: Request): Promise<NextResponse<ContactRespon
     );
   }
 
-  const result = await sendContactEmail(parsed.data);
+  // One pair of idempotency keys per submission (src/lib/contact-email.ts): the
+  // same message sent again - a double click, a retry, a refresh - is
+  // delivered once, to the ministry and to the visitor alike. Each send is
+  // tried up to three times within this request, only for failures that may
+  // pass, with the same key every time (src/lib/email-retry.ts).
+  const keys = contactIdempotencyKeys(parsed.data);
+  const result = await sendWithRetry(() => sendContactEmail(parsed.data, keys.ministry));
 
   if (!result.ok) {
     // 503 when the site is not wired up yet, 502 when Resend itself failed.
@@ -88,7 +96,10 @@ export async function POST(request: Request): Promise<NextResponse<ContactRespon
 
   // Best effort: the ministry already has the message, so a failed
   // confirmation is logged (inside the helper) but still reported as success.
-  await sendContactConfirmation(parsed.data);
+  const confirmation = await sendWithRetry(() => sendContactConfirmation(parsed.data, keys.confirmation));
+  if (!confirmation.ok) {
+    console.warn(`[contact] The confirmation was not sent (${confirmation.reason}, ${confirmation.tries} tries).`);
+  }
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }

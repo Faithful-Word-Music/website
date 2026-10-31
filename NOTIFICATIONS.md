@@ -12,8 +12,9 @@ The authoritative description of the notification system, and the handoff betwee
 | 4 | Manual notification centre: composer, audiences, templates, send history and delivery results | **Built** |
 | 5 | Reliability, scheduling, reminders, AI budget alerts, advanced preferences | Next |
 | 6 | Email through Resend: an opt-in channel with a durable outbox, retries and idempotent sends. First offered for song leading (see docs/song-leaders.md) | **Built** |
+| - | Support request events (the Music Ministry Support Center, docs/support-center.md), under the `sheet_music_report` category, now "Support requests" | **Built** |
 
-**Not built yet:** scheduled and delayed sends, reminders, recurring sends, digests, retries of a failed push, AI budget alerts, offline use, and sheet-music report events. The report feature itself does not exist yet, though its category is ready.
+**Not built yet:** scheduled and delayed sends, reminders, recurring sends, digests, retries of a failed push, AI budget alerts and offline use.
 
 ## The idea
 
@@ -104,7 +105,7 @@ Channels: `in_app`, `push`, `email`. `CHANNEL_STATUS` in `model.ts` says how far
 |---|---|---|
 | `in_app` | `live` | Delivered now |
 | `push` | `live` | Delivered to every device the person switched push on for |
-| `email` | `live` | Opt-in only (`OPT_IN_ONLY`). Offered only where a category's policy says so. Sent from the outbox (see Email below) |
+| `email` | `live` | Opt-in only (`OPT_IN_ONLY`), except confirmations (`EMAIL_ON_BY_DEFAULT`). Offered only where a category's policy says so. Sent from the outbox (see Email below) |
 
 Policies, per category and channel, set under **Admin → Notifications → Policies**:
 
@@ -128,9 +129,10 @@ Starting policies (data, changeable; nothing is mandatory in code):
 | `service_plan_updated` | default on | default on | unavailable |
 | `availability_changed` | default on | default on | unavailable |
 | `account_access` | mandatory | default on | unavailable |
-| `sheet_music_report` | default on | default off | unavailable |
+| `sheet_music_report` (shown as "Support requests") | default on | default off | **default off** (offered since the Support Center; existing sites moved once by `SUPPORT_CATEGORY_FIXUP`, only where nobody had saved the policy) |
 | `ai_system` | default on | default off | unavailable |
 | `song_leading` | default on | default on | **default off** (offered: each person switches it on) |
+| `support_confirmation` ("Support request confirmations") | unavailable | unavailable | **default on**: the submitter's own acknowledgment that their request arrived. The one category in `EMAIL_ON_BY_DEFAULT`, and anyone can turn it off |
 
 ## The effective setting
 
@@ -148,6 +150,8 @@ Starting policies (data, changeable; nothing is mandatory in code):
 **Policy changes never touch `user_notification_preferences`.** John turns a default-on category off; it becomes mandatory; he receives it and his stored "off" is still there; it goes back to default on; his "off" counts again. While a setting is locked or not offered, `setPreference()` refuses and writes nothing, so the earlier choice cannot be overwritten either.
 
 **Email is opt-in only.** It is listed in `OPT_IN_ONLY`: even under a "default on" policy it is on only for someone who switched it on. When email launches, nobody is opted in.
+
+**The one exception: confirmations.** A category in `EMAIL_ON_BY_DEFAULT` (only `support_confirmation`) only ever confirms something the person has just done themself. There, and only there, `effectiveSetting(channel, policy, stored, category)` honours "default on" for email, and `allowedPolicies("email", category)` offers it to administrators. The person can still turn it off. A "default on" email policy stored for any other category still means off.
 
 ## Recipients
 
@@ -353,7 +357,7 @@ Every device is attempted whatever happens to the others. Nothing is retried. Th
 
 ## Email
 
-Email is a channel like push. A notification decides whether each person gets an email by `effectiveSetting()`, and nothing else does. Email is **opt-in only**: it is on only for someone who switched it on, or for a mandatory category.
+Email is a channel like push. A notification decides whether each person gets an email by `effectiveSetting()`, and nothing else does. Email is **opt-in only**: it is on only for someone who switched it on, for a mandatory category, or for a confirmation (`EMAIL_ON_BY_DEFAULT`) they have not turned off. Every notification email has **Reply-To** set to the ministry inbox (`siteConfig.mail.to`), so a reply reaches someone.
 
 Every category that existed before email keeps the email policy `unavailable`, so its launch enrolled nobody. `song_leading` starts as `default_off`: offered, and off until each person switches it on.
 
@@ -452,6 +456,8 @@ The principle: **notify about consequences, not clicks.** One real-world action 
 | `song_leading.assigned` / `changed` / `removed` | A saved change to who leads a service's songs changed this person's part. **One per person per change**, however many songs. A former leader and a new one are told different things | that leader | normal | `service_leading:<anchor>` |
 | `song_leading.service_cancelled` / `service_restored` | A service someone leads songs in is cancelled or restored. They are left out of `service_plan.cancelled`/`restored`, so each hears once | its leaders | important | `service_leading:<anchor>` |
 | `song_leading.leader_unavailable` | An assigned leader became unavailable for that service (`src/lib/availability/change.ts`) | `planners`, except the leader. **Folds into the `availability.service_changed` notice the same change sends** (same family and entity), so a director who gets both is shown one notice, naming the songs | important | `availability:<userId>:<anchor>` |
+| `support.request_created` / `request_assigned` / `manager_replied` / `info_requested` / `submitter_replied` / `request_resolved` / `status_changed` | A support request is sent, assigned to someone else, answered (by a manager or by its sender), resolved, reopened or closed without resolving (docs/support-center.md) | managers, the assignee, or the submitter; never the actor; recipients checked again when told | normal (`info_requested`: important) | `support_request:<id>` |
+| `support.request_received` | The submitter's own request was received: its title, reference, status and page, by email only (`supportAcknowledgment`). Told once, from the request's `created` event alone, with dedupe key `support:<event id>:ack`. Never folds, so a quick reply cannot supersede it | the submitter (the one support notice to the actor); checked again when told | normal | `support_request:<id>` |
 | `system.test` | The development test button | the person pressing it | normal | none |
 
 An anchor is a service's address, `2026-10-11-am`. In every row but `admin.announcement` the actor is left out (`except`). Nothing is `critical`: that is kept for the exceptional.
@@ -469,6 +475,7 @@ An anchor is a service's address, `2026-10-11-am`. In every row but `admin.annou
 | Account requests | `src/app/api/account-requests/route.ts`, after the request is recorded and beside the Resend email, which is unchanged |
 | Account access | `setUserRolesAction`, `setOverrideAction`, `removeOverrideAction` in `src/app/admin/actions.ts` |
 | Library index | `refreshLibraryIndexAction` in `src/app/admin/actions.ts` |
+| Support requests | `src/lib/support/notify.ts`: each `support_events` row with `notify`, written with the change, is told after the response and by the next drain (`drainSupportEvents`, also in the daily cron). Dedupe key `support:<event id>`. See docs/support-center.md |
 
 ### What does not notify
 
@@ -476,7 +483,7 @@ An anchor is a service's address, `2026-10-11-am`. In every row but `admin.annou
 - **Availability:** choosing what already stood ("Unavailable" twice, "Normal" with nothing to undo); a range that changed no service; a normal-services save with the same set.
 - **Accounts:** titles, sheet-music types, invitations sent or revoked, disabling and deleting, role and list configuration, a duplicate account request, a change someone makes to their own access, and saving the roles a person already holds. Approving or declining a request is answered by Clerk's email: the person has no account to be notified in.
 - **AI and system:** Conductor answers, Suggest and Generate, ordinary AI errors, successful index refreshes, a refresh whose only failures had already failed, and AI budget levels (Phase 5).
-- **Sheet music reports:** the feature is not built; nothing invents events for it.
+- **Support requests:** internal notes, priority, waiting-on, "in progress", closing an already resolved request, and claiming a request yourself.
 
 ## Folding
 
@@ -496,6 +503,7 @@ Quick repeats about the same thing become one notification.
 | `availability.service` / `.range` / `.normal` | one each | Available, unavailable, normal in a row shows the latest, per person and service |
 | `account.access` | access_changed | A roles save and an exception soon after are one |
 | `ai.library_index` | library_index_problem | The passes of one refresh are one |
+| `support.request` | every support event | A reply and a resolution about the same request, a minute apart, are one notice |
 
 `service_plan.published`, `account.request_created` and `admin.announcement` never fold: each publication, each request and each announcement is its own.
 
@@ -508,7 +516,8 @@ Quick repeats about the same thing become one notification.
 | `service_plan_published`, `service_plan_updated` | `view_service_plans` or `manage_service_plans` |
 | `availability_changed` | `view_availability` or `manage_availability` |
 | `ai_system` | `use_ai` |
-| `admin_announcement`, `account_access`, `sheet_music_report`, and any category with no entry | everyone |
+| `sheet_music_report` | `submit_support_requests` or `manage_support_requests` |
+| `admin_announcement`, `account_access`, and any category with no entry | everyone |
 
 Three things that are not each other:
 
@@ -680,5 +689,5 @@ There is no history table. A send is its `notification_events` row (`event_key =
 
 ## Later phases
 
-- **Phase 5 (scheduling and reliability):** scheduled, delayed and recurring manual sends, which can reuse the composer as it is: a scheduled send is a stored `AnnouncementDraft` (the shape a template already keeps) handed to `sendAnnouncement()` when its time comes, so the audience is resolved then. Also retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month. Sheet-music report events (`created`, `replied`, `resolved`) arrive with that feature, under the `sheet_music_report` category that already exists.
-- **Email, beyond song leading:** email is live. Offering it for another category is an administrator's policy change, from `unavailable` to `default_off` or `mandatory`, with no code needed. `allowedPolicies("email")` never offers "default on".
+- **Phase 5 (scheduling and reliability):** scheduled, delayed and recurring manual sends, which can reuse the composer as it is: a scheduled send is a stored `AnnouncementDraft` (the shape a template already keeps) handed to `sendAnnouncement()` when its time comes, so the audience is resolved then. Also retries for `failed` deliveries (the rows and `failure_count` are there to drive them; `deliverPush` makes exactly one attempt), retiring a device after many consecutive failures, pruning old delivery rows, upcoming-service reminders, digests, and AI budget alerts at 75%, 90% and 100%, which need stored threshold-crossing state per billing month.
+- **Email, beyond song leading:** email is live. Offering it for another category is an administrator's policy change, from `unavailable` to `default_off` or `mandatory`, with no code needed. `allowedPolicies("email")` never offers "default on", except for confirmations (`EMAIL_ON_BY_DEFAULT`).

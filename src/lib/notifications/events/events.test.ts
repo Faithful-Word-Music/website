@@ -12,6 +12,7 @@ import { adminAnnouncement } from "./announcement";
 import { availabilityNormalChanged, availabilityRangeChanged, availabilityServiceChanged } from "./availability";
 import { leaderUnavailableNotice, leadershipChangeNotices, type LeadershipServiceRef } from "./leadership";
 import { libraryIndexProblem } from "./library";
+import { supportAcknowledgment, supportNotice, type SupportEventFacts } from "./support";
 import {
   servicePlanPublished,
   servicePlanStatusChanged,
@@ -171,6 +172,27 @@ describe("every real event", () => {
       now: NOW,
     }),
     leaderUnavailableNotice({ actorId: "user_john", leader: { id: "user_john", name: "John" }, service: leaderService, positions: [3], now: NOW })!,
+    ...(
+      [
+        ["created", "user_john", null, null],
+        ["assigned", DIRECTOR, null, "user_assistant"],
+        ["replied", DIRECTOR, "manager", "keep"],
+        ["replied", DIRECTOR, "manager", "request_info"],
+        ["replied", "user_john", "submitter", "reply"],
+        ["resolved", DIRECTOR, "open", "resolved"],
+        ["reopened", DIRECTOR, "closed", "open"],
+      ] as const
+    ).map(([kind, actorId, from, to], index): NotifyInput => {
+      const facts: SupportEventFacts = {
+        event: { id: `support-${index}`, kind, actorId, from, to, visibility: kind === "assigned" ? "internal" : "public" },
+        request: { publicId: "R-7K3F9Q2M", submitterId: "user_john", assigneeId: null, category: "missing_sheet_music" },
+      };
+      return supportNotice(facts)!;
+    }),
+    supportAcknowledgment({
+      event: { id: "support-ack", kind: "created", actorId: "user_john", from: null, to: null, visibility: "public" },
+      request: { publicId: "R-7K3F9Q2M", submitterId: "user_john", assigneeId: null, category: "missing_sheet_music", title: "Hymn 104", status: "open" },
+    })!,
   ];
 
   it("is built by a feature, and says what it is about", () => {

@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 
-import { ContactForm } from "@/components/contact/ContactForm";
-import { Card } from "@/components/ui/Card";
-import { Container } from "@/components/ui/Container";
-import { Reveal } from "@/components/ui/Reveal";
-import { PageTransition } from "@/components/ui/PageTransition";
-import { SectionHeading } from "@/components/ui/SectionHeading";
+import { PublicContact } from "@/components/contact/PublicContact";
+import { SupportCenter } from "@/components/support/SupportCenter";
 import { siteConfig } from "@/config/site";
 import { contactContent } from "@/content/contact";
+import { getViewer, requestAccountsStatus, type Viewer } from "@/lib/auth/session";
+import { usesSupport } from "@/lib/support/access";
 
 export const metadata: Metadata = {
   title: contactContent.title,
@@ -20,32 +18,26 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ContactPage() {
-  return (
-    <PageTransition>
-      <Container size="narrow" className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <SectionHeading as="h1" eyebrow="Contact" title={contactContent.title}>
-          <p className="text-base sm:text-lg">{contactContent.lead}</p>
-        </SectionHeading>
-
-        <Reveal>
-          <Card className="mt-10 p-6 sm:p-8">
-            <ContactForm />
-          </Card>
-        </Reveal>
-
-        {/* The address stays visible whatever the form does, so there is always
-          a way to reach the ministry even if sending fails. */}
-        <p className="mt-6 text-center text-sm text-muted">
-          {contactContent.directLabel}{" "}
-          <a
-            href={`mailto:${contactContent.directEmail}`}
-            className="text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark"
-          >
-            {contactContent.directEmail}
-          </a>
-        </p>
-      </Container>
-    </PageTransition>
-  );
+/**
+ * Contact. Signed out, it is the public contact form, exactly as before.
+ * Signed in, it is the Music Ministry Support Center (docs/support-center.md).
+ *
+ * The page is rendered for each request so it can tell the two apart; the
+ * metadata and share card stay the public ones. A signed-out visit reads
+ * nothing from the database (getViewer stops at the session). If the
+ * session or the database cannot be read, the public form is shown, so
+ * there is always a way to get in touch.
+ */
+export default async function ContactPage({ searchParams }: PageProps<"/contact">) {
+  const status = await requestAccountsStatus();
+  let viewer: Viewer | null = null;
+  if (status.available) {
+    try {
+      viewer = await getViewer();
+    } catch (error) {
+      console.error("[support] The session could not be read:", error instanceof Error ? error.message : "unknown error");
+    }
+  }
+  if (!viewer || !usesSupport(viewer)) return <PublicContact />;
+  return <SupportCenter viewer={viewer} params={await searchParams} />;
 }

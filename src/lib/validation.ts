@@ -50,6 +50,14 @@ export const contactFormSchema = z.object({
    * real visitor never fills it in. Anything here means a bot.
    */
   website: z.string().max(0).optional(),
+
+  /**
+   * Made by the form when it opens, and kept until the message is sent: the
+   * same message sent twice (a double click, a retry) carries the same key,
+   * so it is emailed once (src/lib/contact-email.ts). Optional - an older
+   * copy of the page has none - and a malformed one is simply dropped.
+   */
+  submissionKey: z.uuid().optional().catch(undefined),
 });
 
 export type ContactFormValues = z.infer<typeof contactFormSchema>;

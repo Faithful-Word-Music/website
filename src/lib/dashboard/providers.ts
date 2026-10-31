@@ -12,6 +12,7 @@
 import { availabilityContent } from "@/content/availability";
 import { dashboardContent } from "@/content/dashboard";
 import { servicePlannerContent } from "@/content/service-planner";
+import { supportContent } from "@/content/support";
 import { plural } from "@/lib/plural";
 import { serviceHeadline, statusLine } from "@/lib/service-planner/format";
 import type { PlannerStatus } from "@/lib/service-planner/model";
@@ -202,6 +203,57 @@ export function servicePlannerAttention(
       title: work.length === 1 ? planner.needPlanningOne : planner.needPlanning.replace("{count}", String(work.length)),
       href: "/service-planner",
       action: planner.open,
+    });
+  }
+  return items;
+}
+
+/** The Support Center's counts for one person (src/lib/support/store.ts attentionCounts). */
+export interface SupportCounts {
+  awaitingMe: number;
+  needsAction: number;
+  unassigned: number;
+  assignedToMe: number;
+}
+
+/**
+ * Support requests (docs/support-center.md). A member: their requests the
+ * ministry asked them about. A manager: requests nobody has taken, and
+ * requests waiting on the ministry - one item each, never one per request.
+ * Nothing when nothing is waiting.
+ */
+export function supportAttention(counts: SupportCounts | null, manages: boolean): AttentionItem[] {
+  if (!counts) return [];
+  const text = supportContent.dashboard;
+  const items: AttentionItem[] = [];
+  if (counts.awaitingMe > 0) {
+    items.push({
+      id: "support:needs-reply",
+      priority: "normal",
+      title: plural(text.needsReply.title, counts.awaitingMe),
+      detail: text.needsReply.detail,
+      href: "/contact?view=mine",
+      action: text.needsReply.action,
+    });
+  }
+  if (manages && counts.unassigned > 0) {
+    items.push({
+      id: "support:unassigned",
+      priority: "normal",
+      title: plural(text.unassigned.title, counts.unassigned),
+      detail: text.unassigned.detail,
+      href: "/contact?view=manage&queue=unassigned",
+      action: text.unassigned.action,
+    });
+  }
+  if (manages && counts.needsAction > 0) {
+    items.push({
+      id: "support:needs-action",
+      priority: "normal",
+      title: plural(text.needsAction.title, counts.needsAction),
+      detail: counts.assignedToMe > 0 ? plural(text.needsAction.assigned, counts.assignedToMe) : text.needsAction.detail,
+      href: counts.assignedToMe > 0 ? "/contact?view=manage&queue=assigned_to_me" : "/contact?view=manage&queue=needs_action",
+      action: text.needsAction.action,
     });
   }
   return items;

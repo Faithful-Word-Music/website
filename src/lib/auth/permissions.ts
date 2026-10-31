@@ -113,6 +113,12 @@ export const PERMISSIONS = {
       "Add, change and delete the global memories the AI uses for everyone, and move a memory into or out of them. Only with Use AI features.",
     group: "music",
   },
+  manage_support_requests: {
+    label: "Manage support requests",
+    description:
+      "See every support request, reply to the people who sent them, keep private notes, assign, prioritise, resolve, close and reopen requests.",
+    group: "music",
+  },
   manage_planning_philosophy: {
     label: "Manage planning philosophy",
     description: "Edit the Service Planning Philosophy the AI plans by, approve changes the AI proposes, and restore earlier versions.",
@@ -131,6 +137,11 @@ export const PERMISSIONS = {
   view_member_resources: {
     label: "View member resources",
     description: "Open resources shared with members.",
+    group: "members",
+  },
+  submit_support_requests: {
+    label: "Send support requests",
+    description: "Report problems, request sheet music, suggest improvements and ask questions, and follow their own requests.",
     group: "members",
   },
 } as const satisfies Record<string, { label: string; description: string; group: PermissionGroup }>;
@@ -212,6 +223,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
       "use_personal_ai_memory",
       "manage_global_ai_memory",
       "manage_planning_philosophy",
+      "manage_support_requests",
       "view_service_plans",
       "view_sheet_music",
       "view_member_resources",
@@ -233,7 +245,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: MEMBER_ROLE,
     label: "Member",
     description: "Everyone with an account. Held automatically.",
-    permissions: ["view_sheet_music", "view_member_resources"],
+    permissions: ["view_sheet_music", "view_member_resources", "submit_support_requests"],
   },
 ];
 
@@ -257,6 +269,9 @@ export const PERMISSION_FIXUPS: ReadonlyArray<{ key: string; permissions: readon
   { key: "2026-10-send-notifications-permission", permissions: ["send_notifications"] },
   // Song leader scheduling: who can be assigned to lead songs in a service.
   { key: "2026-10-lead-songs-permission", permissions: ["lead_songs"] },
+  // The Music Ministry Support Center (docs/support-center.md): every member may send requests,
+  // and the Music Director looks after them.
+  { key: "2026-11-support-requests-permissions", permissions: ["submit_support_requests", "manage_support_requests"] },
 ];
 
 /** The (role, permission) pairs one fix-up grants. */

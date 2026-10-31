@@ -3,10 +3,12 @@ import Link from "next/link";
 import { ServiceSheetMusic } from "@/components/dashboard/ServiceSheetMusic";
 import { NoServiceSheetMusic } from "@/components/song-list/ServicePackets";
 import { PlannedInsert, ServiceTime, StatusPill } from "@/components/song-list/ServiceBits";
+import { ReportLink } from "@/components/support/ReportLink";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { dashboardContent } from "@/content/dashboard";
+import { supportContent } from "@/content/support";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
 import type { CardLeaders } from "@/lib/dashboard/leadership";
 import type { CardLeader, MyAssignment } from "@/lib/leadership/board";
@@ -111,6 +113,11 @@ function ServiceSummary({ service, now, leaders }: { service: ComingUpService; n
       {leaders?.view?.service ? <ServiceLeaderLine leader={leaders.view.service} className="mt-1" /> : null}
       {!hasSongs && leaders && leaders.mine.length > 0 ? (
         <p className="mt-2 text-sm font-medium text-gold-dark">{leading.youLeadDraft.replace("{songs}", positionsLabel(leaders.mine))}</p>
+      ) : null}
+      {leaders && leaders.mine.length > 0 ? (
+        <ReportLink entry="problem" category="leader_assignment" refs={{ service: service.id, leading: 1 }} className="mt-1 self-start">
+          {supportContent.report.assignment}
+        </ReportLink>
       ) : null}
       <ol aria-labelledby={headingId} className="mt-4 divide-y divide-line border-y border-line">
         {service.slots.map((song, index) => (
@@ -269,6 +276,9 @@ function LaterLeading({ assignments }: { assignments: MyAssignment[] }) {
                 {leading.unavailable}
               </span>
             ) : null}
+            <ReportLink entry="problem" category="leader_assignment" refs={{ service: assignment.anchor, leading: 1 }} className="ml-auto">
+              {supportContent.report.assignment}
+            </ReportLink>
           </li>
         ))}
       </ul>

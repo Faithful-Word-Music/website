@@ -10,6 +10,8 @@ import type { Directory } from "./audience";
 import {
   CHANNELS,
   DEFAULT_CATEGORIES,
+  SUPPORT_CATEGORY,
+  SUPPORT_CATEGORY_FIXUP,
   type Channel,
   type ChannelPolicy,
   type NotificationCategory,
@@ -293,6 +295,55 @@ async function seedDefaults(sql: Sql, env: ClerkEnv): Promise<void> {
        FROM jsonb_to_recordset($2::jsonb) AS p(category_key text, channel text, policy text)
      ON CONFLICT DO NOTHING`,
     [env, JSON.stringify(policies)],
+  );
+  await applySupportCategoryFixup(sql, env);
+}
+
+/**
+ * SUPPORT_CATEGORY_FIXUP (model.ts), in one statement: it claims the fix-up
+ * and makes its changes together, or neither, and a second server doing the
+ * same at once finds the claim taken and changes nothing. Only the Phase 1
+ * wording is replaced, and email is offered only where its policy is still
+ * the starting "unavailable" (updated_by is set whenever an administrator
+ * saves a policy).
+ */
+async function applySupportCategoryFixup(sql: Sql, env: ClerkEnv): Promise<void> {
+  const fixup = SUPPORT_CATEGORY_FIXUP;
+  // Wording and an email offer are not worth failing notifications over: logged, and tried again
+  // when the next server starts (nothing is claimed unless it all happened).
+  try {
+    await runSupportCategoryFixup(sql, env, fixup);
+  } catch (error) {
+    console.error("[notifications] The support category could not be updated:", error instanceof Error ? error.message : "unknown error");
+  }
+}
+
+async function runSupportCategoryFixup(sql: Sql, env: ClerkEnv, fixup: typeof SUPPORT_CATEGORY_FIXUP): Promise<void> {
+  await sql.query(
+    `WITH claimed AS (
+       INSERT INTO schema_fixups (clerk_env, key) VALUES ($1, $2) ON CONFLICT (clerk_env, key) DO NOTHING RETURNING 1
+     ), renamed AS (
+       UPDATE notification_categories SET name = $4, description = $5, updated_at = now()
+        WHERE clerk_env = $1 AND key = $3 AND name = $6 AND description = $7 AND EXISTS (SELECT 1 FROM claimed)
+       RETURNING 1
+     ), offered AS (
+       UPDATE notification_channel_policies SET policy = $9, updated_at = now()
+        WHERE clerk_env = $1 AND category_key = $3 AND channel = 'email' AND policy = $8 AND updated_by IS NULL
+          AND EXISTS (SELECT 1 FROM claimed)
+       RETURNING 1
+     )
+     SELECT (SELECT count(*) FROM renamed) AS renamed, (SELECT count(*) FROM offered) AS offered`,
+    [
+      env,
+      fixup.key,
+      fixup.category,
+      SUPPORT_CATEGORY.name,
+      SUPPORT_CATEGORY.description,
+      fixup.previous.name,
+      fixup.previous.description,
+      fixup.email.from,
+      fixup.email.to,
+    ],
   );
 }
 

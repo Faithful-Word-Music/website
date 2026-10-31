@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
@@ -80,6 +80,9 @@ export function ContactForm() {
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const shortcutKey = useShortcutKey();
+  // One key per message, kept through retries until it is sent, so sending
+  // the same message twice emails it once (src/lib/contact-email.ts).
+  const submissionKey = useRef<string | null>(null);
 
   const { form, status: statusCopy } = contactContent;
 
@@ -148,12 +151,13 @@ export function ContactForm() {
     }
 
     setStatus("submitting");
+    submissionKey.current ??= typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : null;
 
     try {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify({ ...parsed.data, submissionKey: submissionKey.current ?? undefined }),
       });
 
       const data = (await response.json()) as ContactResponse;
@@ -165,6 +169,8 @@ export function ContactForm() {
         return;
       }
 
+      // Sent: the next message is a new one, with a key of its own.
+      submissionKey.current = null;
       setValues(EMPTY);
       setErrors({});
       setDraftRestored(false);

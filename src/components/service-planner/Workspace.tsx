@@ -12,6 +12,7 @@ import { usePlannerDraft } from "@/components/conductor/planner-draft";
 import { useConductorScreen } from "@/components/conductor/screen-context";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { ActionBar } from "@/components/ui/ActionBar";
+import { ReportLink } from "@/components/support/ReportLink";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -22,6 +23,7 @@ import { useFlip } from "@/components/ui/use-flip";
 import { useUnsavedGuard } from "@/components/ui/use-unsaved-guard";
 import { feedbackContent } from "@/content/feedback";
 import { servicePlannerContent } from "@/content/service-planner";
+import { supportContent } from "@/content/support";
 import { isAiLocked, lockedPlaces, locksAfterGeneration, toggleAiLock, type LockChoices } from "@/lib/ai/service-planner/locks";
 import type { PlanAiRequest } from "@/lib/ai/service-planner/protocol";
 import type { ActionResult } from "@/lib/auth/session";
@@ -714,6 +716,12 @@ export function Workspace(props: WorkspaceProps) {
                 )}
               </div>
               {status === "published" ? <p className="mt-3 text-xs text-muted">{ws.unpublishHint}</p> : null}
+              {/* The Support Center lists this service's places (by their place IDs) to choose from. */}
+              <p className="mt-3 text-center">
+                <ReportLink entry="problem" refs={{ service: service.anchor }} className="text-sm">
+                  {supportContent.report.problem}
+                </ReportLink>
+              </p>
             </Panel>
           ) : null}
 

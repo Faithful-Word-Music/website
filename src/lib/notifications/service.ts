@@ -211,7 +211,7 @@ export async function preferencesFor(actor: NotificationActor, deps: Notificatio
     .map((category) => {
       const own = policies.get(category.key) ?? NOT_OFFERED;
       const setting = (channel: Channel) =>
-        effectiveSetting(channel, own[channel], storedChoice(stored, actor.userId, category.key, channel));
+        effectiveSetting(channel, own[channel], storedChoice(stored, actor.userId, category.key, channel), category.key);
       return {
         key: category.key,
         name: category.name,
@@ -238,7 +238,7 @@ export async function setPreference(
   if (!category) return no("unknown-category");
 
   const policy = (policiesByCategory(policyRows).get(category.key) ?? NOT_OFFERED)[input.channel];
-  const setting = effectiveSetting(input.channel, policy, null);
+  const setting = effectiveSetting(input.channel, policy, null, category.key);
   if (!setting.available) return no("unavailable");
   if (setting.locked) return no("locked");
 
@@ -270,7 +270,7 @@ export async function setPolicy(
   if (!actor.can(MANAGE_PERMISSION)) return no("forbidden");
   if (typeof input.category !== "string" || !isChannel(input.channel) || !isChannelPolicy(input.policy)) return no("invalid");
   // A channel that cannot deliver yet cannot be switched on by mistake.
-  if (!allowedPolicies(input.channel).includes(input.policy)) return no("not-allowed");
+  if (!allowedPolicies(input.channel, input.category).includes(input.policy)) return no("not-allowed");
   const categories = await deps.listCategories();
   if (!categories.some((category) => category.key === input.category)) return no("unknown-category");
 
@@ -332,7 +332,7 @@ export interface PlannedRecipient {
   /** Whether it shows in their bell and history. */
   inApp: boolean;
   push: boolean;
-  /** Email is opt-in only (model.ts): on only for someone who switched it on, or a mandatory category. */
+  /** Email is opt-in only (model.ts): on only for someone who switched it on, a mandatory category, or a confirmation (EMAIL_ON_BY_DEFAULT). */
   email: boolean;
 }
 
@@ -372,7 +372,7 @@ export async function planRecipients(
   const live = CHANNELS.filter((channel) => CHANNEL_STATUS[channel] === "live");
 
   const recipients = matched.flatMap((userId) => {
-    const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel)).enabled;
+    const on = (channel: Channel) => effectiveSetting(channel, policies[channel], storedChoice(stored, userId, category.key, channel), category.key).enabled;
     // Someone with every delivering channel off is not told at all.
     return live.some(on)
       ? [

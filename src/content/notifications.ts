@@ -251,6 +251,37 @@ export const notificationsContent = {
         body: "{date}: {name} is assigned to lead {songs} but is now unavailable.",
       },
     },
+    /**
+     * Support requests (events/support.ts). Never anything a person wrote - not the request's
+     * summary, a message or a link: a notification can be read on a lock screen or in an inbox.
+     * {id} is the request's ID ("R-7K3F9Q2M"), {kind} its kind ("Missing sheet music").
+     */
+    support: {
+      body: "{id} · {kind}",
+      created: { title: "New support request" },
+      assigned: { title: "A support request was assigned to you" },
+      managerReplied: { title: "New reply to your support request" },
+      infoRequested: { title: "Your support request needs more information" },
+      resolved: { title: "Your support request was resolved", withReply: "{id} · {kind} · with a reply" },
+      reopened: { title: "Your support request was reopened" },
+      closed: { title: "Your support request was closed" },
+      submitterReplied: { title: "New reply on a support request" },
+      submitterReopened: { title: "A resolved support request was reopened" },
+      several: "There is new activity on this support request.",
+      /**
+       * The submitter's own acknowledgment, by email only (supportAcknowledgment). The one support
+       * notice with words a person wrote: their own summary, {title}, sent to their own verified
+       * address and to nobody else. {status} is the status when it is sent ("Open"). Promise no
+       * response time.
+       */
+      received: {
+        title: "We received your support request",
+        body:
+          "Thank you. Your request has reached the Faithful Word Music ministry, and we will look into it as soon as possible.\n\n" +
+          "Request: {title}\nReference: {id}\nStatus: {status}\n\n" +
+          "You can follow it and reply on its page. Replies to this email also reach the music ministry.",
+      },
+    },
     availability: {
       /** How a choice reads in a sentence. */
       states: { available: "available", unavailable: "unavailable", normal: "back to normal" },

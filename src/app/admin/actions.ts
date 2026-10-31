@@ -996,7 +996,7 @@ export async function setNotificationPoliciesAction(category: unknown, policies:
     const changes = CHANNELS.filter((channel) => chosen[channel] !== undefined).map((channel) => ({ channel, policy: chosen[channel] }));
     if (typeof category !== "string" || changes.length === 0) return { ok: false, error: copy.unknown };
     for (const { channel, policy } of changes) {
-      if (!isChannelPolicy(policy) || !allowedPolicies(channel).includes(policy)) return { ok: false, error: copy.notAllowed };
+      if (!isChannelPolicy(policy) || !allowedPolicies(channel, category).includes(policy)) return { ok: false, error: copy.notAllowed };
     }
 
     const deps = notificationDeps(viewer.env);

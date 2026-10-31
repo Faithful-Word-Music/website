@@ -21,9 +21,9 @@ const content = notificationsContent.admin;
  * in code - Announcements only START mandatory - and changing a policy never
  * erases anyone's own choices (src/lib/notifications/model.ts).
  *
- * A channel that cannot deliver yet offers only what makes sense for it:
- * email stays "Unavailable" until email is built, and the action refuses
- * anything else (setNotificationPoliciesAction).
+ * Each channel offers only what makes sense for it: email is never on by
+ * default, except for confirmations (EMAIL_ON_BY_DEFAULT), and the action
+ * refuses anything else (setNotificationPoliciesAction).
  */
 export default async function NotificationPoliciesPage() {
   const viewer = await requireAnyPermission("/admin/notifications/policies", ["manage_notifications"]);
@@ -37,7 +37,13 @@ export default async function NotificationPoliciesPage() {
     categories = null;
   }
 
-  const allowed = Object.fromEntries(CHANNELS.map((channel) => [channel, [...allowedPolicies(channel)]]));
+  // Per category: email is opt-in only, except for confirmations (EMAIL_ON_BY_DEFAULT, model.ts).
+  const allowed = Object.fromEntries(
+    (categories ?? []).map((category) => [
+      category.key,
+      Object.fromEntries(CHANNELS.map((channel) => [channel, [...allowedPolicies(channel, category.key)]])),
+    ]),
+  );
 
   return (
     <div>

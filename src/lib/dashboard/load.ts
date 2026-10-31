@@ -22,9 +22,11 @@ import type { SheetMusicIndex } from "@/lib/sheet-music";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { getReportInputs, songDirectory } from "@/lib/song-archive";
 import { identifySong, referenceEntries, type SongReference } from "@/lib/song-identity";
+import { attentionCounts } from "@/lib/support/store";
 import type { DatedService, Service } from "@/types/song-list";
 
 import type { Rosters } from "./leadership";
+import type { SupportCounts } from "./providers";
 import { invitationFollowUps, type InvitationFollowUps, type Person } from "./people";
 
 /**
@@ -175,6 +177,21 @@ export async function loadDashboardLeadership(viewer: Viewer): Promise<Dashboard
     };
   } catch (error) {
     console.error("[dashboard] Could not load song leaders:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+}
+
+/**
+ * The Support Center's counts for "Needs your attention": one bounded query
+ * over the active requests (attentionCounts). Fails soft: null leaves them out.
+ */
+export async function loadSupportCounts(viewer: Viewer): Promise<SupportCounts | null> {
+  const manages = viewer.can("manage_support_requests");
+  if (!manages && !viewer.can("submit_support_requests")) return null;
+  try {
+    return await attentionCounts(viewer.env, viewer.userId, manages);
+  } catch (error) {
+    console.error("[dashboard] Could not load support requests:", error instanceof Error ? error.message : "unknown error");
     return null;
   }
 }

@@ -8,7 +8,7 @@
  *   in_app   the bell in the header and the Notifications page
  *   push     the person's devices: every browser or installed app they
  *            switched push on in (push.ts, delivery.ts)
- *   email    (a later phase)
+ *   email    opt-in only, except confirmations (EMAIL_ON_BY_DEFAULT)
  *
  * Every category has its own policy for each channel, set by whoever holds
  * manage_notifications (Admin -> Notifications) and kept in the database:
@@ -76,10 +76,25 @@ export const CHANNEL_STATUS: Record<Channel, "live" | "planned" | "soon"> = {
  */
 const OPT_IN_ONLY: readonly Channel[] = ["email"];
 
-/** The policies an administrator may choose for a channel. A channel not offered yet has only "unavailable". */
-export function allowedPolicies(channel: Channel): readonly ChannelPolicy[] {
+/**
+ * The one exception to OPT_IN_ONLY: categories that only ever confirm
+ * something the person has just done themself (a support request they sent
+ * has been received). Email may be on by default for these, and the person
+ * can still turn it off. A stored "default on" anywhere else still means off.
+ */
+export const EMAIL_ON_BY_DEFAULT: readonly string[] = ["support_confirmation"];
+
+function optInOnly(channel: Channel, category: string | undefined): boolean {
+  return OPT_IN_ONLY.includes(channel) && !(category !== undefined && EMAIL_ON_BY_DEFAULT.includes(category));
+}
+
+/**
+ * The policies an administrator may choose for a channel of a category. A
+ * channel not offered yet has only "unavailable".
+ */
+export function allowedPolicies(channel: Channel, category?: string): readonly ChannelPolicy[] {
   if (CHANNEL_STATUS[channel] === "soon") return ["unavailable"];
-  if (OPT_IN_ONLY.includes(channel)) return ["mandatory", "default_off", "unavailable"];
+  if (optInOnly(channel, category)) return ["mandatory", "default_off", "unavailable"];
   return POLICIES;
 }
 
@@ -96,10 +111,10 @@ export interface EffectiveSetting {
  * THE rule: a category's policy for a channel, and the person's own stored
  * choice (null when they never made one), as what actually happens.
  */
-export function effectiveSetting(channel: Channel, policy: ChannelPolicy, stored: boolean | null): EffectiveSetting {
+export function effectiveSetting(channel: Channel, policy: ChannelPolicy, stored: boolean | null, category?: string): EffectiveSetting {
   if (policy === "unavailable" || CHANNEL_STATUS[channel] === "soon") return { enabled: false, locked: true, available: false };
   if (policy === "mandatory") return { enabled: true, locked: true, available: true };
-  const fallback = policy === "default_on" && !OPT_IN_ONLY.includes(channel);
+  const fallback = policy === "default_on" && !optInOnly(channel, category);
   return { enabled: stored ?? fallback, locked: false, available: true };
 }
 
@@ -114,6 +129,26 @@ export interface NotificationCategory {
 }
 
 export type CategoryPolicies = Record<Channel, ChannelPolicy>;
+
+/** How the support category reads now (it was "Sheet music and reports"). */
+export const SUPPORT_CATEGORY = {
+  name: "Support requests",
+  description: "Requests you sent or look after: new requests, replies, and what became of them.",
+} as const;
+
+/**
+ * Moves a site that already had the `sheet_music_report` category over to
+ * support requests - once per environment (schema_fixups), and only what an
+ * administrator has not changed: the name and description only while they
+ * are still the Phase 1 wording, and email only while its policy is still
+ * the "unavailable" nobody ever set. Run by the notification store's seeding.
+ */
+export const SUPPORT_CATEGORY_FIXUP = {
+  key: "2026-11-support-category",
+  category: "sheet_music_report",
+  previous: { name: "Sheet music and reports", description: "Problems reported with sheet music, and what became of them." },
+  email: { from: "unavailable", to: "default_off" },
+} as const;
 
 /**
  * The categories and policies a site starts with. Written to the database
@@ -153,10 +188,14 @@ export const DEFAULT_CATEGORIES: ReadonlyArray<Omit<NotificationCategory, "activ
     policies: { in_app: "mandatory", push: "default_on", email: "unavailable" },
   },
   {
+    // The key is from Phase 1, kept so nothing stored under it changes; it now covers every support
+    // request (docs/support-center.md). Sites that had it already are moved over once by
+    // SUPPORT_CATEGORY_FIXUP, without overwriting anything an administrator chose.
     key: "sheet_music_report",
-    name: "Sheet music and reports",
-    description: "Problems reported with sheet music, and what became of them.",
-    policies: { in_app: "default_on", push: "default_off", email: "unavailable" },
+    name: SUPPORT_CATEGORY.name,
+    description: SUPPORT_CATEGORY.description,
+    // Email only for someone who switches it on: never by default.
+    policies: { in_app: "default_on", push: "default_off", email: "default_off" },
   },
   {
     key: "ai_system",
@@ -170,6 +209,15 @@ export const DEFAULT_CATEGORIES: ReadonlyArray<Omit<NotificationCategory, "activ
     description: "The songs you are assigned to lead, and changes to them. For schedulers: a leader who becomes unavailable.",
     // Email only for someone who switches it on: never by default.
     policies: { in_app: "default_on", push: "default_on", email: "default_off" },
+  },
+  {
+    // The submitter's own acknowledgment that a support request arrived (events/support.ts,
+    // supportAcknowledgment). Email only: the request page already says it was sent, so a bell
+    // or a push would say it twice. On by default (EMAIL_ON_BY_DEFAULT); anyone may turn it off.
+    key: "support_confirmation",
+    name: "Support request confirmations",
+    description: "An email when a request you sent has been received.",
+    policies: { in_app: "unavailable", push: "unavailable", email: "default_on" },
   },
 ];
 
@@ -189,6 +237,8 @@ export const CATEGORY_RELEVANCE: Readonly<Record<string, readonly Permission[]>>
   service_plan_updated: ["view_service_plans", "manage_service_plans"],
   availability_changed: ["view_availability", "manage_availability"],
   song_leading: ["lead_songs", "manage_service_plans"],
+  sheet_music_report: ["submit_support_requests", "manage_support_requests"],
+  support_confirmation: ["submit_support_requests", "manage_support_requests"],
   ai_system: ["use_ai"],
 };
 

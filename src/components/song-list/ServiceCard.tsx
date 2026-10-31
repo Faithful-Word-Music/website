@@ -9,9 +9,11 @@ import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { useCardLeaders } from "@/components/song-list/SongLeaders";
 import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
+import { ReportLink } from "@/components/support/ReportLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { songListContent } from "@/content/song-list";
+import { supportContent } from "@/content/support";
 import { serviceName } from "@/lib/share-services";
 import { songHint, type PlayIndex } from "@/lib/song-history";
 import { serviceSlots } from "@/lib/song-list";
@@ -279,6 +281,14 @@ export function ServiceCard({
         serviceId={service.id}
         label={[weekday, service.serviceLabel, day].filter(Boolean).join(" · ")}
       />
+      {/* Signed in: report a problem with this service - which song, if any, is chosen in the form. */}
+      {!selection && service.date && service.songs.length > 0 ? (
+        <div className="mt-3 text-right">
+          <ReportLink entry="problem" refs={{ service: service.id }}>
+            {supportContent.report.problem}
+          </ReportLink>
+        </div>
+      ) : null}
     </Card>
   );
 

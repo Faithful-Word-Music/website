@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
+import { SongReportLinks } from "@/components/support/SongReportLinks";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
 import { SongCapoSetting } from "@/components/song-list/SongCapoSetting";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
@@ -112,6 +113,9 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
 
         {/* For people who look after the sheet music only; nothing for anyone else. */}
         <SongCapoSetting title={title} number={number} songId={data.songId} collection={data.collection} className="mt-10" />
+
+        {/* Signed-in members only, found out in the browser: the page itself stays the same for everyone. */}
+        <SongReportLinks songId={data.songId} className="mt-6" />
 
         {sheetMusic ? (
           <h2 id="singing" className="mt-12 font-display text-2xl text-ink">
