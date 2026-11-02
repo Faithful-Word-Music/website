@@ -70,14 +70,19 @@ describe.skipIf(!packageUrl)("recordings on isolated PostgreSQL", () => {
     local.engine = null;
   });
 
-  it("keeps one primary per song, set explicitly, and never promotes another on delete", async () => {
+  it("keeps one primary per song: the first added, then as chosen, never promoting another on delete", async () => {
     const store = await import("./store");
     const a = await store.insertRecording("development", { ...base, mediaId: "aaaaaaaaaaa" }, "u");
     const b = await store.insertRecording("development", { ...base, mediaId: "bbbbbbbbbbb" }, "u");
     if (!a.ok || !b.ok) throw new Error("not added");
-    expect(a.recording.isPrimary).toBe(false);
+    expect(a.recording.isPrimary).toBe(true);
+    expect(b.recording.isPrimary).toBe(false);
+    // Another song's first is its own primary; another environment's too.
+    const other = await store.insertRecording("development", { ...base, songId: "S2", mediaId: "aaaaaaaaaaa" }, "u");
+    const prod = await store.insertRecording("production", { ...base, mediaId: "aaaaaaaaaaa" }, "u");
+    expect(other.ok && other.recording.isPrimary).toBe(true);
+    expect(prod.ok && prod.recording.isPrimary).toBe(true);
 
-    expect(await store.setPrimaryRecording("development", "S1", a.recording.id, "u")).toBe(true);
     expect(await store.setPrimaryRecording("development", "S1", b.recording.id, "u")).toBe(true);
     let list = await store.listRecordings("development", { songIds: ["S1"] });
     expect(list.filter((item) => item.isPrimary).map((item) => item.id)).toEqual([b.recording.id]);

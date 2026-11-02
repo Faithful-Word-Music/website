@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useAction } from "@/components/ui/use-action";
 import { recordingsContent } from "@/content/recordings";
 import { deleteRecording, removeMediaLink, setPrimaryRecording, setServiceRecording } from "@/app/recordings/actions";
+import type { RecordingChange } from "@/lib/recordings/changes";
 import { LINK_SOURCE_LABELS } from "@/lib/recordings/links";
 import { sortRecordings, type MediaLink, type Recording } from "@/lib/recordings/model";
 import { isPlaylistCapable } from "@/lib/recordings/providers";
@@ -37,7 +38,12 @@ export interface ServicePlace {
  * Service Planner. Anyone can play a recording here (one at a time) and open
  * a link. Someone who manages recordings also adds, edits, deletes and
  * chooses the primary; in the planner they also choose which recording this
- * service uses. Every change is a server action that checks again.
+ * service uses. Every change is a server action that checks again; once it
+ * has worked, `onChanged` gets the change, so the page can show it at once.
+ *
+ * A whole recording row plays it: the play button's hit area stretches over
+ * the row, and the video opens inside that row. Its other controls (Open
+ * original, the menu, the video) sit above that layer.
  */
 export function RecordingList({
   songId,
@@ -55,7 +61,7 @@ export function RecordingList({
   links: MediaLink[];
   canManage: boolean;
   service?: ServicePlace;
-  onChanged: () => void;
+  onChanged: (change: RecordingChange) => void;
   className?: string;
 }) {
   const recordings = sortRecordings(unsorted);
@@ -69,21 +75,24 @@ export function RecordingList({
     if (!service || service.planRevision === null) return;
     void run(
       () => setServiceRecording({ anchor: service.anchor, placeId: service.placeId, planRevision: service.planRevision, recordingId }),
-      { key: `choose-${recordingId ?? "primary"}`, toast: true, onOk: onChanged },
+      {
+        key: `choose-${recordingId ?? "primary"}`,
+        toast: true,
+        onOk: () => onChanged({ kind: "selection", placeId: service.placeId, songId, recordingId }),
+      },
     );
   };
+  const setPrimary = (recordingId: string | null) =>
+    void run(() => setPrimaryRecording({ songId, recordingId }), {
+      key: "primary",
+      toast: true,
+      onOk: () => onChanged({ kind: "primary", songId, recordingId }),
+    });
 
   const empty = recordings.length === 0 && links.length === 0;
 
   return (
     <div className={className}>
-      {playing ? (
-        <div className="mb-4">
-          <YouTubePlayer mediaId={playing.mediaId} playing loadKey={0} title={playing.title} onEnded={() => setPlaying(null)} />
-          <SourceAttribution recording={playing} className="mt-2" />
-        </div>
-      ) : null}
-
       {service && service.selection.kind === "removed" ? (
         <p role="alert" className="mb-3 rounded-lg border border-gold/60 bg-gold/10 px-3 py-2 text-sm text-ink">
           {copy.planner.removed}
@@ -103,15 +112,20 @@ export function RecordingList({
             const details = recordingDetails(recording);
             const chosen = chosenId === recording.id;
             const inUse = service ? (chosenId ? chosen : recording.isPrimary && service.selection.kind === "none") : false;
+            const isPlaying = playing?.id === recording.id;
             return (
-              <li key={recording.id} className={cn("px-4 py-3", inUse && "bg-paper")}>
+              <li key={recording.id} className={cn("group relative px-4 py-3 transition-colors", inUse ? "bg-paper" : "hover:bg-paper/60")}>
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    onClick={() => setPlaying(playing?.id === recording.id ? null : recording)}
+                    onClick={() => setPlaying(isPlaying ? null : recording)}
                     aria-label={`${copy.song.play}: ${recording.title}`}
-                    aria-pressed={playing?.id === recording.id}
-                    className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition-colors hover:border-gold hover:text-ink aria-pressed:border-gold aria-pressed:bg-gold/15"
+                    aria-pressed={isPlaying}
+                    className={cn(
+                      "mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line text-ink-soft transition-colors group-hover:border-gold group-hover:text-ink aria-pressed:border-gold aria-pressed:bg-gold/15",
+                      // The whole row is this button's hit area.
+                      "after:absolute after:inset-0 after:cursor-pointer after:content-['']",
+                    )}
                   >
                     <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M7 5l12 7-12 7V5z" />
@@ -129,6 +143,7 @@ export function RecordingList({
                     <SourceAttribution recording={recording} className="mt-1" />
                   </div>
                   {canManage || service ? (
+                    <div className="relative z-10">
                     <ActionMenu
                       label={`${copy.manage.edit}: ${recording.title}`}
                       items={[
@@ -137,17 +152,21 @@ export function RecordingList({
                           : []),
                         ...(service && chosen ? [{ label: copy.planner.usePrimary, onSelect: () => choose(null), disabled: pending }] : []),
                         ...(canManage && !recording.isPrimary && isPlaylistCapable(recording.provider)
-                          ? [{ label: copy.manage.setPrimary, onSelect: () => void run(() => setPrimaryRecording({ songId, recordingId: recording.id }), { key: "primary", toast: true, onOk: onChanged }) }]
+                          ? [{ label: copy.manage.setPrimary, onSelect: () => setPrimary(recording.id) }]
                           : []),
-                        ...(canManage && recording.isPrimary
-                          ? [{ label: copy.manage.clearPrimary, onSelect: () => void run(() => setPrimaryRecording({ songId, recordingId: null }), { key: "primary", toast: true, onOk: onChanged }) }]
-                          : []),
+                        ...(canManage && recording.isPrimary ? [{ label: copy.manage.clearPrimary, onSelect: () => setPrimary(null) }] : []),
                         ...(canManage ? [{ label: copy.manage.edit, onSelect: () => setEditing({ kind: "recording", recording }) }] : []),
                         ...(canManage ? [{ label: copy.manage.delete, onSelect: () => setDeleting({ kind: "recording", item: recording })}] : []),
                       ]}
                     />
+                    </div>
                   ) : null}
                 </div>
+                {isPlaying ? (
+                  <div className="relative z-10 mt-3">
+                    <YouTubePlayer mediaId={recording.mediaId} playing loadKey={0} title={recording.title} onEnded={() => setPlaying(null)} />
+                  </div>
+                ) : null}
               </li>
             );
           })}
@@ -230,7 +249,7 @@ export function RecordingList({
                     onOk: () => {
                       if (deleting.kind === "recording" && playing?.id === deleting.item.id) setPlaying(null);
                       setDeleting(null);
-                      onChanged();
+                      onChanged({ kind: deleting.kind === "recording" ? "recording-deleted" : "link-deleted", id: deleting.item.id });
                     },
                   })
                 }

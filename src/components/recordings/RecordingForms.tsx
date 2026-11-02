@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { useAction } from "@/components/ui/use-action";
 import { recordingsContent } from "@/content/recordings";
 import { addMediaLink, addRecording, editMediaLink, lookUpRecording, updateRecording } from "@/app/recordings/actions";
+import type { RecordingChange } from "@/lib/recordings/changes";
 import type { MediaLink, Recording, RecordingVisibility } from "@/lib/recordings/model";
 
 const copy = recordingsContent.manage;
@@ -44,7 +45,7 @@ export function RecordingForm({
   /** Given when editing. */
   recording?: Recording;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (change: RecordingChange) => void;
 }) {
   const id = useId();
   const { run, pending, result, stateOf, clear } = useAction();
@@ -75,8 +76,8 @@ export function RecordingForm({
     run(() => (recording ? updateRecording({ id: recording.id, ...details }) : addRecording({ songId, url, ...details })), {
       key: "save",
       toast: true,
-      onOk: () => {
-        onSaved();
+      onOk: (outcome) => {
+        if (outcome.ok) onSaved({ kind: "recording-saved", recording: outcome.value });
         onClose();
       },
     });
@@ -168,7 +169,7 @@ export function LinkForm({
   songTitle: string;
   link?: MediaLink;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (change: RecordingChange) => void;
 }) {
   const id = useId();
   const { run, pending, result, stateOf } = useAction();
@@ -186,8 +187,8 @@ export function LinkForm({
       {
         key: "save",
         toast: true,
-        onOk: () => {
-          onSaved();
+        onOk: (outcome) => {
+          if (outcome.ok) onSaved({ kind: "link-saved", link: outcome.value });
           onClose();
         },
       },

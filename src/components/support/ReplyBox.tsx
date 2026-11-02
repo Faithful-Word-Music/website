@@ -127,7 +127,7 @@ export function ReplyBox({ publicId, status, manager }: { publicId: string; stat
               <label
                 key={item}
                 className={cn(
-                  "inline-flex min-h-10 cursor-pointer items-center rounded-full border px-4 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold/40",
+                  "relative inline-flex min-h-10 cursor-pointer items-center rounded-full border px-4 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold/40",
                   after === item ? "border-ink bg-ink text-paper" : "border-line bg-surface text-ink hover:border-gold",
                 )}
               >

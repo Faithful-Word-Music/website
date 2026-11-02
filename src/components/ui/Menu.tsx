@@ -11,7 +11,9 @@ import { cn } from "@/components/ui/cn";
  * service". Render it to open it, and stop rendering it to close.
  *
  * It is portalled to <body> and placed against the button, so no card that
- * follows - or the page's own stacking - can cover it. Works fully from the
+ * follows - or the page's own stacking - can cover it. Inside an open dialog
+ * it goes into that dialog instead: a dialog is in the top layer, and anything
+ * under <body> would sit behind it. Works fully from the
  * keyboard: arrows, Home/End, Escape (back to the button), Tab (on past it).
  *
  * The button itself is the caller's: give it aria-haspopup="menu",
@@ -57,6 +59,11 @@ export function Menu({
   onClose: (options?: { refocus?: boolean }) => void;
 }) {
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
+  /** Where it is portalled: the button's open dialog, else <body>. Known once mounted. */
+  const [container, setContainer] = useState<Element | null>(null);
+  useLayoutEffect(() => {
+    setContainer(triggerRef.current?.closest("dialog[open]") ?? document.body);
+  }, [triggerRef]);
 
   // Sit against the button, right edges aligned, and follow it on scroll.
   useLayoutEffect(() => {
@@ -76,7 +83,7 @@ export function Menu({
       window.removeEventListener("scroll", place);
       window.removeEventListener("resize", place);
     };
-  }, [menuRef, triggerRef, placement]);
+  }, [menuRef, triggerRef, placement, container]);
 
   // The latest onClose, read by the listener below without re-subscribing it
   // on every render (the page re-renders each time its clock ticks).
@@ -96,7 +103,7 @@ export function Menu({
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [menuRef, triggerRef]);
+  }, [menuRef, triggerRef, container]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const all = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
@@ -122,6 +129,7 @@ export function Menu({
   const itemClass =
     "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-ink-soft transition-colors hover:bg-paper hover:text-ink focus:bg-paper focus:text-ink focus:outline-none aria-disabled:cursor-default aria-disabled:hover:bg-transparent aria-disabled:hover:text-ink-soft";
 
+  if (!container) return null;
   return createPortal(
     <div
       id={id}
@@ -177,7 +185,7 @@ export function Menu({
         );
       })}
     </div>,
-    document.body,
+    container,
   );
 }
 

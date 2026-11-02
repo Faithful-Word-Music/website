@@ -87,7 +87,7 @@ export function NewSpecialService({ today, className }: { today: string; classNa
               {(["AM", "PM"] as const).map((value) => (
                 <label
                   key={value}
-                  className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line px-4 text-sm has-[:checked]:border-ink has-[:checked]:bg-ink has-[:checked]:text-paper has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold/40"
+                  className="relative inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line px-4 text-sm has-[:checked]:border-ink has-[:checked]:bg-ink has-[:checked]:text-paper has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-gold/40"
                 >
                   <input
                     type="radio"

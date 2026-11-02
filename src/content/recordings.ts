@@ -97,6 +97,8 @@ export const recordingsContent = {
     selected: "Chosen recording",
     primary: "Recording",
     none: "No recording",
+    /** The song has recordings, but none is its primary. */
+    unset: "Recording not chosen",
     issue: "Recording problem",
     unavailable: "Recording for members",
   },

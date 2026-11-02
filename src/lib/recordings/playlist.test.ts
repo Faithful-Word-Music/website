@@ -124,6 +124,10 @@ describe("which recording plays", () => {
     expect(resolveRecording(null, { kind: "none" }, catalog)).toEqual({ kind: "none" });
   });
 
+  it("says a song with recordings but no primary is unset, and plays nothing", () => {
+    expect(resolveRecording("S1", { kind: "none" }, catalogOf([recording("alt", "S1")]))).toEqual({ kind: "unset" });
+  });
+
   it("ignores a selection once its place holds a different song", () => {
     const selection: RecordingSelection = { date: "2026-11-08", slot: "AM", placeId: "n1", songId: "S1", recordingId: "alt" };
     expect(selectionState(selection, "S2")).toEqual({ kind: "none" });

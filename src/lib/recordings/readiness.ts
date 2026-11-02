@@ -38,7 +38,9 @@ export function placeRecording(
 
 export type RecordingSignal =
   | { kind: "recording-issue"; placeId: string; title: string; reason: "removed" | "unavailable" | "unsupported" }
-  | { kind: "no-recordings"; placeIds: string[]; titles: string[]; all: boolean };
+  | { kind: "no-recordings"; placeIds: string[]; titles: string[]; all: boolean }
+  /** Songs that have recordings, none of them the primary: nothing plays yet. */
+  | { kind: "no-primary"; placeIds: string[]; titles: string[] };
 
 export function recordingSignals(
   slots: ReadonlyArray<Pick<Song, "title" | "number" | "songId" | "collection"> | null>,
@@ -48,6 +50,7 @@ export function recordingSignals(
 ): RecordingSignal[] {
   const issues: RecordingSignal[] = [];
   const missing: { placeId: string; title: string }[] = [];
+  const unset: { placeId: string; title: string }[] = [];
   let songs = 0;
   slots.forEach((song, index) => {
     const entry = placeRecording(song, places[index] ?? `p${index + 1}`, selections, catalog);
@@ -55,7 +58,11 @@ export function recordingSignals(
     songs += 1;
     if (entry.resolved.kind === "issue") issues.push({ kind: "recording-issue", placeId: entry.placeId, title: song.title, reason: entry.resolved.reason });
     else if (entry.resolved.kind === "none") missing.push({ placeId: entry.placeId, title: song.title });
+    else if (entry.resolved.kind === "unset") unset.push({ placeId: entry.placeId, title: song.title });
   });
+  if (unset.length > 0) {
+    issues.push({ kind: "no-primary", placeIds: unset.map((item) => item.placeId), titles: unset.map((item) => item.title) });
+  }
   if (missing.length > 0) {
     issues.push({
       kind: "no-recordings",

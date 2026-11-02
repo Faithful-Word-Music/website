@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { RecordingDisclaimer } from "@/components/recordings/RecordingNotes";
 import { RecordingList, type ServicePlace } from "@/components/recordings/RecordingList";
@@ -10,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { recordingsContent } from "@/content/recordings";
 import { servicePlannerContent } from "@/content/service-planner";
+import type { RecordingChange } from "@/lib/recordings/changes";
 import type { MediaLink, Recording } from "@/lib/recordings/model";
 import type { PlanSong } from "@/lib/service-planner/model";
 import { songIdentity, songUrlSlug } from "@/lib/song-identity";
@@ -31,6 +31,7 @@ export function SongPanel({
   links,
   canManage,
   service,
+  onChanged,
   onClose,
   className,
   bare = false,
@@ -41,12 +42,13 @@ export function SongPanel({
   links: MediaLink[];
   canManage: boolean;
   service: ServicePlace;
+  /** A recording change that has just worked: shown at once, before the page's data is fetched again. */
+  onChanged: (change: RecordingChange) => void;
   onClose?: () => void;
   className?: string;
   /** Inside a dialog that brings its own title and padding. */
   bare?: boolean;
 }) {
-  const router = useRouter();
   const songId = songIdentity(song);
   const own = recordings.filter((recording) => recording.songId === songId);
   const ownLinks = links.filter((link) => link.songId === songId);
@@ -76,7 +78,7 @@ export function SongPanel({
         links={ownLinks}
         canManage={canManage}
         service={service}
-        onChanged={() => router.refresh()}
+        onChanged={onChanged}
         className="mt-2"
       />
       {own.length > 0 ? <RecordingDisclaimer className="mt-4" /> : null}

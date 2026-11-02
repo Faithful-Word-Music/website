@@ -47,6 +47,7 @@ import type { DatedService } from "@/types/song-list";
 import { recordingsContent } from "@/content/recordings";
 import type { WorkspaceRecordings } from "@/lib/recordings/planner";
 import { placeRecording, recordingSignals, type RecordingSignal } from "@/lib/recordings/readiness";
+import { applyRecordingChange, type RecordingChange } from "@/lib/recordings/changes";
 import { catalogOf } from "@/lib/recordings/resolve";
 
 import { AiGenerate, SparkleIcon, type GeneratedPlan } from "./AiGenerate";
@@ -103,9 +104,10 @@ export interface WorkspaceProps {
   canManageSongs: boolean;
 }
 
-const STATUS_DOT: Record<"selected" | "primary" | "none" | "issue", string> = {
+const STATUS_DOT: Record<"selected" | "primary" | "unset" | "none" | "issue", string> = {
   selected: "bg-gold",
   primary: "bg-ink-soft",
+  unset: "border border-gold",
   none: "border border-staff",
   issue: "bg-gold-dark",
 };
@@ -209,7 +211,15 @@ export function Workspace(props: WorkspaceProps) {
   const [reviewing, setReviewing] = useState(false);
   const selectedIndex = selected ? places.indexOf(selected) : -1;
   const selectedSong = selectedIndex >= 0 ? slots[selectedIndex] : null;
-  const recordingData = props.recordings;
+  // A recording change shows the moment it has worked; the page's fresh data replaces it when it arrives.
+  const [recordingData, setRecordingData] = useState(props.recordings);
+  const [recordingsFromServer, setRecordingsFromServer] = useState(props.recordings);
+  if (props.recordings !== recordingsFromServer) {
+    setRecordingsFromServer(props.recordings);
+    setRecordingData(props.recordings);
+  }
+  const applyRecording = (change: RecordingChange) =>
+    setRecordingData((data) => (data ? applyRecordingChange(data, change, { date: service.date, slot: service.slot }) : data));
   const selections = useMemo(() => recordingData?.selections ?? [], [recordingData]);
   const catalog = useMemo(() => catalogOf(recordingData?.recordings ?? []), [recordingData]);
   const recordingChecks = useMemo(
@@ -858,6 +868,7 @@ export function Workspace(props: WorkspaceProps) {
               selection: placeRecording(selectedSong, selected, selections, catalog)?.selection ?? { kind: "none" },
               blocked: editable ? chooseBlocked : ws.locked,
             }}
+            onChanged={applyRecording}
           />
         </Modal>
       ) : null}
@@ -1037,6 +1048,7 @@ function describeRecordingSignal(signal: RecordingSignal): string {
   if (signal.kind === "recording-issue") {
     return (signal.reason === "removed" ? c.recordingRemoved : c.recordingUnavailable).replace("{title}", signal.title);
   }
+  if (signal.kind === "no-primary") return c.noPrimary.replace("{titles}", signal.titles.join(", "));
   return signal.all ? c.noRecordingsAll : c.noRecordings.replace("{titles}", signal.titles.join(", "));
 }
 
@@ -1091,11 +1103,11 @@ function Checks({
       return { text: describeSignal(signal, start), notable: NOTABLE.has(signal.kind), placeId: title ? placeOfTitle(title) : null };
     }),
     ...recordingSignals
-      .filter((signal) => signal.kind === "no-recordings")
+      .filter((signal) => signal.kind === "no-primary" || signal.kind === "no-recordings")
       .map((signal) => ({
         text: describeRecordingSignal(signal),
         notable: false,
-        placeId: signal.kind === "no-recordings" && signal.placeIds.length === 1 ? signal.placeIds[0] : null,
+        placeId: "placeIds" in signal && signal.placeIds.length === 1 ? signal.placeIds[0] : null,
       })),
   ];
   // Conductor is told the checks as they read here.
@@ -1152,7 +1164,7 @@ function RecordingChip({
   onOpen: () => void;
 }) {
   if (!entry) return null;
-  const status = entry.resolved.kind === "selected" || entry.resolved.kind === "primary" || entry.resolved.kind === "issue" ? entry.resolved.kind : "none";
+  const status = entry.resolved.kind;
   const label = recordingsContent.status[status];
   return (
     <button
@@ -1162,7 +1174,7 @@ function RecordingChip({
       aria-label={`${label}. ${copy.workspace.songPanel.open.replace("{title}", title)}`}
       className={cn(
         "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2 text-xs transition-colors hover:bg-paper",
-        status === "issue" ? "text-gold-dark" : status === "none" ? "text-muted" : "text-ink-soft",
+        status === "issue" ? "text-gold-dark" : status === "none" || status === "unset" ? "text-muted" : "text-ink-soft",
         open && "bg-paper text-ink",
       )}
     >

@@ -97,7 +97,7 @@ export async function lookUpRecording(input: unknown): Promise<ActionResult<Reco
   });
 }
 
-/** Adds a playable recording to a song. Never makes it the primary. */
+/** Adds a playable recording to a song. A song's first recording becomes its primary. */
 export async function addRecording(input: unknown): Promise<ActionResult<Recording>> {
   return withPermission(MANAGE, async (viewer) => {
     const parsed = addRecordingSchema.safeParse(input);

@@ -40,7 +40,7 @@ export function LearningScaleInput({
         <Track className="top-[0.6875rem]" />
         <div className="relative grid grid-cols-5">
           {LEARNING_STYLES.map((style) => (
-            <label key={style.value} className="group flex cursor-pointer flex-col items-center gap-2 px-1">
+            <label key={style.value} className="group relative flex cursor-pointer flex-col items-center gap-2 px-1">
               <input
                 type="radio"
                 name={name}

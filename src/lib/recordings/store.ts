@@ -189,8 +189,10 @@ export interface RecordingWrite {
 }
 
 /**
- * Adds a recording. It is never made the primary by being added - not even
- * a song's first: which recording is the standard one is always chosen.
+ * Adds a recording. A song's first recording becomes its primary, so a song
+ * with one recording plays it; a later one never takes over - changing the
+ * primary is always chosen. If two first recordings race, the one-primary
+ * index refuses the second as primary and it is added as an ordinary one.
  */
 export async function insertRecording(
   env: ClerkEnv,
@@ -198,28 +200,39 @@ export async function insertRecording(
   actor: string,
 ): Promise<{ ok: true; recording: Recording } | { ok: false; reason: "duplicate" }> {
   const sql = await recordingsSql();
-  const rows = (await sql.query(
-    `INSERT INTO song_recordings
-       (clerk_env, song_id, provider, media_id, source_url, title, source_name, description, arrangement, music_key,
-        visibility, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
-     ON CONFLICT (clerk_env, song_id, provider, media_id) DO NOTHING
-     RETURNING ${RECORDING_COLUMNS}`,
-    [
-      env,
-      write.songId,
-      write.provider,
-      write.mediaId,
-      write.sourceUrl,
-      write.title,
-      write.sourceName,
-      write.description,
-      write.arrangement,
-      write.musicKey,
-      write.visibility,
-      actor,
-    ],
-  )) as RecordingRow[];
+  const insert = async (mayBePrimary: boolean) =>
+    (await sql.query(
+      `INSERT INTO song_recordings
+         (clerk_env, song_id, provider, media_id, source_url, title, source_name, description, arrangement, music_key,
+          visibility, created_by, updated_by, is_primary)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12,
+         $13::boolean AND NOT EXISTS (SELECT 1 FROM song_recordings WHERE clerk_env = $1 AND song_id = $2 AND is_primary))
+       ON CONFLICT (clerk_env, song_id, provider, media_id) DO NOTHING
+       RETURNING ${RECORDING_COLUMNS}`,
+      [
+        env,
+        write.songId,
+        write.provider,
+        write.mediaId,
+        write.sourceUrl,
+        write.title,
+        write.sourceName,
+        write.description,
+        write.arrangement,
+        write.musicKey,
+        write.visibility,
+        actor,
+        mayBePrimary,
+      ],
+    )) as RecordingRow[];
+  let rows: RecordingRow[];
+  try {
+    rows = await insert(true);
+  } catch (error) {
+    // 23505: another first recording became the primary at the same moment.
+    if ((error as { code?: unknown } | null)?.code !== "23505") throw error;
+    rows = await insert(false);
+  }
   return rows[0] ? { ok: true, recording: toRecording(rows[0]) } : { ok: false, reason: "duplicate" };
 }
 

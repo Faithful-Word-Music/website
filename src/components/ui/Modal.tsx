@@ -68,7 +68,7 @@ export function Modal({
     >
       <div
         className={cn(
-          "mx-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift sm:max-h-[80vh]",
+          "mx-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-clip rounded-card border border-line bg-surface shadow-lift sm:max-h-[80vh]",
           size === "lg" ? "max-w-xl" : "max-w-lg",
           sheet
             ? "modal-sheet max-sm:max-h-[88dvh] max-sm:rounded-b-none max-sm:rounded-t-[1.25rem] max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[env(safe-area-inset-bottom)]"

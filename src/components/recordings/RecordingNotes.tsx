@@ -43,7 +43,8 @@ export function SourceAttribution({ recording, className }: { recording: Pick<Re
       {songCopy.source} {provider}
       {recording.sourceName ? <> — {recording.sourceName}</> : null}
       {" · "}
-      <ExternalLink href={recording.sourceUrl} showIcon className="underline decoration-dotted underline-offset-2 hover:text-ink">
+      {/* Raised: it stays its own link inside a row that plays when clicked (RecordingList). */}
+      <ExternalLink href={recording.sourceUrl} showIcon className="relative z-10 underline decoration-dotted underline-offset-2 hover:text-ink">
         {songCopy.original}
       </ExternalLink>
     </p>

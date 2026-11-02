@@ -56,9 +56,9 @@ describe("recordings schema", () => {
 });
 
 describe("primary recordings", () => {
-  it("adding a recording never makes it the primary", async () => {
+  it("adding a song's first recording makes it the primary, and only when there is none", async () => {
     db.query.mockResolvedValueOnce([
-      { id: "r1", song_id: "S1", provider: "youtube", media_id: "dQw4w9WgXcQ", source_url: "u", title: "t", source_name: null, description: null, arrangement: null, music_key: null, visibility: "public", is_primary: false, updated_at: new Date() },
+      { id: "r1", song_id: "S1", provider: "youtube", media_id: "dQw4w9WgXcQ", source_url: "u", title: "t", source_name: null, description: null, arrangement: null, music_key: null, visibility: "public", is_primary: true, updated_at: new Date() },
     ]);
     const { insertRecording } = await import("./store");
     const result = await insertRecording(
@@ -66,9 +66,9 @@ describe("primary recordings", () => {
       { songId: "S1", provider: "youtube", mediaId: "dQw4w9WgXcQ", sourceUrl: "u", title: "t", sourceName: null, description: null, arrangement: null, musicKey: null, visibility: "public" },
       "user_1",
     );
-    expect(result).toMatchObject({ ok: true, recording: { isPrimary: false } });
+    expect(result).toMatchObject({ ok: true, recording: { isPrimary: true } });
     const insert = db.query.mock.calls.find(([sql]) => /INSERT INTO song_recordings/.test(sql))!;
-    expect(insert[0].split("VALUES")[0]).not.toContain("is_primary");
+    expect(insert[0]).toContain("NOT EXISTS (SELECT 1 FROM song_recordings WHERE clerk_env = $1 AND song_id = $2 AND is_primary)");
     expect(insert[0]).toContain("ON CONFLICT (clerk_env, song_id, provider, media_id) DO NOTHING");
   });
 

@@ -6,7 +6,9 @@ import { isPlaylistCapable } from "./providers";
  *
  *   1. The recording chosen for this place of this service, when there is one.
  *   2. Otherwise the song's primary recording.
- *   3. Otherwise none - a normal state; the song stays on the list.
+ *   3. Otherwise nothing plays: "unset" when the song has recordings but none
+ *      is its primary (worth a quiet word to a planner), else "none" - a
+ *      normal state; the song stays on the list.
  *
  * A choice that cannot be honoured (the recording was deleted, or this viewer
  * may not see it) is reported as an issue. It never quietly falls back to the
@@ -26,22 +28,28 @@ export type IssueReason = "removed" | "unavailable" | "unsupported";
 export type Resolved =
   | { kind: "selected" | "primary"; recording: Recording }
   | { kind: "none" }
+  /** The song has playable recordings, but none is its primary. */
+  | { kind: "unset" }
   | { kind: "issue"; reason: IssueReason };
 
 /** The recordings a viewer may see, looked up both ways. */
 export interface RecordingCatalog {
   byId: ReadonlyMap<string, Recording>;
   primaryBySong: ReadonlyMap<string, Recording>;
+  /** Songs with at least one playable recording. */
+  songsWithRecordings: ReadonlySet<string>;
 }
 
 export function catalogOf(recordings: readonly Recording[]): RecordingCatalog {
   const byId = new Map<string, Recording>();
   const primaryBySong = new Map<string, Recording>();
+  const songsWithRecordings = new Set<string>();
   for (const recording of recordings) {
     byId.set(recording.id, recording);
     if (recording.isPrimary) primaryBySong.set(recording.songId, recording);
+    if (isPlaylistCapable(recording.provider)) songsWithRecordings.add(recording.songId);
   }
-  return { byId, primaryBySong };
+  return { byId, primaryBySong, songsWithRecordings };
 }
 
 /**
@@ -65,7 +73,7 @@ export function resolveRecording(songId: string | null, selection: SelectionStat
   }
   if (!songId) return { kind: "none" };
   const primary = catalog.primaryBySong.get(songId);
-  if (!primary || !isPlaylistCapable(primary.provider)) return { kind: "none" };
+  if (!primary || !isPlaylistCapable(primary.provider)) return { kind: catalog.songsWithRecordings.has(songId) ? "unset" : "none" };
   return { kind: "primary", recording: primary };
 }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import { cn } from "@/components/ui/cn";
@@ -30,7 +29,6 @@ export function SongRecordings({
   links: MediaLink[];
   className?: string;
 }) {
-  const router = useRouter();
   const songIds = useMemo(() => [songId], [songId]);
   const viewer = useViewerRecordings({ recordings, links }, songIds);
   const hasAny = viewer.recordings.length > 0 || viewer.links.length > 0;
@@ -46,10 +44,8 @@ export function SongRecordings({
         recordings={viewer.recordings}
         links={viewer.links}
         canManage={viewer.canManage}
-        onChanged={() => {
-          viewer.reload();
-          router.refresh();
-        }}
+        // The action itself refreshes the page's data (useAction); this re-reads the members-only ones.
+        onChanged={() => viewer.reload()}
         className="mt-4"
       />
       {hasAny ? <RecordingDisclaimer className="mt-5" /> : null}

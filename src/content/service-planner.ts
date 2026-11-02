@@ -336,6 +336,8 @@ export const servicePlannerContent = {
     /** Informational, one quiet line: many songs have no recording, and that is fine. */
     noRecordings: "No recording yet: {titles}.",
     noRecordingsAll: "None of these songs has a recording yet.",
+    /** Recordings were added, but none was made the primary: nothing plays until one is. */
+    noPrimary: "Recording not chosen: {titles}.",
   },
 
   availability: {

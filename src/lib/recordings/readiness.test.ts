@@ -56,6 +56,15 @@ describe("recording readiness in the planner", () => {
     expect(recordingSignals(slots, places, selections, catalog)).toEqual([]);
   });
 
+  it("tells a song whose recordings have no primary apart from one with none", () => {
+    const catalog = catalogOf([recording("r1", "S1", true), recording("r2", "S2")]);
+    expect(recordingSignals(slots, places, [], catalog)).toEqual([
+      { kind: "no-primary", placeIds: ["b"], titles: ["Holy, Holy, Holy"] },
+      { kind: "no-recordings", placeIds: ["d"], titles: ["Be Thou My Vision"], all: false },
+    ]);
+    expect(recordingCoverage(slots, places, [], catalog)).toEqual({ withRecording: 1, songs: 3 });
+  });
+
   it("follows a song moved to another position (the place ID moves with it)", () => {
     const selections: RecordingSelection[] = [{ date: "2026-11-08", slot: "AM", placeId: "a", songId: "S1", recordingId: "alt" }];
     const catalog = catalogOf([recording("main", "S1", true), recording("alt", "S1")]);
