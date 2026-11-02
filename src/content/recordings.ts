@@ -134,7 +134,7 @@ export const recordingsContent = {
     title: "Preparation Playlists",
     eyebrow: "Listen ahead",
     lead: "Listen to the songs for upcoming services, in the order they will be sung.",
-    monthLink: "{month} playlist",
+    monthLink: "Whole {month} playlist",
     serviceLink: "Listen",
     listenToService: "Listen to this service",
     songs: "{count} songs",

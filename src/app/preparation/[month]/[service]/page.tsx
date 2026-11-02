@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { PreparationPlayer } from "@/components/recordings/PreparationPlayer";
 import { BackLink } from "@/components/ui/BackLink";
+import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -51,15 +52,13 @@ export default async function PreparationServicePage({ params }: PageProps<"/pre
         <BackLink fallback={`/preparation/${month}`} />
         {found ? (
           <>
-            <SectionHeading as="h1" size="compact" eyebrow={found.service.dateLabel} title={found.service.title} className="mt-4" />
-            {/* Arrived from a song list card's Listen: the way on to the whole month's playlist. */}
-            <Link
-              href={`/preparation/${month}`}
-              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4 transition-colors hover:decoration-gold"
-            >
-              {copy.monthLink.replace("{month}", found.monthTitle)}
-              <span aria-hidden="true">→</span>
-            </Link>
+            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <SectionHeading as="h1" size="compact" eyebrow={found.service.dateLabel} title={found.service.title} />
+              {/* Arrived from a song list card's Listen: the way on to the whole month's playlist. */}
+              <ButtonLink href={`/preparation/${month}`} variant="secondary" className="shrink-0 self-start sm:self-auto">
+                {copy.monthLink.replace("{month}", found.monthTitle)}
+              </ButtonLink>
+            </div>
             <PreparationPlayer
               className="mt-6"
               recordings={found.recordings}
