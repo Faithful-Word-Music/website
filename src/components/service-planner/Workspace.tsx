@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 
 import { deleteSpecialService, publishServices, saveService, saveServiceLeaders, setServiceStatus } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -103,19 +103,6 @@ export interface WorkspaceProps {
   canManageSongs: boolean;
 }
 
-/** Whether the screen is wide enough for the song panel to sit beside the list (Tailwind's lg). */
-function useWide(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      const query = window.matchMedia("(min-width: 64rem)");
-      query.addEventListener("change", onChange);
-      return () => query.removeEventListener("change", onChange);
-    },
-    () => window.matchMedia("(min-width: 64rem)").matches,
-    () => true,
-  );
-}
-
 const STATUS_DOT: Record<"selected" | "primary" | "none" | "issue", string> = {
   selected: "bg-gold",
   primary: "bg-ink-soft",
@@ -214,11 +201,12 @@ export function Workspace(props: WorkspaceProps) {
 
   // --- the selected song, and its recordings ---------------------------------
 
-  /** The place whose song is open in the panel (by its stable ID, so it follows the song when moved). */
+  /** The place whose song's recordings are open in the dialog (by its stable ID, so it follows the song when moved). */
   const [selected, setSelected] = useState<string | null>(null);
+  /** The place a check pointed to: highlighted in the list, nothing opened. */
+  const [focused, setFocused] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const wide = useWide();
   const selectedIndex = selected ? places.indexOf(selected) : -1;
   const selectedSong = selectedIndex >= 0 ? slots[selectedIndex] : null;
   const recordingData = props.recordings;
@@ -231,7 +219,7 @@ export function Workspace(props: WorkspaceProps) {
   /** A recording is chosen for one place of the service as it is stored: never while songs are unsaved. */
   const chooseBlocked = props.revision === null ? recordingsContent.manage.errors.unsaved : songsDirty ? recordingsContent.manage.errors.unsaved : null;
   const focusPlace = (placeId: string) => {
-    setSelected(placeId);
+    setFocused(placeId);
     // Brought into view, and the reader told where they are.
     requestAnimationFrame(() => document.getElementById(`place-${placeId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   };
@@ -461,7 +449,7 @@ export function Workspace(props: WorkspaceProps) {
                   key={places[index]}
                   id={`place-${places[index]}`}
                   data-flip={`place-${places[index]}`}
-                  aria-current={selected === places[index] ? "true" : undefined}
+                  aria-current={focused === places[index] || selected === places[index] ? "true" : undefined}
                   // On a phone a song's key and buttons take a second line
                   // under its title, so the title keeps the width; from `sm`
                   // it is all one line.
@@ -470,7 +458,7 @@ export function Workspace(props: WorkspaceProps) {
                     // With AI, a column before the numbers holds each song's lock.
                     aiAvailable ? "grid-cols-[2.25rem_1.5rem_minmax(0,1fr)_auto] sm:pl-3" : "grid-cols-[1.5rem_minmax(0,1fr)_auto]",
                     song && isInsert(song) && "bg-paper/40",
-                    selected === places[index] && "bg-paper ring-1 ring-inset ring-gold/60",
+                    (focused === places[index] || selected === places[index]) && "bg-paper ring-1 ring-inset ring-gold/60",
                   )}
                 >
                   {song && isInsert(song) ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
@@ -514,7 +502,10 @@ export function Workspace(props: WorkspaceProps) {
                             entry={placeRecording(song, places[index], selections, catalog)}
                             title={song.title}
                             open={selected === places[index]}
-                            onOpen={() => setSelected(selected === places[index] ? null : places[index])}
+                            onOpen={() => {
+                              setFocused(null);
+                              setSelected(places[index]);
+                            }}
                           />
                         </div>
                       ) : null}
@@ -700,24 +691,6 @@ export function Workspace(props: WorkspaceProps) {
         </div>
 
         <aside className="space-y-6">
-          {/* The chosen song's recordings, beside the list (on a phone, a dialog - below). */}
-          {wide && selectedSong && selected && recordingData ? (
-            <SongPanel
-              song={selectedSong}
-              position={selectedIndex + 1}
-              recordings={recordingData.recordings}
-              links={recordingData.links}
-              canManage={props.canManageSongs}
-              service={{
-                anchor: service.anchor,
-                placeId: selected,
-                planRevision: props.revision,
-                selection: placeRecording(selectedSong, selected, selections, catalog)?.selection ?? { kind: "none" },
-                blocked: editable ? chooseBlocked : ws.locked,
-              }}
-              onClose={() => setSelected(null)}
-            />
-          ) : null}
           <Checks
             signals={signals}
             recordingSignals={recordingChecks}
@@ -868,8 +841,9 @@ export function Workspace(props: WorkspaceProps) {
         </Modal>
       ) : null}
 
-      {!wide && selectedSong && selected && recordingData ? (
-        <Modal title={selectedSong.title} closeLabel={ws.songPanel.close} onClose={() => setSelected(null)} size="lg">
+      {/* The chosen song's recordings: a dialog over the list, at any width - plainly what was opened, and for which song. */}
+      {selectedSong && selected && recordingData ? (
+        <Modal title={selectedSong.title} closeLabel={ws.songPanel.close} onClose={() => setSelected(null)} size="lg" sheet>
           <SongPanel
             bare
             song={selectedSong}
@@ -1184,7 +1158,7 @@ function RecordingChip({
     <button
       type="button"
       onClick={onOpen}
-      aria-expanded={open}
+      aria-haspopup="dialog"
       aria-label={`${label}. ${copy.workspace.songPanel.open.replace("{title}", title)}`}
       className={cn(
         "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2 text-xs transition-colors hover:bg-paper",

@@ -30,7 +30,10 @@ export function ServiceRail({ services, current, className }: { services: RailSe
   return (
     <nav aria-label={rail.label} className={cn("flex items-center gap-2", className)}>
       <RailArrow service={previous} label={rail.previous} direction="previous" />
-      <ol className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+      {/* `relative`: the chips' sr-only words are absolutely placed; without it they escape the scroll
+          and stretch the whole page sideways by the width of the services out of view. */}
+      <ol className="relative flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1">
+
         {services.map((service) => {
           const here = service.anchor === current;
           return (

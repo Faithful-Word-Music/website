@@ -2,9 +2,9 @@
 
 import { songIdentity } from "@/lib/song-identity";
 
-import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 
+import { ListenLink } from "@/components/recordings/ListenLink";
 import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { useCardLeaders } from "@/components/song-list/SongLeaders";
@@ -13,7 +13,6 @@ import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { ReportLink } from "@/components/support/ReportLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
-import { recordingsContent } from "@/content/recordings";
 import { songListContent } from "@/content/song-list";
 import { supportContent } from "@/content/support";
 import { serviceName } from "@/lib/share-services";
@@ -288,16 +287,7 @@ export function ServiceCard({
         <div className="mt-3 flex items-center justify-between gap-3">
           {/* Upcoming: its Preparation Playlist, open to everyone. */}
           {!past ? (
-            <Link
-              href={`/preparation/${service.date.slice(0, 7)}/${service.id}`}
-              className="inline-flex min-h-10 items-center gap-1.5 text-sm font-medium text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink print:hidden"
-            >
-              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7 5l12 7-12 7V5z" />
-              </svg>
-              {recordingsContent.preparation.serviceLink}
-              <span className="sr-only"> — {recordingsContent.preparation.title}</span>
-            </Link>
+            <ListenLink href={`/preparation/${service.date.slice(0, 7)}/${service.id}`} />
           ) : (
             <span />
           )}

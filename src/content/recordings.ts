@@ -115,6 +115,7 @@ export const recordingsContent = {
     blocked: "Press play to continue.",
     finished: "That's the end of the playlist.",
     nothingPlayable: "None of these songs has a recording yet.",
+    nothingPlayableNote: "The songs are listed in order. Recordings will appear here as they are added.",
     loading: "Loading…",
     of: "{current} of {total}",
     keepAwake: {

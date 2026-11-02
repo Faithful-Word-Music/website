@@ -15,6 +15,7 @@ import type { WakeLockStatus } from "@/lib/recordings/wake-lock";
 
 import { recordingDetails, RecordingDisclaimer, RecordingReminder, SourceAttribution } from "./RecordingNotes";
 import { useKeepAwake } from "./use-keep-awake";
+import { useStickyFit } from "./use-sticky-fit";
 import { useViewerRecordings } from "./use-viewer-recordings";
 import { YouTubePlayer } from "./YouTubePlayer";
 
@@ -95,6 +96,8 @@ export function PreparationPlayer({
     send(event);
   }, []);
 
+  const [stickyRef, stickyTop] = useStickyFit<HTMLDivElement>();
+
   const statusLine =
     state.status === "blocked"
       ? copy.blocked
@@ -103,9 +106,7 @@ export function PreparationPlayer({
         : state.status === "loading"
           ? copy.loading
           : !current
-            ? anyPlayable
-              ? copy.nothingPlaying
-              : copy.nothingPlayable
+            ? copy.nothingPlaying
             : null;
 
   const controls = (compact: boolean) => (
@@ -136,64 +137,87 @@ export function PreparationPlayer({
 
   return (
     <div className={cn("grid gap-6", !stacked && "lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start", className)}>
-      <Card className={cn("p-4 sm:p-5", !stacked && "lg:sticky lg:top-24")}>
-        {draft ? (
-          <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
-            {recordingsContent.planner.previewTitle}
-          </p>
-        ) : null}
-        {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
-        {playerHeld ? (
-          <YouTubePlayer
-            mediaId={currentRecording?.mediaId ?? null}
-            playing={wantsPlaying}
-            loadKey={loadKey}
-            title={currentRecording?.title ?? copy.nothingPlaying}
-            onStarted={() => send({ type: "STARTED" })}
-            onPaused={() => send({ type: "PAUSED" })}
-            onEnded={() => send({ type: "ENDED" })}
-            onError={() => send({ type: "ERROR" })}
-            onBlocked={() => send({ type: "BLOCKED" })}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => act({ type: "PLAY_ALL" })}
-            disabled={!anyPlayable}
-            className="group flex aspect-video w-full items-center justify-center rounded-lg bg-ink/90 text-paper transition-colors enabled:hover:bg-ink disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <span className="flex flex-col items-center gap-2">
-              <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-paper/15 transition-transform group-enabled:group-hover:scale-105">
-                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M7 5l12 7-12 7V5z" />
+      <div
+        ref={stacked ? undefined : stickyRef}
+        style={stacked || stickyTop === undefined ? undefined : { top: stickyTop }}
+        className={cn(!stacked && "lg:sticky lg:top-24")}
+      >
+        <Card className="p-4 sm:p-5">
+          {draft ? (
+            <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
+              {recordingsContent.planner.previewTitle}
+            </p>
+          ) : null}
+          {!anyPlayable ? (
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18V5l12-2v13" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="16" r="3" />
                 </svg>
               </span>
-              <span className="text-sm font-medium">{anyPlayable ? copy.playAll : copy.nothingPlayable}</span>
-            </span>
-          </button>
-        )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{copy.nothingPlayable}</p>
+                <p className="mt-0.5 text-sm text-muted">{copy.nothingPlayableNote}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
+              {playerHeld ? (
+                <YouTubePlayer
+                  mediaId={currentRecording?.mediaId ?? null}
+                  playing={wantsPlaying}
+                  loadKey={loadKey}
+                  title={currentRecording?.title ?? copy.nothingPlaying}
+                  onStarted={() => send({ type: "STARTED" })}
+                  onPaused={() => send({ type: "PAUSED" })}
+                  onEnded={() => send({ type: "ENDED" })}
+                  onError={() => send({ type: "ERROR" })}
+                  onBlocked={() => send({ type: "BLOCKED" })}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => act({ type: "PLAY_ALL" })}
+                  className="group flex aspect-video w-full items-center justify-center rounded-lg bg-stage text-on-stage transition-colors hover:bg-stage/90"
+                >
+                  <span className="flex flex-col items-center gap-2">
+                    <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-on-stage/15 transition-transform group-hover:scale-105">
+                      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7 5l12 7-12 7V5z" />
+                      </svg>
+                    </span>
+                    <span className="text-sm font-medium">{copy.playAll}</span>
+                  </span>
+                </button>
+              )}
 
-        <div className="mt-4 flex items-start justify-between gap-4">
-          <div className="min-w-0" aria-live="polite">
-            {current && currentRecording ? (
-              <>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
-                  {copy.nowPlaying} · {copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))}
-                </p>
-                <p className="mt-1 truncate font-display text-xl text-ink">{current.title}</p>
-                <p className="truncate text-sm text-ink-soft">{currentRecording.title}</p>
-                {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
-              </>
-            ) : null}
-            {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
-          </div>
-          {controls(false)}
-        </div>
-        {currentRecording ? <SourceAttribution recording={currentRecording} className="mt-2" /> : null}
-        <RecordingReminder className="mt-1" />
-        <KeepAwakeSetting {...keepAwake} className="mt-4 border-t border-line pt-4" />
-        <RecordingDisclaimer className="mt-4" />
-      </Card>
+              <div className="mt-4 flex items-start justify-between gap-4">
+                <div className="min-w-0" aria-live="polite">
+                  {current && currentRecording ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
+                        {copy.nowPlaying} · {copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))}
+                      </p>
+                      <p className="mt-1 truncate font-display text-xl text-ink">{current.title}</p>
+                      <p className="truncate text-sm text-ink-soft">{currentRecording.title}</p>
+                      {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
+                    </>
+                  ) : null}
+                  {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
+                </div>
+                {controls(false)}
+              </div>
+              {currentRecording ? <SourceAttribution recording={currentRecording} className="mt-2" /> : null}
+              <RecordingReminder className="mt-1" />
+              <KeepAwakeSetting {...keepAwake} className="mt-4 border-t border-line pt-4" />
+            </>
+          )}
+          <RecordingDisclaimer className="mt-4" />
+        </Card>
+      </div>
 
       <div className="space-y-6">
         {sections.map((section) => (

@@ -145,7 +145,7 @@ export function YouTubePlayer({
   }, [failed, mediaId]);
 
   return (
-    <div className={cn("relative aspect-video w-full overflow-hidden rounded-lg bg-ink/90", className)}>
+    <div className={cn("relative aspect-video w-full overflow-hidden rounded-lg bg-stage", className)}>
       <div ref={host} title={title} className="absolute inset-0 [&_iframe]:h-full [&_iframe]:w-full" />
     </div>
   );

@@ -21,6 +21,7 @@ export function Modal({
   footer,
   size = "md",
   bare = false,
+  sheet = false,
   bodyClassName,
   children,
 }: {
@@ -32,6 +33,13 @@ export function Modal({
   /** md: forms and help (32rem); lg: lists (36rem). */
   size?: "md" | "lg";
   bare?: boolean;
+  /**
+   * On a phone, a sheet that rises from the foot of the screen instead of a
+   * panel near the top; from `sm` the usual dialog. For something opened from
+   * a row in a list. Not for forms that are mostly typing: a sheet at the foot
+   * can sit under the phone's keyboard (Conductor's sheet handles that itself).
+   */
+  sheet?: boolean;
   bodyClassName?: string;
   children: ReactNode;
 }) {
@@ -53,13 +61,18 @@ export function Modal({
       }}
       className={cn(
         "fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none bg-transparent p-4 backdrop:bg-black/45 backdrop:backdrop-blur-[2px] sm:px-6 sm:pt-[10vh]",
+        // `open:` - a closed <dialog> must keep the browser's display: none.
+        sheet && "max-sm:p-0 max-sm:open:flex max-sm:open:items-end",
         modalDialogFocusClasses,
       )}
     >
       <div
         className={cn(
-          "animate-enter mx-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift sm:max-h-[80vh]",
+          "mx-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift sm:max-h-[80vh]",
           size === "lg" ? "max-w-xl" : "max-w-lg",
+          sheet
+            ? "modal-sheet max-sm:max-h-[88dvh] max-sm:rounded-b-none max-sm:rounded-t-[1.25rem] max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[env(safe-area-inset-bottom)]"
+            : "animate-enter",
         )}
       >
         <header className="flex items-start justify-between gap-4 border-b border-line px-5 pb-4 pt-5">

@@ -47,13 +47,13 @@ export default async function PreparationServicePage({ params }: PageProps<"/pre
 
   return (
     <PageTransition>
-      <Container size="wide" className="pb-28 pt-10 sm:pb-20 sm:pt-14">
+      <Container size="wide" className="pb-28 pt-6 sm:pb-20 sm:pt-8">
         <BackLink fallback={`/preparation/${month}`} />
         {found ? (
           <>
-            <SectionHeading as="h1" eyebrow={found.service.dateLabel} title={found.service.title} className="mt-6 max-w-2xl" />
+            <SectionHeading as="h1" size="compact" eyebrow={found.service.dateLabel} title={found.service.title} className="mt-4" />
             <PreparationPlayer
-              className="mt-8"
+              className="mt-6"
               recordings={found.recordings}
               sections={[{ id: found.service.id, title: copy.order, items: found.service.items }]}
             />

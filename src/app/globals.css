@@ -28,6 +28,15 @@
   }
 }
 
+/* A phone with little height (an iPhone SE, or any phone with the browser's
+   bars showing): things meant to fit one screen, like the Song List's Next
+   card, tighten up. Taller phones keep the roomier spacing. */
+@custom-variant short-phone {
+  @media (width < 40rem) and (height < 46rem) {
+    @slot;
+  }
+}
+
 /* While Conductor's floating button is showing (ConductorDock marks <html>
    with data-conductor="launcher") - and not stepped aside for the share bar.
    "Back to top" sits above it. */
@@ -87,6 +96,11 @@
   --color-staff: #d8d7d1;
   --color-gold: #b08d57;
   --color-gold-dark: #84683f;
+
+  /* Video stage - dark in both themes on purpose (a video frame is always
+     dark), so dark mode does not redefine these. */
+  --color-stage: #111111;
+  --color-on-stage: #faf9f6;
 
   /* Typography - wired up in src/app/layout.tsx */
   --font-display: var(--font-source-serif), Georgia, "Times New Roman", serif;
@@ -213,6 +227,40 @@ html {
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* Scrollbars, the page's and every scrolling box's: thin, with a soft
+     thumb in the theme's muted ink on no track, in both themes. In the base
+     layer, so a utility like [scrollbar-width:none] still wins. Browsers
+     without the standard properties (older Safari) get the same look below. */
+  html {
+    scrollbar-color: color-mix(in srgb, var(--color-muted) 50%, transparent) transparent;
+  }
+
+  * {
+    scrollbar-width: thin;
+  }
+
+  @supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 9999px;
+      background-clip: padding-box;
+      background-color: color-mix(in srgb, var(--color-muted) 50%, transparent);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: color-mix(in srgb, var(--color-muted) 80%, transparent);
+    }
   }
 
   body {
@@ -507,6 +555,18 @@ html[data-packets] .packet-slot {
    in. Only newly added elements animate; ones already showing stay still. */
 .animate-enter {
   animation: enter-fade-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* A Modal with `sheet`: on a phone it rises from the foot of the screen with
+   the soft settle of Conductor's sheet; from `sm` it arrives like any dialog. */
+.modal-sheet {
+  animation: enter-fade-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (width < 40rem) {
+  .modal-sheet {
+    animation: conductor-sheet-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
 }
 
 /* A small icon swapping for another (Select -> Cancel): a quick settle into place. */

@@ -2,6 +2,9 @@
 
 import { songIdentity } from "@/lib/song-identity";
 
+import { ListenLink } from "@/components/recordings/ListenLink";
+import { ReportLink } from "@/components/support/ReportLink";
+import { supportContent } from "@/content/support";
 import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
@@ -24,7 +27,9 @@ import type { Service } from "@/types/song-list";
  *
  * On a phone it is sized to fit one screen under the site header: tighter
  * padding, the countdown on the same line as the time, and song rows a size
- * down. From `sm` up it has room to breathe.
+ * down. On a short phone (`short-phone`, globals.css) the padding and rows
+ * tighten again, so the sheet music and the footer still fit on the screen.
+ * From `sm` up it has room to breathe.
  */
 export function NextServiceSpotlight({
   current,
@@ -57,16 +62,16 @@ export function NextServiceSpotlight({
 
   return (
     <section aria-labelledby={headingId}>
-      <Card className="relative overflow-hidden p-5 sm:p-8 lg:p-10">
+      <Card className="relative overflow-hidden p-5 short-phone:p-4 sm:p-8 lg:p-10">
         {/* Gold rule across the top: the one strong accent on the page. */}
         <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gold" />
 
-        <div className="grid grid-cols-1 gap-5 sm:gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
+        <div className="grid grid-cols-1 gap-5 short-phone:gap-3 sm:gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
           <div>
             <p className="flex flex-wrap items-center gap-3">
               <StatusPill status={isNow ? "now" : "next"} />
               <span className="sr-only">{isNow ? spotlight.nowEyebrow : spotlight.nextEyebrow}: </span>
-              <span className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-gold-dark">
+              <span className="font-sans text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-gold-dark sm:tracking-[0.18em]">
                 {weekday ?? ""}
                 {weekday && featured.serviceLabel ? " · " : ""}
                 {featured.serviceLabel ?? ""}
@@ -75,13 +80,13 @@ export function NextServiceSpotlight({
 
             <h2
               id={headingId}
-              className="mt-3 font-display text-3xl leading-tight text-ink sm:mt-4 sm:text-5xl"
+              className="mt-3 font-display text-3xl leading-tight text-ink short-phone:mt-2 sm:mt-4 sm:text-5xl"
             >
               {day ?? featured.dateLabel}
             </h2>
             {/* On a phone the countdown follows the time on the same line;
                 from sm up it takes its own line beneath. */}
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 sm:block">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 short-phone:mt-1 sm:block">
               <p className="text-base text-ink-soft sm:text-lg">
                 <ServiceTime startsAt={featured.startsAt} />
               </p>
@@ -116,12 +121,12 @@ export function NextServiceSpotlight({
                 // small grey line; the viewer's own says "Led by you", in gold.
                 const leader = leaders && !leaders.service ? leaders.rows[index + 1] : undefined;
                 const note = leader !== undefined ? <SongLeaderNote leader={leader} /> : undefined;
-                const row = "flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5";
+                const row = "flex items-baseline gap-2.5 py-2.5 short-phone:py-1.5 sm:gap-4 sm:py-3.5";
                 // A slot not filled in yet keeps its place among the songs.
                 if (!song) {
                   return (
                     <li key={index} className={row}>
-                      <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                      <span aria-hidden="true" className="w-7 shrink-0 sm:w-12" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-base italic text-muted sm:text-xl">{songListContent.states.pendingSong}</span>
                         {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
@@ -134,18 +139,18 @@ export function NextServiceSpotlight({
 
                 return (
                   <li key={index} className={row}>
-                    <span className="tnum w-9 shrink-0 text-right font-display text-lg text-gold-dark sm:w-12 sm:text-2xl">
+                    <span className="tnum w-7 shrink-0 text-right font-display text-base text-gold-dark sm:w-12 sm:text-2xl">
                       {song.number ?? <span aria-hidden="true">·</span>}
                       {song.number ? null : <span className="sr-only">No number</span>}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-base leading-snug text-ink sm:text-xl"><SongLink {...songRef(song)} /></span>
+                      <span className="block text-base leading-snug text-ink short-phone:text-[0.95rem] sm:text-xl"><SongLink {...songRef(song)} /></span>
                       {/* Who leads it, on a line of its own - "Last sung" is the song's, not the leader's. */}
                       {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
                       {hint ? <SongHintText hint={hint} now={now} /> : null}
                     </span>
                     {song.key ? (
-                      <span className="tnum shrink-0 rounded-md border border-line px-2 py-0.5 text-sm font-medium text-ink-soft">
+                      <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft sm:px-2 sm:text-sm">
                         <span className="sr-only">Key of </span>
                         {song.key}
                       </span>
@@ -154,16 +159,16 @@ export function NextServiceSpotlight({
                 );
               })}
               {featured.songs.length === 0 && featured.pendingSongs === 0 ? (
-                <li className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
-                  <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                <li className="flex items-baseline gap-2.5 py-2.5 short-phone:py-1.5 sm:gap-4 sm:py-3.5">
+                  <span aria-hidden="true" className="w-7 shrink-0 sm:w-12" />
                   <span className="text-base italic text-muted sm:text-xl">
                     {songListContent.states.notPosted}
                   </span>
                 </li>
               ) : null}
               {featured.plannedInserts?.map((song) => (
-                <li key={song.title} className="flex items-baseline gap-3 py-2.5 sm:gap-4 sm:py-3.5">
-                  <span aria-hidden="true" className="w-9 shrink-0 sm:w-12" />
+                <li key={song.title} className="flex items-baseline gap-2.5 py-2.5 short-phone:py-1.5 sm:gap-4 sm:py-3.5">
+                  <span aria-hidden="true" className="w-7 shrink-0 sm:w-12" />
                   <PlannedInsert song={song} className="min-w-0 flex-1" />
                 </li>
               ))}
@@ -171,8 +176,17 @@ export function NextServiceSpotlight({
             <ServicePacketSlot
               serviceId={featured.id}
               label={[featured.dateLabel, featured.serviceLabel].filter(Boolean).join(" · ")}
-              className="pt-3 sm:pt-5"
+              className="pt-3 short-phone:pt-2 sm:pt-5"
             />
+            {/* The same footer as the service cards: its playlist (while it is still to come) and a report link. */}
+            {featured.date && featured.songs.length > 0 ? (
+              <div className="mt-3 flex items-center justify-between gap-3 short-phone:mt-1">
+                {!isNow ? <ListenLink href={`/preparation/${featured.date.slice(0, 7)}/${featured.id}`} /> : <span />}
+                <ReportLink entry="problem" refs={{ service: featured.id }}>
+                  {supportContent.report.problem}
+                </ReportLink>
+              </div>
+            ) : null}
           </div>
         </div>
       </Card>

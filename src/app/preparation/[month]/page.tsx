@@ -50,20 +50,21 @@ export default async function PreparationMonthPage({ params }: PageProps<"/prepa
 
   return (
     <PageTransition>
-      <Container size="wide" className="pb-28 pt-10 sm:pb-20 sm:pt-14">
+      <Container size="wide" className="pb-28 pt-6 sm:pb-20 sm:pt-8">
         <BackLink fallback="/preparation" />
         {found ? (
           <>
             <SectionHeading
               as="h1"
+              size="compact"
               eyebrow={copy.title}
               title={copy.monthTitle.replace("{month}", found.month.title)}
-              className="mt-6 max-w-2xl"
+              className="mt-4"
             >
-              <p className="text-base sm:text-lg">{copy.lead}</p>
+              <p className="text-base">{copy.lead}</p>
             </SectionHeading>
             <PreparationPlayer
-              className="mt-8"
+              className="mt-6"
               recordings={found.recordings}
               sections={found.month.services.map((service) => ({
                 id: service.id,

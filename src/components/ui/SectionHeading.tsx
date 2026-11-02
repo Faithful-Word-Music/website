@@ -11,6 +11,7 @@ export function SectionHeading({
   title,
   as: Tag = "h2",
   align = "left",
+  size = "page",
   className,
   children,
 }: {
@@ -18,6 +19,8 @@ export function SectionHeading({
   title: ReactNode;
   as?: "h1" | "h2" | "h3";
   align?: "left" | "center";
+  /** "compact" for tool pages, where the content should start high on the screen. */
+  size?: "page" | "compact";
   className?: string;
   children?: ReactNode;
 }) {
@@ -27,7 +30,7 @@ export function SectionHeading({
       <Tag
         className={cn(
           "text-balance font-display text-ink",
-          Tag === "h1"
+          Tag === "h1" && size === "page"
             ? "text-4xl sm:text-5xl lg:text-6xl"
             : "text-3xl sm:text-4xl",
         )}
@@ -37,7 +40,8 @@ export function SectionHeading({
       {children ? (
         <div
           className={cn(
-            "mt-5 space-y-4 text-lg leading-relaxed text-muted",
+            size === "compact" ? "mt-2" : "mt-5",
+            "space-y-4 text-lg leading-relaxed text-muted",
             align === "center" && "mx-auto max-w-2xl",
           )}
         >
