@@ -99,7 +99,7 @@ function Ended() {
   return (
     <Card className="mt-8 p-8 text-center sm:p-12">
       <p className="mx-auto max-w-md text-muted">{copy.expired}</p>
-      <Link href="/playlists" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4">
+      <Link href="/playlists" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark">
         {copy.allMonths}
       </Link>
     </Card>

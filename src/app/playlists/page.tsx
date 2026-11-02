@@ -54,9 +54,12 @@ export default async function PreparationPage() {
                   </h2>
                   <Link
                     href={`/playlists/${month.month}`}
-                    className="text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4 hover:text-gold-dark"
+                    className="group inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-ink"
                   >
-                    {copy.monthLink.replace("{month}", month.title)} →
+                    {copy.monthLink.replace("{month}", month.title)}
+                    <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+                      →
+                    </span>
                   </Link>
                 </div>
                 <Card className="mt-4">
