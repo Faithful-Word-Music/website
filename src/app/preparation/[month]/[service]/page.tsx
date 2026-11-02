@@ -24,7 +24,7 @@ async function findService(month: string, anchor: string) {
   const data = await getPreparation();
   const entry = data.months.find((item) => item.month === month);
   const service = entry?.services.find((item) => item.id === anchor) ?? null;
-  return service ? { service, recordings: data.recordings } : null;
+  return service && entry ? { service, monthTitle: entry.title, recordings: data.recordings } : null;
 }
 
 export async function generateMetadata({ params }: PageProps<"/preparation/[month]/[service]">): Promise<Metadata> {
@@ -52,6 +52,14 @@ export default async function PreparationServicePage({ params }: PageProps<"/pre
         {found ? (
           <>
             <SectionHeading as="h1" size="compact" eyebrow={found.service.dateLabel} title={found.service.title} className="mt-4" />
+            {/* Arrived from a song list card's Listen: the way on to the whole month's playlist. */}
+            <Link
+              href={`/preparation/${month}`}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4 transition-colors hover:decoration-gold"
+            >
+              {copy.monthLink.replace("{month}", found.monthTitle)}
+              <span aria-hidden="true">→</span>
+            </Link>
             <PreparationPlayer
               className="mt-6"
               recordings={found.recordings}

@@ -11,7 +11,13 @@
 import { dashboardContent } from "@/content/dashboard";
 import { availabilityHref } from "@/lib/availability/format";
 import type { VisibleLeadership } from "@/lib/leadership/access";
-import { cardLeaderView, type CardLeaderView, type LeadershipProblem, type MyAssignment } from "@/lib/leadership/board";
+import {
+  cardLeaderView,
+  type CardLeaderView,
+  type LeadershipProblem,
+  type MyAssignment,
+  type RosterPeople,
+} from "@/lib/leadership/board";
 import { positionsLabel } from "@/lib/leadership/model";
 import { plural } from "@/lib/plural";
 import { serviceHeadline } from "@/lib/service-planner/format";
@@ -22,7 +28,7 @@ import type { DashboardFocus } from "./focus";
 
 const copy = dashboardContent.leading;
 
-export type Rosters = ReadonlyMap<string, VisibleLeadership & { names: Array<string | null> }>;
+export type Rosters = ReadonlyMap<string, VisibleLeadership & RosterPeople>;
 /** What a Coming up card shows of its leaders. */
 export interface CardLeaders {
   /**
@@ -42,7 +48,11 @@ export function cardLeaders(service: Pick<ComingUpService, "id">, rosters: Roste
   const view =
     roster.access === "own"
       ? null
-      : cardLeaderView(roster.names.map((name, index) => (name ? { name, mine: mine.has(index + 1) } : null)));
+      : cardLeaderView(
+          roster.names.map((name, index) =>
+            name ? { name, mine: mine.has(index + 1), imageUrl: roster.images?.[index] ?? null } : null,
+          ),
+        );
   if (!view && roster.mine.length === 0) return null;
   return { view, mine: roster.mine };
 }

@@ -5,8 +5,8 @@ import { songIdentity } from "@/lib/song-identity";
 import { ListenLink } from "@/components/recordings/ListenLink";
 import { ReportLink } from "@/components/support/ReportLink";
 import { supportContent } from "@/content/support";
-import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
-import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
+import { PlannedInsert, ServiceTime, SongHintText, SongMeta, StatusPill } from "@/components/song-list/ServiceBits";
+import { LeaderTag, ServiceLeaderLine } from "@/components/song-list/LeaderCaption";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { useCardLeaders } from "@/components/song-list/SongLeaders";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
@@ -117,10 +117,10 @@ export function NextServiceSpotlight({
           <div>
             <ol className="divide-y divide-line border-y border-line lg:border-t-0">
               {serviceSlots(featured).map((song, index) => {
-                // Not one person for the whole service: each song says who leads it, first on its
-                // small grey line; the viewer's own says "Led by you", in gold.
+                // Not one person for the whole service: each song carries its leader's tag, with
+                // their photo, at the start of its second line; the viewer's own says "You", in gold.
                 const leader = leaders && !leaders.service ? leaders.rows[index + 1] : undefined;
-                const note = leader !== undefined ? <SongLeaderNote leader={leader} /> : undefined;
+                const tag = leader !== undefined ? <LeaderTag leader={leader} /> : undefined;
                 const row = "flex items-baseline gap-2.5 py-2.5 short-phone:py-1.5 sm:gap-4 sm:py-3.5";
                 // A slot not filled in yet keeps its place among the songs.
                 if (!song) {
@@ -129,7 +129,7 @@ export function NextServiceSpotlight({
                       <span aria-hidden="true" className="w-7 shrink-0 sm:w-12" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-base italic text-muted sm:text-xl">{songListContent.states.pendingSong}</span>
-                        {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
+                        <SongMeta leader={tag} />
                       </span>
                     </li>
                   );
@@ -145,12 +145,12 @@ export function NextServiceSpotlight({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-base leading-snug text-ink short-phone:text-[0.95rem] sm:text-xl"><SongLink {...songRef(song)} /></span>
-                      {/* Who leads it, on a line of its own - "Last sung" is the song's, not the leader's. */}
-                      {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
-                      {hint ? <SongHintText hint={hint} now={now} /> : null}
+                      {/* Who leads it (a tag), then "Last sung" (the song's) - never one sentence. */}
+                      <SongMeta hint={hint ? <SongHintText hint={hint} now={now} inline /> : null} leader={tag} />
                     </span>
                     {song.key ? (
-                      <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft sm:px-2 sm:text-sm">
+                      // One width for every key, so the leader tags beside them line up.
+                      <span className="tnum min-w-8 shrink-0 rounded-md border border-line px-1.5 py-0.5 text-center text-xs font-medium text-ink-soft sm:min-w-9 sm:px-2 sm:text-sm">
                         <span className="sr-only">Key of </span>
                         {song.key}
                       </span>

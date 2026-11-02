@@ -5,10 +5,10 @@ import { songIdentity } from "@/lib/song-identity";
 import type { MouseEvent, ReactNode } from "react";
 
 import { ListenLink } from "@/components/recordings/ListenLink";
-import { PlannedInsert, ServiceTime, SongHintText, StatusPill } from "@/components/song-list/ServiceBits";
+import { PlannedInsert, ServiceTime, SongHintText, SongMeta, StatusPill } from "@/components/song-list/ServiceBits";
 import { ServicePacketSlot } from "@/components/song-list/ServicePackets";
 import { useCardLeaders } from "@/components/song-list/SongLeaders";
-import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
+import { LeaderTag, ServiceLeaderLine } from "@/components/song-list/LeaderCaption";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { ReportLink } from "@/components/support/ReportLink";
 import { Card } from "@/components/ui/Card";
@@ -222,17 +222,17 @@ export function ServiceCard({
               row, so a song already chosen for the third slot shows third. */}
           {rows.map((song, index) => {
             // Signed in: who leads each song, when it is not one person for the whole service
-            // (cardLeaderView) - at the start of the song's small grey line. The viewer's own: gold.
+            // (cardLeaderView) - a tag with their photo, at the start of the song's second line.
             const leader = leaders && !leaders.service ? leaders.rows[index + 1] : undefined;
 
-            const note = leader !== undefined ? <SongLeaderNote leader={leader} past={past} /> : undefined;
+            const tag = leader !== undefined ? <LeaderTag leader={leader} past={past} /> : undefined;
             if (!song) {
               return (
                 <tr key={`${service.id}-${index}`} className="align-baseline border-line [&:not(:last-child)]:border-b">
                   <td className="py-2.5 pr-3" />
                   <td className="py-2.5 pr-3">
                     <span className="text-[0.95rem] italic text-muted sm:text-base">{songListContent.states.pendingSong}</span>
-                    {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
+                    <SongMeta leader={tag} />
                   </td>
                   <td className="py-2.5" />
                 </tr>
@@ -253,9 +253,8 @@ export function ServiceCard({
                 </td>
                 <td className="py-2.5 pr-3 text-[0.95rem] leading-snug sm:text-base">
                   <SongLink {...songRef(song)} />
-                  {/* Who leads it, on a line of its own - "Last sung" is the song's, not the leader's. */}
-                  {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
-                  {hint ? <SongHintText hint={hint} now={now} /> : null}
+                  {/* Who leads it (a tag), then "Last sung" (the song's) - never one sentence. */}
+                  <SongMeta hint={hint ? <SongHintText hint={hint} now={now} inline /> : null} leader={tag} />
                 </td>
                 <td
                   className={cn("tnum py-2.5 text-right text-sm font-medium sm:text-base", past ? "text-muted" : "text-gold-dark")}

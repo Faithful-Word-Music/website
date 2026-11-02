@@ -118,6 +118,7 @@ export async function loadLeaderPeople(env: ClerkEnv, assigned: readonly string[
         name,
         eligible: Boolean(record && account && !account.banned && !account.locked),
         normal: record?.normal ?? [],
+        imageUrl: account?.hasImage ? account.imageUrl : null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

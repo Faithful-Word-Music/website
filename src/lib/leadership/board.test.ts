@@ -174,14 +174,14 @@ describe("the song list's leaders", () => {
   it("are names beside every place of a published service - never an account or place ID, never a draft", () => {
     const leaders = songListLeaders(board([published, draft]), musician, NOW);
     expect(leaders.map((item) => item.anchor)).toEqual(["2026-11-08-pm"]);
-    const alex = { name: "Alex", mine: false };
+    const alex = { name: "Alex", mine: false, imageUrl: null };
     expect(leaders[0].places).toEqual([
       { title: "Amazing Grace", leader: alex },
       { title: "Holy, Holy, Holy", leader: alex },
       { title: "Psalm 120", leader: alex },
       // An empty place is a row on the song list too ("to be announced").
       { title: null, leader: alex },
-      { title: "Be Thou My Vision", leader: { name: "Brian", mine: false } },
+      { title: "Be Thou My Vision", leader: { name: "Brian", mine: false, imageUrl: null } },
     ]);
     const text = JSON.stringify(leaders);
     expect(text).not.toContain("user_");
@@ -190,13 +190,13 @@ describe("the song list's leaders", () => {
 
   it("are given only to people who prepare from the song lists", () => {
     expect(songListLeaders(board([published]), member, NOW)).toEqual([]);
-    expect(songListLeaders(board([published]), brian, NOW)[0].places.at(-1)?.leader).toEqual({ name: "Brian", mine: true });
+    expect(songListLeaders(board([published]), brian, NOW)[0].places.at(-1)?.leader).toEqual({ name: "Brian", mine: true, imageUrl: null });
   });
 
   it("name one person once only when they lead every song - otherwise every song says who, or that no one does", () => {
-    const alex = { name: "Alex", mine: false };
-    const you = { name: "Alex", mine: true };
-    const brian = { name: "Brian", mine: false };
+    const alex = { name: "Alex", mine: false, imageUrl: null };
+    const you = { name: "Alex", mine: true, imageUrl: null };
+    const brian = { name: "Brian", mine: false, imageUrl: null };
     // One person, every song: once, for the service; nothing on the songs.
     expect(cardLeaderView([alex, alex, alex, alex, alex])).toEqual({ service: alex, rows: {} });
     // Four songs led by you, the last by no one: never "Led by you" for the whole service.
@@ -212,8 +212,8 @@ describe("the song list's leaders", () => {
   it("show on a card only while its rows match - never on a stale copy", () => {
     const [leaders] = songListLeaders(board([published]), brian, NOW);
     const rows = published.songs!.map((item) => (item ? { title: item.title } : null));
-    const alex = { name: "Alex", mine: false };
-    expect(matchCardLeaders(leaders, rows)).toEqual({ service: null, rows: { 1: alex, 2: alex, 3: alex, 4: alex, 5: { name: "Brian", mine: true } } });
+    const alex = { name: "Alex", mine: false, imageUrl: null };
+    expect(matchCardLeaders(leaders, rows)).toEqual({ service: null, rows: { 1: alex, 2: alex, 3: alex, 4: alex, 5: { name: "Brian", mine: true, imageUrl: null } } });
     const stale = rows.map((row, index) => (index === 1 ? { title: "Another Song" } : row));
     expect(matchCardLeaders(leaders, stale)).toBeNull();
     expect(matchCardLeaders(leaders, [...rows, { title: "Extra" }])).toBeNull();
@@ -236,7 +236,7 @@ describe("the Dashboard's rosters and problems", () => {
   it("show a published service's roster, and a draft only as the viewer's own part", () => {
     const rosters = publishedRosters(board([published, draft]), brian);
     expect(rosters.get("2026-11-08-pm")?.names).toEqual(["Alex", "Alex", "Alex", "Alex", "Brian"]);
-    expect(rosters.get("2026-11-11-pm")).toEqual({ access: "own", mine: [2, 4], places: null, names: [] });
+    expect(rosters.get("2026-11-11-pm")).toEqual({ access: "own", mine: [2, 4], places: null, names: [], images: [] });
     expect(publishedRosters(board([published, draft]), musician).has("2026-11-11-pm")).toBe(false);
     // The planner sees drafts in the planner, not on the Dashboard's cards.
     expect(publishedRosters(board([draft]), director).has("2026-11-11-pm")).toBe(false);
@@ -272,7 +272,7 @@ describe("a guest song leader", () => {
     const [leaders] = songListLeaders(withGuest([guestSunday]), musician, NOW);
     const rows = guestSunday.songs!.map((item) => (item ? { title: item.title } : null));
     const captions = matchCardLeaders(leaders, rows)!.rows;
-    expect(captions[5]).toEqual({ name: "a guest", mine: false });
+    expect(captions[5]).toEqual({ name: "a guest", mine: false, imageUrl: null });
     expect(captionText(captions[5], { ledBy: "Led by {name}", ledByYou: "Led by you", noLeader: "No leader yet" })).toBe("Led by a guest");
     expect(JSON.stringify(leaders)).not.toContain(`"${GUEST_LEADER}"`);
   });

@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { cn } from "@/components/ui/cn";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
@@ -40,32 +42,52 @@ export function ServiceTime({ startsAt, className }: { startsAt: string; classNa
   );
 }
 
-/** The hint under an upcoming song: "Last sung 3 weeks ago", "First time ever"... */
-export function SongHintText({ hint, now }: { hint: SongHint; now: number }) {
+/**
+ * The hint under an upcoming song: "Last sung 3 weeks ago", "First time ever"...
+ * `inline` when it shares the song's second line with its leader tag (SongMeta).
+ */
+export function SongHintText({ hint, now, inline = false }: { hint: SongHint; now: number; inline?: boolean }) {
   const { hints } = songListContent;
   const { showFirstTimeHints } = siteConfig.songList;
 
   switch (hint.kind) {
     case "first-ever":
-      return showFirstTimeHints ? <HintLabel emphasis>{hints.firstEver}</HintLabel> : null;
+      return showFirstTimeHints ? <HintLabel emphasis inline={inline}>{hints.firstEver}</HintLabel> : null;
     case "first-this-year":
-      return showFirstTimeHints ? <HintLabel emphasis>{hints.firstThisYear}</HintLabel> : null;
+      return showFirstTimeHints ? <HintLabel emphasis inline={inline}>{hints.firstThisYear}</HintLabel> : null;
     case "last-sung":
       return (
-        <HintLabel>
+        <HintLabel inline={inline}>
           {hints.lastSung.replace("{when}", formatAgo(Date.parse(hint.at), now))}
         </HintLabel>
       );
     case "also-on":
-      return <HintLabel>{hints.alsoOn.replace("{date}", formatShortDate(hint.at))}</HintLabel>;
+      return <HintLabel inline={inline}>{hints.alsoOn.replace("{date}", formatShortDate(hint.at))}</HintLabel>;
   }
 }
 
-function HintLabel({ children, emphasis = false }: { children: string; emphasis?: boolean }) {
+/**
+ * A song's second line: who leads it first, as a tag (LeaderTag) - always in
+ * the same place, right under the title - then its "Last sung" hint. The tag
+ * is a pill with a photo, not words, so the two never read as one sentence.
+ * Nothing when there is neither. On a narrow card the hint wraps under the tag.
+ */
+export function SongMeta({ hint, leader }: { hint?: ReactNode; leader?: ReactNode }) {
+  if (!hint && !leader) return null;
+  return (
+    // Same spacing as a hint alone (mt-0.5, a 1rem line): the tag adds no height to the row.
+    <span className="mt-0.5 flex min-h-4 flex-wrap items-center gap-x-2.5 gap-y-1 text-xs leading-4">
+      {leader ? <span className="flex min-w-0 max-w-full">{leader}</span> : null}
+      {hint}
+    </span>
+  );
+}
+
+function HintLabel({ children, emphasis = false, inline = false }: { children: string; emphasis?: boolean; inline?: boolean }) {
   return (
     <span
       className={cn(
-        "mt-0.5 block text-xs",
+        inline ? "min-w-0 text-xs" : "mt-0.5 block text-xs",
         emphasis ? "font-medium text-gold-dark" : "text-muted",
       )}
     >

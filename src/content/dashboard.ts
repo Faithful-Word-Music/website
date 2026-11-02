@@ -138,6 +138,9 @@ export const dashboardContent = {
     ledBy: "Led by {name}",
     ledByYou: "Led by you",
     noLeader: "No leader yet",
+    /** A song's leader tag (LeaderTag): the viewer's own, and the hidden words before any name. */
+    tagYou: "You",
+    tagLedBy: "Led by",
     /** On a card whose songs are not posted yet. */
     youLeadDraft: "You're leading {songs}",
     /** The viewer's next assignments beyond Coming up. */

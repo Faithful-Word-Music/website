@@ -51,6 +51,8 @@ export interface BoardPerson {
   /** Holds lead_songs on purpose and has a usable account (not disabled, not deleted). */
   eligible: boolean;
   normal: ServiceAvailability[];
+  /** Their profile photo (Clerk), or null when they have none - the cards then show initials. */
+  imageUrl?: string | null;
 }
 
 export interface BoardException {
@@ -188,7 +190,9 @@ export function songListLeaders(board: Board, viewer: Viewer, now: number): Song
       const person = userId ? board.people.get(userId) : undefined;
       return {
         title: song?.title ?? null,
-        leader: userId ? { name: person?.name ?? "A song leader", mine: userId === viewer.userId } : null,
+        leader: userId
+          ? { name: person?.name ?? "A song leader", mine: userId === viewer.userId, imageUrl: person?.imageUrl ?? null }
+          : null,
       };
     });
     if (places.some((place) => place.leader)) result.push({ anchor: service.anchor, places });
@@ -196,10 +200,11 @@ export function songListLeaders(board: Board, viewer: Viewer, now: number): Song
   return result;
 }
 
-/** One leader as a card shows them: a name, and whether it is the person looking. */
+/** One leader as a card shows them: a name, whether it is the person looking, and their photo if any. */
 export interface CardLeader {
   name: string;
   mine: boolean;
+  imageUrl?: string | null;
 }
 
 /**
@@ -209,9 +214,10 @@ export interface CardLeader {
  *   one person leads every song     once, for the service: `service`, and
  *                                   nothing on the songs
  *   anything else                   on each song (`rows`, by 1-based
- *                                   position), in its small grey line:
- *                                   "Led by Brian", "No leader yet" - so no
- *                                   song ever seems led by someone it is not
+ *                                   position), as a small tag with their
+ *                                   photo: "Brian", "You", "No leader yet" -
+ *                                   so no song ever seems led by someone it
+ *                                   is not
  *
  * Null when no song has a leader (nothing is shown at all).
  */
@@ -293,8 +299,14 @@ export function leadershipProblems(board: Board, now: number, until: number): Le
  * one not published yet only the viewer's own part - for a scheduler too (who
  * sees the rest in the planner).
  */
-export function publishedRosters(board: Board, viewer: Viewer): Map<string, VisibleLeadership & { names: Array<string | null> }> {
-  const rosters = new Map<string, VisibleLeadership & { names: Array<string | null> }>();
+/** A roster's leaders by position: names, and their photos (null: none, or no leader). */
+export interface RosterPeople {
+  names: Array<string | null>;
+  images?: Array<string | null>;
+}
+
+export function publishedRosters(board: Board, viewer: Viewer): Map<string, VisibleLeadership & RosterPeople> {
+  const rosters = new Map<string, VisibleLeadership & RosterPeople>();
   for (const service of board.services) {
     const effective = effectiveLeaders(service.places, service.leadership);
     const visible = visibleLeadership(viewer, service.status, effective);
@@ -303,8 +315,10 @@ export function publishedRosters(board: Board, viewer: Viewer): Map<string, Visi
       if (visible.mine.length > 0) rosters.set(service.anchor, { access: "own", mine: visible.mine, places: null, names: [] });
       continue;
     }
-    const names = (visible.places ?? []).map((place) => (place.userId ? (board.people.get(place.userId)?.name ?? "A song leader") : null));
-    rosters.set(service.anchor, { ...visible, names });
+    const people = (visible.places ?? []).map((place) => (place.userId ? board.people.get(place.userId) : undefined));
+    const names = (visible.places ?? []).map((place, at) => (place.userId ? (people[at]?.name ?? "A song leader") : null));
+    const images = people.map((person) => person?.imageUrl ?? null);
+    rosters.set(service.anchor, { ...visible, names, images });
   }
   return rosters;
 }

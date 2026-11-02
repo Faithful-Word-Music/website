@@ -38,7 +38,7 @@ describe("Coming up cards", () => {
       ["2026-11-08-pm", { access: "roster" as const, mine: [], places: [], names: ["Alex", "Alex", "Alex", "Alex", "Brian"] }],
     ]);
     expect(cardLeaders({ id: "2026-11-08-pm" }, rosters)).toEqual({
-      view: { service: null, rows: { 1: { name: "Alex", mine: false }, 2: { name: "Alex", mine: false }, 3: { name: "Alex", mine: false }, 4: { name: "Alex", mine: false }, 5: { name: "Brian", mine: false } } },
+      view: { service: null, rows: { 1: { name: "Alex", mine: false, imageUrl: null }, 2: { name: "Alex", mine: false, imageUrl: null }, 3: { name: "Alex", mine: false, imageUrl: null }, 4: { name: "Alex", mine: false, imageUrl: null }, 5: { name: "Brian", mine: false, imageUrl: null } } },
       mine: [],
     });
   });

@@ -12,7 +12,8 @@ import { supportContent } from "@/content/support";
 import type { ComingUpService, ComingUpSong } from "@/lib/dashboard/coming-up";
 import type { CardLeaders } from "@/lib/dashboard/leadership";
 import type { CardLeader, MyAssignment } from "@/lib/leadership/board";
-import { ServiceLeaderLine, SongLeaderNote } from "@/components/song-list/LeaderCaption";
+import { LeaderTag, ServiceLeaderLine } from "@/components/song-list/LeaderCaption";
+import { SongMeta } from "@/components/song-list/ServiceBits";
 import { positionsLabel } from "@/lib/leadership/model";
 import { serviceHeadline } from "@/lib/service-planner/format";
 import { formatCountdown, splitDateLabel } from "@/lib/service-time";
@@ -159,8 +160,8 @@ function ServiceSummary({ service, now, leaders }: { service: ComingUpService; n
 
 /**
  * One song. `leader`, when given (a service not led by one person
- * throughout), is a short line of its own under the title: "Led by Brian",
- * or "Led by you" in gold - the viewer's own, easy to find.
+ * throughout), is a tag with their photo at the start of the song's second
+ * line: "Brian", or "You" in gold - the viewer's own, easy to find.
  */
 function SongRow({
   song,
@@ -171,7 +172,7 @@ function SongRow({
   showLabel: boolean;
   leader: CardLeader | null | undefined;
 }) {
-  const note = leader !== undefined ? <SongLeaderNote leader={leader} /> : undefined;
+  const tag = leader !== undefined ? <LeaderTag leader={leader} /> : undefined;
   return (
     <li className="flex items-baseline gap-3 py-2">
       <span className="tnum w-8 shrink-0 text-right font-display text-base text-gold-dark">
@@ -180,17 +181,11 @@ function SongRow({
       </span>
       <span className="min-w-0 flex-1 text-[0.95rem] leading-snug text-ink">
         {song ? <SongLink {...songRef(song)} /> : <span className="italic text-muted">{copy.pendingSong}</span>}
-        {song?.sheet ? (
-          <>
-            {note ? <span className="mt-0.5 block text-xs">{note}</span> : null}
-            <SongSheet sheet={song.sheet} showLabel={showLabel} />
-          </>
-        ) : note ? (
-          <span className="mt-0.5 block text-xs">{note}</span>
-        ) : null}
+        {/* Its second line: who leads it (a tag), then its sheet music. */}
+        <SongMeta hint={song?.sheet ? <SongSheet sheet={song.sheet} showLabel={showLabel} /> : null} leader={tag} />
       </span>
       {song?.key ? (
-        <span className="tnum shrink-0 rounded-md border border-line px-1.5 py-0.5 text-xs font-medium text-ink-soft">
+        <span className="tnum min-w-8 shrink-0 rounded-md border border-line px-1.5 py-0.5 text-center text-xs font-medium text-ink-soft">
           <span className="sr-only">Key of </span>
           {song.key}
         </span>
