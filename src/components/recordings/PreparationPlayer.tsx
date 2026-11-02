@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
+import { useFootClearance } from "@/components/ui/use-foot-clearance";
+
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
@@ -132,13 +134,37 @@ export function PreparationPlayer({
             ? copy.nothingPlaying
             : null;
 
-  const controls = (compact: boolean) => (
-    <div className={cn("flex items-center", compact ? "gap-1" : "gap-2")}>
-      <IconButton label={copy.previous} onClick={() => act({ type: "PREVIOUS" })} disabled={state.current === null} compact={compact}>
-        <path d="M6 5v14M19 5L9 12l10 7V5z" />
-      </IconButton>
+  // The bar at the foot of a phone's screen comes up only once the player's own controls have scrolled away.
+  const inlineRef = useRef<HTMLDivElement>(null);
+  const [inlineInView, setInlineInView] = useState(true);
+  useEffect(() => {
+    const row = inlineRef.current;
+    if (!row || stacked) return;
+    // Less the header (4rem) at the top: controls tucked under it are out of reach.
+    const observer = new IntersectionObserver(([entry]) => setInlineInView(entry.isIntersecting), { rootMargin: "-64px 0px 0px 0px" });
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [stacked, anyPlayable]);
+
+  const barRef = useRef<HTMLDivElement>(null);
+  const barShown = active && current !== null && !stacked && !inlineInView;
+  // While it shows, Conductor's button rises above it and "Back to top" steps aside.
+  useFootClearance(barRef, barShown);
+
+  const backToPlayer = () => {
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    inlineRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+  };
+
+  const controls = (size: "main" | "bar") => (
+    <div className={cn("flex items-center", size === "bar" ? "gap-1" : "gap-4 sm:gap-2")}>
+      {size === "main" ? (
+        <IconButton label={copy.previous} onClick={() => act({ type: "PREVIOUS" })} disabled={state.current === null} size={size}>
+          <path d="M6 5v14M19 5L9 12l10 7V5z" />
+        </IconButton>
+      ) : null}
       {wantsPlaying ? (
-        <IconButton label={copy.pause} onClick={() => act({ type: "PAUSED" })} primary compact={compact}>
+        <IconButton label={copy.pause} onClick={() => act({ type: "PAUSED" })} primary size={size}>
           <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" />
         </IconButton>
       ) : (
@@ -147,16 +173,17 @@ export function PreparationPlayer({
           onClick={() => act(state.current === null || state.status === "finished" ? { type: "PLAY_ALL" } : { type: "RESUME" })}
           disabled={!anyPlayable}
           primary
-          compact={compact}
+          size={size}
         >
           <path d="M7 5l12 7-12 7V5z" />
         </IconButton>
       )}
-      <IconButton label={copy.next} onClick={() => act({ type: "NEXT" })} disabled={!anyPlayable} compact={compact}>
+      <IconButton label={copy.next} onClick={() => act({ type: "NEXT" })} disabled={!anyPlayable} size={size}>
         <path d="M18 5v14M5 5l10 7-10 7V5z" />
       </IconButton>
     </div>
   );
+  const of = copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount));
 
   // Laid out like a video site's watch page: the player and its details on the
   // left, the playlist in its own scrolling panel on the right, kept under the
@@ -168,6 +195,8 @@ export function PreparationPlayer({
       className={cn(
         "grid grid-cols-[minmax(0,1fr)] gap-6",
         !stacked && "lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:gap-x-8",
+        // Room at the end of the page, so the bar at the foot of a phone's screen never covers the last of it.
+        active && !stacked && "max-lg:mb-20",
         className,
       )}
     >
@@ -225,21 +254,22 @@ export function PreparationPlayer({
               )}
             </div>
 
-            <div className="mt-4 flex items-start justify-between gap-4">
+            {/* On a phone the title has the full width and the controls get a row of their own; from sm, side by side. */}
+            <div ref={inlineRef} className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0" aria-live="polite">
                 {current && currentRecording ? (
                   <>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
-                      {copy.nowPlaying} · {copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))}
+                      {copy.nowPlaying} · {of}
                     </p>
-                    <p className="mt-1 truncate font-display text-2xl text-ink">{current.title}</p>
-                    <p className="truncate text-sm text-ink-soft">{currentRecording.title}</p>
+                    <p className="mt-1 line-clamp-2 font-display text-2xl leading-tight text-ink">{current.title}</p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-ink-soft">{currentRecording.title}</p>
                     {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
                   </>
                 ) : null}
                 {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
               </div>
-              {controls(false)}
+              <div className="flex justify-center sm:shrink-0">{controls("main")}</div>
             </div>
             {currentRecording ? <SourceAttribution recording={currentRecording} className="mt-2" /> : null}
             <RecordingReminder className="mt-1" />
@@ -307,15 +337,41 @@ export function PreparationPlayer({
         <RecordingDisclaimer />
       </div>
 
-      {/* On a phone the player scrolls away with the list: the controls stay at hand. */}
+      {/* On a phone the player scrolls away with the list: once it has, play/pause and next stay at hand.
+          Tapping the song takes you back up to the player. */}
       {active && current && !stacked ? (
-        <div className="fixed bottom-0 left-0 right-(--conductor-inset) z-30 border-t border-line bg-surface/95 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-lift backdrop-blur lg:hidden">
-          <div className="mx-auto flex max-w-xl items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{current.title}</p>
-              <p className="truncate text-xs text-muted">{statusLine ?? currentRecording?.title}</p>
-            </div>
-            {controls(true)}
+        <div
+          ref={barRef}
+          inert={!barShown}
+          className={cn(
+            "fixed bottom-0 left-0 right-(--conductor-inset) z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] shadow-lift backdrop-blur lg:hidden print:hidden",
+            "transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none",
+            barShown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
+          )}
+        >
+          <div className="mx-auto flex max-w-xl items-center gap-2 py-2 pl-2 pr-4">
+            <button
+              type="button"
+              onClick={backToPlayer}
+              title={copy.showPlayer}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-ink/5"
+            >
+              <span aria-hidden="true" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold-dark">
+                {wantsPlaying ? <Equalizer /> : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-ink">{current.title}</span>
+                <span className="tnum block truncate text-xs text-muted">{statusLine ?? of}</span>
+              </span>
+              <span className="sr-only">: {copy.showPlayer}</span>
+            </button>
+            {controls("bar")}
           </div>
         </div>
       ) : null}
@@ -403,14 +459,15 @@ function IconButton({
   onClick,
   disabled,
   primary,
-  compact,
+  size,
   children,
 }: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
   primary?: boolean;
-  compact?: boolean;
+  /** "main": under the player, larger on a phone where it has a row to itself. "bar": the bar at the foot of the screen. */
+  size: "main" | "bar";
   children: React.ReactNode;
 }) {
   return (
@@ -422,7 +479,7 @@ function IconButton({
       title={label}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-        compact ? "h-10 w-10" : "h-11 w-11",
+        size === "bar" ? "h-11 w-11" : primary ? "h-14 w-14 sm:h-11 sm:w-11" : "h-12 w-12 sm:h-11 sm:w-11",
         primary ? "bg-ink text-paper enabled:hover:bg-ink-soft" : "border border-line text-ink enabled:hover:border-gold",
       )}
     >

@@ -120,6 +120,8 @@ export const recordingsContent = {
     nothingPlayableNote: "The songs are listed in order. Recordings will appear here as they are added.",
     loading: "Loading…",
     of: "{current} of {total}",
+    /** The bar at the foot of a phone's screen: tapping the song scrolls back up to the player. */
+    showPlayer: "Show player",
     /** The playlist panel's heading when it holds several services. */
     playlist: "Playlist",
     keepAwake: {
