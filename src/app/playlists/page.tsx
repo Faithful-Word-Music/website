@@ -17,8 +17,8 @@ const copy = recordingsContent.preparation;
 export const metadata: Metadata = {
   title: copy.metaTitle,
   description: copy.lead,
-  alternates: { canonical: "/preparation" },
-  openGraph: { title: `${copy.metaTitle} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/preparation` },
+  alternates: { canonical: "/playlists" },
+  openGraph: { title: `${copy.metaTitle} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/playlists` },
 };
 
 /**
@@ -53,7 +53,7 @@ export default async function PreparationPage() {
                     {month.title}
                   </h2>
                   <Link
-                    href={`/preparation/${month.month}`}
+                    href={`/playlists/${month.month}`}
                     className="text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4 hover:text-gold-dark"
                   >
                     {copy.monthLink.replace("{month}", month.title)} →
@@ -91,7 +91,7 @@ function ServiceRow({ service, month, catalog }: { service: PlaylistService; mon
         </p>
       </div>
       <Link
-        href={`/preparation/${month}/${service.id}`}
+        href={`/playlists/${month}/${service.id}`}
         className="inline-flex min-h-10 items-center rounded-full border border-line px-4 text-sm font-medium text-ink transition-colors hover:border-gold"
       >
         {copy.serviceLink}

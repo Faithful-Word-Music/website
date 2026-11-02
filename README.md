@@ -348,7 +348,7 @@ Reference recordings belong to songs, and Preparation Playlists gather the recor
   - A choice belongs to a place's stable ID and remembers its song, so it follows a moved song and is dropped when the place holds another song (`pruneSelectionsStatement`, run in the planner's save transaction).
 - **Playlists are worked out, never stored** (`playlist.ts`). They are built from `getPublishedPlans()` (the schedule's cached rows, so published services only) plus the cached public recordings. Past services drop off, and a month with nothing left disappears. Songs without a recording stay in the list and are skipped by Play all.
 - **Public, cached, private where needed.**
-  - `/preparation` and the song pages are static and only ever contain **public** recordings, so a visitor never wakes Neon.
+  - `/playlists` and the song pages are static and only ever contain **public** recordings, so a visitor never wakes Neon.
   - Members-only recordings are fetched by the browser from `/api/recordings` (`private, no-store`).
   - Changes clear `RECORDINGS_TAG`, and publishing (`refreshEverything`) clears it too.
 - **Player.** YouTube's IFrame API (`youtube-nocookie.com`) is driven by a pure state machine (`playback.ts`). A failed recording is skipped and never retried on its own, and the end of the list is the end.

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PreparationPlayer } from "@/components/recordings/PreparationPlayer";
+import { ShareLinkButton } from "@/components/recordings/ShareLinkButton";
 import { BackLink } from "@/components/ui/BackLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
@@ -13,7 +14,7 @@ import { getPreparation } from "@/lib/recordings/load";
 
 const copy = recordingsContent.preparation;
 
-/** See /preparation. */
+/** See /playlists. */
 export const revalidate = 300;
 
 /** No month is built ahead; each is kept once visited and refreshed with the schedule. */
@@ -30,7 +31,7 @@ async function findMonth(value: string) {
   return month ? { month, recordings: data.recordings } : null;
 }
 
-export async function generateMetadata({ params }: PageProps<"/preparation/[month]">): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps<"/playlists/[month]">): Promise<Metadata> {
   const { month } = await params;
   const found = await findMonth(month);
   if (!found) return { title: copy.metaTitle, robots: { index: false } };
@@ -38,13 +39,13 @@ export async function generateMetadata({ params }: PageProps<"/preparation/[mont
   return {
     title,
     description: copy.lead,
-    alternates: { canonical: `/preparation/${month}` },
-    openGraph: { title: `${title} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/preparation/${month}` },
+    alternates: { canonical: `/playlists/${month}` },
+    openGraph: { title: `${title} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/playlists/${month}` },
   };
 }
 
 /** One month's Preparation Playlist: every upcoming published service, in order. */
-export default async function PreparationMonthPage({ params }: PageProps<"/preparation/[month]">) {
+export default async function PreparationMonthPage({ params }: PageProps<"/playlists/[month]">) {
   const { month } = await params;
   const found = await findMonth(month);
 
@@ -52,18 +53,24 @@ export default async function PreparationMonthPage({ params }: PageProps<"/prepa
     <PageTransition>
       {/* overflow-x-clip: nothing (the phone's edge-to-edge video included) can make the page pan sideways. Clip, not hidden, so the video can still stick. */}
       <Container size="wide" className="overflow-x-clip pb-28 pt-6 sm:pb-20 sm:pt-8">
-        <BackLink fallback="/preparation" />
+        <BackLink fallback="/playlists" />
         {found ? (
           <>
-            <SectionHeading
-              as="h1"
-              size="compact"
-              eyebrow={copy.title}
-              title={copy.monthTitle.replace("{month}", found.month.title)}
-              className="mt-4"
-            >
-              <p className="text-base">{copy.lead}</p>
-            </SectionHeading>
+            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <SectionHeading
+                as="h1"
+                size="compact"
+                eyebrow={copy.title}
+                title={copy.monthTitle.replace("{month}", found.month.title)}
+              >
+                <p className="text-base">{copy.lead}</p>
+              </SectionHeading>
+              <ShareLinkButton
+                url={`${siteConfig.url}/playlists/${month}`}
+                title={copy.monthTitle.replace("{month}", found.month.title)}
+                className="shrink-0 self-start sm:self-auto"
+              />
+            </div>
             <PreparationPlayer
               className="mt-6"
               recordings={found.recordings}
@@ -71,7 +78,7 @@ export default async function PreparationMonthPage({ params }: PageProps<"/prepa
                 id: service.id,
                 title: service.title,
                 subtitle: service.dateLabel,
-                href: `/preparation/${month}/${service.id}`,
+                href: `/playlists/${month}/${service.id}`,
                 items: service.items,
               }))}
             />
@@ -92,7 +99,7 @@ function Ended() {
   return (
     <Card className="mt-8 p-8 text-center sm:p-12">
       <p className="mx-auto max-w-md text-muted">{copy.expired}</p>
-      <Link href="/preparation" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4">
+      <Link href="/playlists" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4">
         {copy.allMonths}
       </Link>
     </Card>

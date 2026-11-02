@@ -56,7 +56,7 @@ export interface PlaylistService {
 }
 
 export interface PlaylistMonth {
-  /** "2026-11" - its address, /preparation/2026-11. */
+  /** "2026-11" - its address, /playlists/2026-11. */
   month: string;
   /** "November", or "January 2027" in another year. */
   title: string;

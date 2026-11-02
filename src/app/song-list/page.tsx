@@ -55,7 +55,7 @@ export default async function SongListPage() {
             </SectionHeading>
 
             <div className="flex shrink-0 flex-wrap gap-3">
-              <ButtonLink href="/preparation" variant="secondary">
+              <ButtonLink href="/playlists" variant="secondary">
                 {recordingsContent.preparation.entry}
               </ButtonLink>
               {/* Each tab's title, or null for a tab with no schedule to put in a PDF. */}

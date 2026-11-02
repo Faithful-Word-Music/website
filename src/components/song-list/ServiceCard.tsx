@@ -286,7 +286,7 @@ export function ServiceCard({
         <div className="mt-3 flex items-center justify-between gap-3">
           {/* Upcoming: its Preparation Playlist, open to everyone. */}
           {!past ? (
-            <ListenLink href={`/preparation/${service.date.slice(0, 7)}/${service.id}`} />
+            <ListenLink href={`/playlists/${service.date.slice(0, 7)}/${service.id}`} />
           ) : (
             <span />
           )}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PreparationPlayer } from "@/components/recordings/PreparationPlayer";
+import { ShareLinkButton } from "@/components/recordings/ShareLinkButton";
 import { BackLink } from "@/components/ui/BackLink";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -14,7 +15,7 @@ import { getPreparation } from "@/lib/recordings/load";
 
 const copy = recordingsContent.preparation;
 
-/** See /preparation. */
+/** See /playlists. */
 export const revalidate = 300;
 
 export function generateStaticParams(): Array<{ month: string; service: string }> {
@@ -28,7 +29,7 @@ async function findService(month: string, anchor: string) {
   return service && entry ? { service, monthTitle: entry.title, recordings: data.recordings } : null;
 }
 
-export async function generateMetadata({ params }: PageProps<"/preparation/[month]/[service]">): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps<"/playlists/[month]/[service]">): Promise<Metadata> {
   const { month, service } = await params;
   const found = await findService(month, service);
   if (!found) return { title: copy.metaTitle, robots: { index: false } };
@@ -36,13 +37,13 @@ export async function generateMetadata({ params }: PageProps<"/preparation/[mont
   return {
     title: `${title} | ${copy.metaTitle}`,
     description: copy.lead,
-    alternates: { canonical: `/preparation/${month}/${service}` },
-    openGraph: { title: `${title} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/preparation/${month}/${service}` },
+    alternates: { canonical: `/playlists/${month}/${service}` },
+    openGraph: { title: `${title} | ${siteConfig.name}`, description: copy.lead, url: `${siteConfig.url}/playlists/${month}/${service}` },
   };
 }
 
 /** One upcoming service's playlist, in the order its songs will be sung. */
-export default async function PreparationServicePage({ params }: PageProps<"/preparation/[month]/[service]">) {
+export default async function PreparationServicePage({ params }: PageProps<"/playlists/[month]/[service]">) {
   const { month, service: anchor } = await params;
   const found = await findService(month, anchor);
 
@@ -50,15 +51,21 @@ export default async function PreparationServicePage({ params }: PageProps<"/pre
     <PageTransition>
       {/* overflow-x-clip: nothing (the phone's edge-to-edge video included) can make the page pan sideways. Clip, not hidden, so the video can still stick. */}
       <Container size="wide" className="overflow-x-clip pb-28 pt-6 sm:pb-20 sm:pt-8">
-        <BackLink fallback={`/preparation/${month}`} />
+        <BackLink fallback={`/playlists/${month}`} />
         {found ? (
           <>
             <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeading as="h1" size="compact" eyebrow={found.service.dateLabel} title={found.service.title} />
-              {/* Arrived from a song list card's Listen: the way on to the whole month's playlist. */}
-              <ButtonLink href={`/preparation/${month}`} variant="secondary" className="shrink-0 self-start sm:self-auto">
-                {copy.monthLink.replace("{month}", found.monthTitle)}
-              </ButtonLink>
+              <div className="flex shrink-0 flex-wrap gap-2 self-start sm:self-auto">
+                <ShareLinkButton
+                  url={`${siteConfig.url}/playlists/${month}/${anchor}`}
+                  title={`${found.service.title} — ${found.service.dateLabel}`}
+                />
+                {/* Arrived from a song list card's Listen: the way on to the whole month's playlist. */}
+                <ButtonLink href={`/playlists/${month}`} variant="secondary">
+                  {copy.monthLink.replace("{month}", found.monthTitle)}
+                </ButtonLink>
+              </div>
             </div>
             <PreparationPlayer
               className="mt-6"
@@ -69,7 +76,7 @@ export default async function PreparationServicePage({ params }: PageProps<"/pre
         ) : (
           <Card className="mt-8 p-8 text-center sm:p-12">
             <p className="mx-auto max-w-md text-muted">{copy.expired}</p>
-            <Link href="/preparation" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4">
+            <Link href="/playlists" className="mt-4 inline-block text-sm font-medium text-ink underline decoration-gold/60 underline-offset-4">
               {copy.allMonths}
             </Link>
           </Card>

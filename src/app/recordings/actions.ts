@@ -58,7 +58,7 @@ const copy = recordingsContent.manage;
 function refreshRecordings() {
   updateTag(RECORDINGS_TAG);
   revalidatePath("/library", "layout");
-  revalidatePath("/preparation", "layout");
+  revalidatePath("/playlists", "layout");
   revalidatePath("/service-planner", "layout");
   revalidatePath("/dashboard");
 }

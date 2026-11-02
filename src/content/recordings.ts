@@ -154,5 +154,14 @@ export const recordingsContent = {
     order: "Order of songs",
     entry: "Preparation Playlists",
     entryNote: "Listen to upcoming songs",
+    /** The Share button on a playlist page: it shares the page's link. */
+    share: {
+      button: "Share",
+      copyLink: "Copy link",
+      email: "Email",
+      moreOptions: "More options…",
+      linkCopied: "Link copied",
+      copyFailed: "Could not copy",
+    },
   },
 } as const;

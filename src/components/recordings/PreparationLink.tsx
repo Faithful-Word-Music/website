@@ -6,7 +6,7 @@ import { recordingsContent } from "@/content/recordings";
 const copy = recordingsContent.preparation;
 
 /** A wide link to the Preparation Playlists (the Library, the Dashboard). */
-export function PreparationLink({ href = "/preparation", note = copy.lead, className }: { href?: string; note?: string; className?: string }) {
+export function PreparationLink({ href = "/playlists", note = copy.lead, className }: { href?: string; note?: string; className?: string }) {
   return (
     <Link
       href={href}

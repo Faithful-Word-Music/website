@@ -63,6 +63,9 @@ const nextConfig: NextConfig = {
       { source: "/account/edit", destination: "/profile/edit", permanent: true },
       { source: "/account/security", destination: "/account", permanent: true },
       { source: "/account/security/:path*", destination: "/account/:path*", permanent: true },
+      // The Preparation Playlists moved from /preparation to /playlists.
+      // `:path*` also matches /preparation itself.
+      { source: "/preparation/:path*", destination: "/playlists/:path*", permanent: true },
     ];
   },
 };

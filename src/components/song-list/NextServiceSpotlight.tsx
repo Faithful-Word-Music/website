@@ -181,7 +181,7 @@ export function NextServiceSpotlight({
             {/* The same footer as the service cards: its playlist (while it is still to come) and a report link. */}
             {featured.date && featured.songs.length > 0 ? (
               <div className="mt-3 flex items-center justify-between gap-3 short-phone:mt-1">
-                {!isNow ? <ListenLink href={`/preparation/${featured.date.slice(0, 7)}/${featured.id}`} /> : <span />}
+                {!isNow ? <ListenLink href={`/playlists/${featured.date.slice(0, 7)}/${featured.id}`} /> : <span />}
                 <ReportLink entry="problem" refs={{ service: featured.id }}>
                   {supportContent.report.problem}
                 </ReportLink>
