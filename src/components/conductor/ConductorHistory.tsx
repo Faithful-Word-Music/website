@@ -9,6 +9,7 @@ import { NewChatIcon } from "@/components/conductor/ConductorMark";
 import { useConductor } from "@/components/conductor/conductor-store";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Spinner } from "@/components/ui/StatusIcons";
 import { useAction } from "@/components/ui/use-action";
 import { conductorContent } from "@/content/conductor";
@@ -105,7 +106,7 @@ export function ConductorHistory({ onDone, className }: { onDone: () => void; cl
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
+      <ScrollArea wrapperClassName="flex min-h-0 flex-1 flex-col" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-4">
         {loading ? (
           <p role="status" className="flex items-center gap-2.5 px-2 py-6 text-sm text-muted">
             <Spinner />
@@ -248,7 +249,7 @@ export function ConductorHistory({ onDone, className }: { onDone: () => void; cl
         <div className="px-2 pt-2">
           <ActionMessage result={result && !result.ok ? result : null} />
         </div>
-      </div>
+      </ScrollArea>
     </div>
   );
 }

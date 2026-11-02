@@ -8,6 +8,7 @@ import { useFootClearance } from "@/components/ui/use-foot-clearance";
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { recordingsContent } from "@/content/recordings";
 import { INITIAL_PLAYBACK, playback, type PlaybackEvent, type PlaybackState } from "@/lib/recordings/playback";
 import type { PlaylistItem } from "@/lib/recordings/playlist";
@@ -21,6 +22,9 @@ import { useViewerRecordings } from "./use-viewer-recordings";
 import { YouTubePlayer } from "./YouTubePlayer";
 
 const copy = recordingsContent.player;
+
+/** The site header's height (h-16), which stays at the top of the window. */
+const HEADER_HEIGHT = 64;
 
 export interface PlaylistSection {
   id: string;
@@ -40,7 +44,10 @@ interface Machine {
 function reducer(playable: readonly boolean[]) {
   return (machine: Machine, event: PlaybackEvent): Machine => {
     const state = playback(machine.state, event, playable);
-    const reload = state.status === "loading" && (machine.state.status !== "loading" || state.current !== machine.state.current);
+    const sameSong = state.current === machine.state.current;
+    // Resuming carries on from where the video was paused: the same video, never loaded afresh.
+    const resumed = event.type === "RESUME" && sameSong;
+    const reload = !resumed && state.status === "loading" && (machine.state.status !== "loading" || !sameSong);
     return state === machine.state ? machine : { state, loadKey: reload ? machine.loadKey + 1 : machine.loadKey };
   };
 }
@@ -134,26 +141,48 @@ export function PreparationPlayer({
             ? copy.nothingPlaying
             : null;
 
+  // Below lg the video sticks under the header, full width, while the page scrolls on beneath it.
+  // How tall it is there (0 from lg, where it scrolls with the page), for what it covers.
+  const videoRef = useRef<HTMLDivElement>(null);
+  const [stuckHeight, setStuckHeight] = useState(0);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || stacked) return;
+    const wide = window.matchMedia("(min-width: 64rem)");
+    const measure = () => setStuckHeight(wide.matches ? 0 : Math.round(video.offsetHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(video);
+    wide.addEventListener("change", measure);
+    return () => {
+      observer.disconnect();
+      wide.removeEventListener("change", measure);
+    };
+  }, [stacked, anyPlayable]);
+
   // The bar at the foot of a phone's screen comes up only once the player's own controls have scrolled away.
   const inlineRef = useRef<HTMLDivElement>(null);
   const [inlineInView, setInlineInView] = useState(true);
   useEffect(() => {
     const row = inlineRef.current;
     if (!row || stacked) return;
-    // Less the header (4rem) at the top: controls tucked under it are out of reach.
-    const observer = new IntersectionObserver(([entry]) => setInlineInView(entry.isIntersecting), { rootMargin: "-64px 0px 0px 0px" });
+    // Less the header (4rem) and the video stuck under it: controls tucked under either are out of reach.
+    const observer = new IntersectionObserver(([entry]) => setInlineInView(entry.isIntersecting), {
+      rootMargin: `-${HEADER_HEIGHT + stuckHeight}px 0px 0px 0px`,
+    });
     observer.observe(row);
     return () => observer.disconnect();
-  }, [stacked, anyPlayable]);
+  }, [stacked, anyPlayable, stuckHeight]);
 
   const barRef = useRef<HTMLDivElement>(null);
   const barShown = active && current !== null && !stacked && !inlineInView;
-  // While it shows, Conductor's button rises above it and "Back to top" steps aside.
+  // While it shows, Conductor's button and "Back to top" rise above it.
   useFootClearance(barRef, barShown);
 
+  // Brings the controls back into view, just under the video stuck at the top (their scroll-margin-top).
   const backToPlayer = () => {
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    inlineRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+    inlineRef.current?.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
   };
 
   const controls = (size: "main" | "bar") => (
@@ -185,27 +214,82 @@ export function PreparationPlayer({
   );
   const of = copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount));
 
-  // Laid out like a video site's watch page: the player and its details on the
-  // left, the playlist in its own scrolling panel on the right, kept under the
-  // header. On a phone (and in a dialog) it is one column: player, playlist,
-  // then the details. The DOM order is that phone order; on wide screens the
-  // grid places the details under the player.
+  const draftBadge = draft ? (
+    <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
+      {recordingsContent.planner.previewTitle}
+    </p>
+  ) : null;
+
+  // Laid out like a video site's watch page: the video, the song playing and
+  // the details on the left, the playlist in its own scrolling panel on the
+  // right, kept under the header. On a phone (and in a dialog) it is one
+  // column: video, song playing, playlist, then the details. The DOM order is
+  // that phone order; on wide screens the grid places the details under the
+  // song playing. On a phone the video is its own grid row so it can stay
+  // stuck under the header, edge to edge, for the whole length of the list.
   return (
     <div
       className={cn(
         "grid grid-cols-[minmax(0,1fr)] gap-6",
         !stacked && "lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:gap-x-8",
+        // The last row on the left takes whatever height the playlist adds, so no gap opens between the rows above it.
+        !stacked && (anyPlayable ? "lg:grid-rows-[auto_auto_1fr]" : "lg:grid-rows-[auto_1fr]"),
         // Room at the end of the page, so the bar at the foot of a phone's screen never covers the last of it.
-        active && !stacked && "max-lg:mb-20",
+        active && !stacked && "max-lg:mb-24",
         className,
       )}
     >
-      <div className={cn("min-w-0", !stacked && "lg:col-start-1 lg:row-start-1")}>
-        {draft ? (
-          <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
-            {recordingsContent.planner.previewTitle}
-          </p>
-        ) : null}
+      {anyPlayable ? (
+        <div
+          ref={videoRef}
+          className={cn(
+            "min-w-0",
+            !stacked &&
+              // Out to the screen's edges (past Container's padding) and under the header, which is h-16.
+              "max-lg:sticky max-lg:top-16 max-lg:z-20 max-lg:-mx-5 max-lg:self-start sm:max-lg:-mx-8 lg:col-start-1 lg:row-start-1",
+          )}
+        >
+          {draftBadge}
+          {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
+          <div className={cn("overflow-hidden bg-stage", stacked ? "rounded-card shadow-card" : "lg:rounded-card lg:shadow-card")}>
+            {playerHeld ? (
+              <YouTubePlayer
+                className={stacked ? undefined : "max-lg:rounded-none"}
+                mediaId={currentRecording?.mediaId ?? null}
+                playing={wantsPlaying}
+                loadKey={loadKey}
+                title={currentRecording?.title ?? copy.nothingPlaying}
+                onStarted={() => send({ type: "STARTED" })}
+                onPaused={() => send({ type: "PAUSED" })}
+                onEnded={() => send({ type: "ENDED" })}
+                onError={() => send({ type: "ERROR" })}
+                onBlocked={() => send({ type: "BLOCKED" })}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => act({ type: "PLAY_ALL" })}
+                className={cn(
+                  "group flex aspect-video w-full items-center justify-center bg-stage text-on-stage transition-colors hover:bg-stage/90",
+                  stacked ? "rounded-lg" : "lg:rounded-lg",
+                )}
+              >
+                <span className="flex flex-col items-center gap-2">
+                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-on-stage/15 transition-transform group-hover:scale-105">
+                    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7 5l12 7-12 7V5z" />
+                    </svg>
+                  </span>
+                  <span className="text-sm font-medium">{copy.playAll}</span>
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div className={cn("min-w-0", !stacked && "lg:col-start-1", !stacked && (anyPlayable ? "lg:row-start-2" : "lg:row-start-1"))}>
+        {!anyPlayable ? draftBadge : null}
         {!anyPlayable ? (
           <Card className="flex items-start gap-3 p-4 sm:p-5">
             <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted">
@@ -222,40 +306,14 @@ export function PreparationPlayer({
           </Card>
         ) : (
           <>
-            {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
-            <div className="overflow-hidden rounded-card shadow-card">
-              {playerHeld ? (
-                <YouTubePlayer
-                  mediaId={currentRecording?.mediaId ?? null}
-                  playing={wantsPlaying}
-                  loadKey={loadKey}
-                  title={currentRecording?.title ?? copy.nothingPlaying}
-                  onStarted={() => send({ type: "STARTED" })}
-                  onPaused={() => send({ type: "PAUSED" })}
-                  onEnded={() => send({ type: "ENDED" })}
-                  onError={() => send({ type: "ERROR" })}
-                  onBlocked={() => send({ type: "BLOCKED" })}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => act({ type: "PLAY_ALL" })}
-                  className="group flex aspect-video w-full items-center justify-center rounded-lg bg-stage text-on-stage transition-colors hover:bg-stage/90"
-                >
-                  <span className="flex flex-col items-center gap-2">
-                    <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-on-stage/15 transition-transform group-hover:scale-105">
-                      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M7 5l12 7-12 7V5z" />
-                      </svg>
-                    </span>
-                    <span className="text-sm font-medium">{copy.playAll}</span>
-                  </span>
-                </button>
-              )}
-            </div>
-
-            {/* On a phone the title has the full width and the controls get a row of their own; from sm, side by side. */}
-            <div ref={inlineRef} className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            {/* On a phone the title has the full width and the controls get a row of their own; from sm, side by side.
+                Pulled up to sit 1rem under the video, as one block with it. Its scroll margin keeps
+                "back to the player" (the bar at the foot) from leaving it under the stuck video. */}
+            <div
+              ref={inlineRef}
+              style={{ scrollMarginTop: HEADER_HEIGHT + stuckHeight + 16 }}
+              className="-mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+            >
               <div className="min-w-0" aria-live="polite">
                 {current && currentRecording ? (
                   <>
@@ -277,13 +335,17 @@ export function PreparationPlayer({
         )}
       </div>
 
-      <div className={cn("min-w-0", !stacked && "lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start")}>
+      <div className={cn("min-w-0", !stacked && "lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:self-start", !stacked && (anyPlayable ? "lg:row-span-3" : "lg:row-span-2"))}>
         <Card className={cn("flex flex-col overflow-hidden", !stacked && "lg:max-h-[calc(100dvh-7.5rem)]")}>
           <div className="border-b border-line px-4 py-3 sm:px-5">
             <h2 className="truncate font-display text-xl text-ink">{panelTitle}</h2>
             <p className="tnum truncate text-sm text-muted">{panelMeta}</p>
           </div>
-          <div ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <ScrollArea
+            ref={listRef}
+            wrapperClassName="flex min-h-0 flex-1 flex-col"
+            className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          >
             {sections.map((section) => (
               <section key={section.id} aria-labelledby={`${section.id}-heading`}>
                 {single ? (
@@ -324,11 +386,11 @@ export function PreparationPlayer({
                 </ol>
               </section>
             ))}
-          </div>
+          </ScrollArea>
         </Card>
       </div>
 
-      <div className={cn("min-w-0 space-y-4", !stacked && "lg:col-start-1 lg:row-start-2 lg:self-start")}>
+      <div className={cn("min-w-0 space-y-4", !stacked && "lg:col-start-1 lg:self-start", !stacked && (anyPlayable ? "lg:row-start-3" : "lg:row-start-2"))}>
         {anyPlayable ? (
           <Card className="p-4 sm:p-5">
             <KeepAwakeSetting {...keepAwake} />
@@ -337,14 +399,15 @@ export function PreparationPlayer({
         <RecordingDisclaimer />
       </div>
 
-      {/* On a phone the player scrolls away with the list: once it has, play/pause and next stay at hand.
-          Tapping the song takes you back up to the player. */}
+      {/* On a phone the video stays at the top but its controls scroll away with the list: once they
+          have, play/pause and next stay at hand. Tapping the song takes you back up to the controls. */}
       {active && current && !stacked ? (
         <div
           ref={barRef}
           inert={!barShown}
           className={cn(
-            "fixed bottom-0 left-0 right-(--conductor-inset) z-30 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] shadow-lift backdrop-blur lg:hidden print:hidden",
+            // Its content kept well clear of the screen's rounded corners and home indicator.
+            "fixed bottom-0 left-0 right-(--conductor-inset) z-30 border-t border-line bg-surface/95 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-1 shadow-lift backdrop-blur lg:hidden print:hidden",
             "transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none",
             barShown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0",
           )}
@@ -413,10 +476,13 @@ function PlaylistRow({
     >
       <span className="tnum w-6 shrink-0 text-right text-sm text-muted">{item.position}</span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-ink">
-          <SongLink {...songRef(item)} className={cn(!recording && "text-ink-soft")} />
-          {item.number ? <span className="tnum ml-2 text-xs text-muted">#{item.number}</span> : null}
-          {item.musicKey ? <span className="tnum ml-2 text-xs text-gold-dark">{item.musicKey}</span> : null}
+        {/* A long title gives way ("…"); the hymn number and key always show. */}
+        <p className="flex min-w-0 items-baseline gap-2 text-ink">
+          <span className="min-w-0 truncate">
+            <SongLink {...songRef(item)} className={cn(!recording && "text-ink-soft")} />
+          </span>
+          {item.number ? <span className="tnum shrink-0 text-xs text-muted">#{item.number}</span> : null}
+          {item.musicKey ? <span className="tnum shrink-0 text-xs text-gold-dark">{item.musicKey}</span> : null}
         </p>
         <p className={cn("truncate text-xs", failed || resolved.kind === "issue" ? "text-gold-dark" : "text-muted")}>{note}</p>
       </div>

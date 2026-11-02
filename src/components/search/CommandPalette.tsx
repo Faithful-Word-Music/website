@@ -11,6 +11,7 @@ import { NoteMark } from "@/components/library/SongIndex";
 import { songLinkProps } from "@/components/song-list/SongLink";
 import { Highlight, searchPillClass } from "@/components/song-list/Suggestions";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { searchContent } from "@/content/search";
@@ -389,7 +390,7 @@ function Palette({ onClose }: { onClose: () => void }) {
             </div>
 
             {/* Results */}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+            <ScrollArea wrapperClassName="flex min-h-0 flex-1 flex-col" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
               <p role="status" className="sr-only">
                 {typed ? countLabel : ""}
               </p>
@@ -437,7 +438,7 @@ function Palette({ onClose }: { onClose: () => void }) {
                 <p className="px-3 py-3 text-sm text-muted">{searchContent.loading}</p>
               ) : null}
               {failed ? <p className="px-3 py-3 text-sm text-muted">{searchContent.loadError}</p> : null}
-            </div>
+            </ScrollArea>
 
             {/* Keyboard hints: for keyboards, so not on phones. */}
             <div

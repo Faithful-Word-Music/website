@@ -50,7 +50,8 @@ export default async function PreparationMonthPage({ params }: PageProps<"/prepa
 
   return (
     <PageTransition>
-      <Container size="wide" className="pb-28 pt-6 sm:pb-20 sm:pt-8">
+      {/* overflow-x-clip: nothing (the phone's edge-to-edge video included) can make the page pan sideways. Clip, not hidden, so the video can still stick. */}
+      <Container size="wide" className="overflow-x-clip pb-28 pt-6 sm:pb-20 sm:pt-8">
         <BackLink fallback="/preparation" />
         {found ? (
           <>

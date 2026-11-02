@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { addSheetMusicSourceAction, previewSheetMusicSourceAction } from "@/app/admin/actions";
 import { ActionMessage } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { useAction } from "@/components/ui/use-action";
 import { feedbackContent } from "@/content/feedback";
 import type { ActionResult } from "@/lib/auth/session";
@@ -79,26 +80,28 @@ export function DriveFolderBrowser({
           </span>
         ))}
       </nav>
-      <ul className="max-h-80 divide-y divide-line overflow-y-auto rounded-card border border-line">
-        {children.map((folder) => (
-          <li key={keyOf(folder.path)}>
-            <button
-              type="button"
-              onClick={() => setPath(folder.path)}
-              className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-paper sm:px-4"
-            >
-              <FolderIcon />
-              <span className="min-w-0 flex-1 truncate text-ink">{folder.path[folder.path.length - 1]}</span>
-              <span className="shrink-0 text-xs text-muted">{count(folder.files, "file", "files")}</span>
-            </button>
-          </li>
-        ))}
-        {children.length === 0 ? (
-          <li className="px-4 py-3 text-sm text-muted">
-            {path.length === 0 ? "No folders found." : "No more folders inside. PDF and MuseScore files are included automatically."}
-          </li>
-        ) : null}
-      </ul>
+      <ScrollArea wrapperClassName="overflow-hidden rounded-card border border-line" className="max-h-80 overflow-y-auto">
+        <ul className="divide-y divide-line">
+          {children.map((folder) => (
+            <li key={keyOf(folder.path)}>
+              <button
+                type="button"
+                onClick={() => setPath(folder.path)}
+                className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-paper sm:px-4"
+              >
+                <FolderIcon />
+                <span className="min-w-0 flex-1 truncate text-ink">{folder.path[folder.path.length - 1]}</span>
+                <span className="shrink-0 text-xs text-muted">{count(folder.files, "file", "files")}</span>
+              </button>
+            </li>
+          ))}
+          {children.length === 0 ? (
+            <li className="px-4 py-3 text-sm text-muted">
+              {path.length === 0 ? "No folders found." : "No more folders inside. PDF and MuseScore files are included automatically."}
+            </li>
+          ) : null}
+        </ul>
+      </ScrollArea>
       {path.length > 0 ? (
         <p className="text-xs text-muted">
           {preview === null

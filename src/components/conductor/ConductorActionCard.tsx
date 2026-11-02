@@ -8,6 +8,7 @@ import { TextDiff } from "@/components/ai/TextDiff";
 import { useConductor, type ProposedAction } from "@/components/conductor/conductor-store";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { CheckIcon } from "@/components/ui/StatusIcons";
 import { useAction } from "@/components/ui/use-action";
 import { conductorContent } from "@/content/conductor";
@@ -305,14 +306,17 @@ function PhilosophyChange({ action }: { action: Extract<ProposedAction, { kind: 
         ))}
       </div>
 
-      <div className="mt-2.5 max-h-80 overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface px-3 py-2.5">
+      <ScrollArea
+        wrapperClassName="mt-2.5 overflow-hidden rounded-lg border border-line bg-surface"
+        className="max-h-80 overflow-y-auto overscroll-contain px-3 py-2.5"
+      >
         <p className="sr-only">{view === "changes" ? text.changesLabel : view === "proposed" ? text.proposedLabel : text.currentLabel}</p>
         {view === "changes" ? (
           <TextDiff parts={parts} />
         ) : (
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-soft">{view === "proposed" ? after : before}</p>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

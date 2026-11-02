@@ -65,9 +65,10 @@ export function BackToTop({ label = "Back to top" }: { label?: string }) {
         "[:root[data-share-bar]_&]:invisible",
         // ...and for Conductor's own page, where the box to type in does.
         "[:root[data-conductor-page]_&]:invisible",
-        // ...and, on a phone, for a page's own bar of actions while that is docked there (ActionBar.tsx).
-        "max-sm:[:root[data-action-bar]_&]:invisible",
-        // ...and for the open mobile menu, which takes the whole screen (Header.tsx).
+        // On a phone, above a bar docked to the foot of the window (ActionBar, the playlist's player bar) - and
+        // above Conductor's button, which rises above that bar too (.back-to-top in globals.css).
+        "back-to-top",
+        // Steps aside for the open mobile menu, which takes the whole screen (Header.tsx).
         "[:root[data-nav-menu]_&]:invisible",
       )}
     >

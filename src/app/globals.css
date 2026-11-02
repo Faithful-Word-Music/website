@@ -139,6 +139,8 @@
   --shadow-lift: 0 1px 2px rgba(17, 17, 17, 0.06), 0 10px 28px -10px rgba(17, 17, 17, 0.3);
   /* The next service's glow (.card-next). */
   --shadow-card-next: 0 1px 2px rgba(17, 17, 17, 0.04), 0 0 28px -6px rgba(176, 141, 87, 0.35);
+  /* The edge of a scroll panel with more beyond it (ScrollArea.tsx). */
+  --scroll-shadow: rgba(17, 17, 17, 0.14);
   /* The width Conductor's panel takes from the right of the window while it
      is open beside the page; nothing otherwise. See CONDUCTOR, below. */
   --conductor-inset: 0px;
@@ -182,6 +184,7 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
   --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
   --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
+  --scroll-shadow: rgba(0, 0, 0, 0.65);
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
   --glass-bg: rgba(28, 28, 26, 0.8);
   --glass-bg-blur: rgba(28, 28, 26, 0.65);
@@ -203,6 +206,7 @@
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
     --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
     --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
+    --scroll-shadow: rgba(0, 0, 0, 0.65);
     --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
     --glass-bg: rgba(28, 28, 26, 0.8);
     --glass-bg-blur: rgba(28, 28, 26, 0.65);
@@ -812,6 +816,19 @@ html[data-conductor-resizing] body {
 @media (width >= 64rem) {
   :root {
     --corner-lift: 0px;
+  }
+}
+
+/* "Back to top" on a phone, while a bar is docked to the foot of the window:
+   0.75rem above it like Conductor's button, and above that button (3.75rem
+   higher, as everywhere else) while it shows. Unlayered, so it wins over
+   BackToTop.tsx's own bottom utilities. */
+@media (width < 40rem) {
+  :root[data-action-bar] .back-to-top {
+    bottom: calc(var(--action-bar-clear, 0px) + 0.75rem);
+  }
+  :root[data-action-bar][data-conductor="launcher"]:not([data-share-bar]) .back-to-top {
+    bottom: calc(var(--action-bar-clear, 0px) + 4.5rem);
   }
 }
 

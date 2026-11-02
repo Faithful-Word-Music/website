@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObjec
 import { ActionMessage } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { feedbackContent } from "@/content/feedback";
 import { searchContent } from "@/content/search";
 import type { AvailabilityChoice } from "@/lib/availability/effective";
@@ -223,7 +224,7 @@ export function AvailabilityCommand({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
+      <ScrollArea wrapperClassName="flex min-h-0 flex-1 flex-col" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
         {chosen ? (
           <div className="space-y-4 px-3 py-3">
             <div>
@@ -329,7 +330,7 @@ export function AvailabilityCommand({
             </div>
           </>
         )}
-      </div>
+      </ScrollArea>
 
       {/* Keyboard hints: for keyboards, so not on phones. */}
       <div aria-hidden="true" className="hidden items-center gap-4 border-t border-line px-4 py-2.5 text-xs text-muted sm:flex">

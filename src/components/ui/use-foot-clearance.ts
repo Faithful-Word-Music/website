@@ -8,8 +8,8 @@ const CLEAR = "--action-bar-clear";
 /**
  * For a bar that sits on the foot of the window (ActionBar, the playlist's
  * player bar): while it rests there, <html> carries `data-action-bar` and the
- * bar's height in --action-bar-clear, so Conductor's button rises above it and
- * "Back to top" steps aside (globals.css, BackToTop.tsx). The bar itself gets
+ * bar's height in --action-bar-clear, so Conductor's button and "Back to top"
+ * rise above it (globals.css, BackToTop.tsx). The bar itself gets
  * `data-docked`.
  *
  * It counts as resting there only when it is showing and its bottom edge is on

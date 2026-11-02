@@ -3,6 +3,7 @@
 import { useId, useRef, type ReactNode } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { modalDialogFocusClasses, modalDialogProps, useModalDialog } from "@/components/ui/use-modal-dialog";
 
 /**
@@ -94,9 +95,12 @@ export function Modal({
           </button>
         </header>
 
-        <div className={cn("overflow-y-auto overscroll-contain", !bare && "space-y-6 px-5 py-5", bodyClassName)}>
+        <ScrollArea
+          wrapperClassName="flex min-h-0 flex-col"
+          className={cn("min-h-0 overflow-y-auto overscroll-contain", !bare && "space-y-6 px-5 py-5", bodyClassName)}
+        >
           {children}
-        </div>
+        </ScrollArea>
 
         {footer ? (
           <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-4">{footer}</footer>

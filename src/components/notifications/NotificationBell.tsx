@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import { useAccount } from "@/components/account/AccountContext";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Modal } from "@/components/ui/Modal";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { notificationsContent } from "@/content/notifications";
@@ -164,7 +165,7 @@ function PanelBody({ onOpen }: { onOpen: () => void }) {
   const recent = items.slice(0, NOTIFICATION_LIMITS.recent);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <ScrollArea wrapperClassName="flex min-h-0 flex-1 flex-col" className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
       {error ? <NotificationsError message={error} onRetry={() => void loadNotifications()} /> : null}
       {recent.length > 0 ? (
         <NotificationList items={recent} now={now} onOpen={onOpen} />
@@ -173,7 +174,7 @@ function PanelBody({ onOpen }: { onOpen: () => void }) {
       ) : loading ? (
         <NotificationsLoading />
       ) : null}
-    </div>
+    </ScrollArea>
   );
 }
 
