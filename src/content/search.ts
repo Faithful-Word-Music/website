@@ -63,6 +63,7 @@ export const searchContent = {
     archive: { label: "Song archive", keywords: "history past every song sung stats most sung" },
     years: { label: "Year in songs", keywords: "recap year review annual" },
     library: { label: "Library", keywords: "songs a-z index sheet music hymns" },
+    preparation: { label: "Preparation Playlists", keywords: "listen recordings youtube practice prepare playlist upcoming songs audio video" },
     contact: { label: "Contact", keywords: "email message question write" },
     /** {year} is replaced. */
     year: { label: "{year} in songs", keywords: "recap year review" },

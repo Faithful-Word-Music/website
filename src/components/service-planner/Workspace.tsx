@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { deleteSpecialService, publishServices, saveService, saveServiceLeaders, setServiceStatus } from "@/app/service-planner/actions";
 import { ActionMessage } from "@/components/account/fields";
@@ -44,10 +44,18 @@ import { formatAgo, formatChurchTime, formatShortDate } from "@/lib/service-time
 import type { SongReference } from "@/lib/song-identity";
 import type { DatedService } from "@/types/song-list";
 
+import { recordingsContent } from "@/content/recordings";
+import type { WorkspaceRecordings } from "@/lib/recordings/planner";
+import { placeRecording, recordingSignals, type RecordingSignal } from "@/lib/recordings/readiness";
+import { catalogOf } from "@/lib/recordings/resolve";
+
 import { AiGenerate, SparkleIcon, type GeneratedPlan } from "./AiGenerate";
 import { DefaultLeaderBar, LeadersPanel, PlaceLeader, type LeaderDraft, type LeaderPerson } from "./LeaderControls";
 import { requestPlanAi } from "./ai-request";
 import { Disclosure, Panel } from "./Panel";
+import { PlaylistPreview } from "./PlaylistPreview";
+import { ReviewPublish } from "./ReviewPublish";
+import { SongPanel } from "./SongPanel";
 import { SongPicker, type ChosenSong } from "./SongPicker";
 
 const copy = servicePlannerContent;
@@ -85,7 +93,35 @@ export interface WorkspaceProps {
   leaders: { draft: LeaderDraft; revision: number; people: LeaderPerson[] } | null;
   /** The service's place IDs had to be given afresh: its leaders need checking (StoredPlan.placesReset). */
   placesReset: boolean;
+  /**
+   * Every recording and link (the song pages' catalog), and the recordings
+   * chosen for this service's places. Null when they could not be read - the
+   * songs can still be planned.
+   */
+  recordings: WorkspaceRecordings | null;
+  /** Holds manage_songs: may add, change and delete recordings, and choose a song's primary. */
+  canManageSongs: boolean;
 }
+
+/** Whether the screen is wide enough for the song panel to sit beside the list (Tailwind's lg). */
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const query = window.matchMedia("(min-width: 64rem)");
+      query.addEventListener("change", onChange);
+      return () => query.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(min-width: 64rem)").matches,
+    () => true,
+  );
+}
+
+const STATUS_DOT: Record<"selected" | "primary" | "none" | "issue", string> = {
+  selected: "bg-gold",
+  primary: "bg-ink-soft",
+  none: "border border-staff",
+  issue: "bg-gold-dark",
+};
 
 const NO_LEADERS: LeaderDraft = { defaultUserId: null, overrides: {} };
 
@@ -175,6 +211,36 @@ export function Workspace(props: WorkspaceProps) {
       }),
     [slots, service.startsAt, service.date, props.recentPast, props.planned, props.sheetMusicChecked, candidateMap, candidates],
   );
+
+  // --- the selected song, and its recordings ---------------------------------
+
+  /** The place whose song is open in the panel (by its stable ID, so it follows the song when moved). */
+  const [selected, setSelected] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const wide = useWide();
+  const selectedIndex = selected ? places.indexOf(selected) : -1;
+  const selectedSong = selectedIndex >= 0 ? slots[selectedIndex] : null;
+  const recordingData = props.recordings;
+  const selections = useMemo(() => recordingData?.selections ?? [], [recordingData]);
+  const catalog = useMemo(() => catalogOf(recordingData?.recordings ?? []), [recordingData]);
+  const recordingChecks = useMemo(
+    () => (recordingData ? recordingSignals(slots, places, selections, catalog) : []),
+    [recordingData, slots, places, selections, catalog],
+  );
+  /** A recording is chosen for one place of the service as it is stored: never while songs are unsaved. */
+  const chooseBlocked = props.revision === null ? recordingsContent.manage.errors.unsaved : songsDirty ? recordingsContent.manage.errors.unsaved : null;
+  const focusPlace = (placeId: string) => {
+    setSelected(placeId);
+    // Brought into view, and the reader told where they are.
+    requestAnimationFrame(() => document.getElementById(`place-${placeId}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  };
+  const reviewWarnings = notableWarnings(signals, recordingChecks, Date.parse(service.startsAt));
+  /** The place a check is about: its own, or the first song of that title. */
+  const placeOfTitle = (title: string) => {
+    const index = slots.findIndex((song) => song?.title === title);
+    return index >= 0 ? places[index] : null;
+  };
 
   // --- editing -------------------------------------------------------------
 
@@ -341,9 +407,23 @@ export function Workspace(props: WorkspaceProps) {
           {/* While saving, and until the saved copy arrives, nothing in the list can be changed. */}
           <fieldset disabled={locking} className="contents">
           <Card className="overflow-hidden">
-            <div className="flex items-baseline justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line px-5 py-4 sm:px-6">
               <h2 className="font-display text-xl text-ink">{ws.songs}</h2>
-              <span className="text-sm text-muted">{progressLabel(filled, slots.length)}</span>
+              <span className="flex items-baseline gap-4">
+                <span className="text-sm text-muted">{progressLabel(filled, slots.length)}</span>
+                {recordingData && filled > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewing(true)}
+                    className="inline-flex min-h-9 items-center gap-1.5 text-sm font-medium text-ink-soft underline decoration-dotted underline-offset-4 transition-colors hover:text-ink"
+                  >
+                    <svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7 5l12 7-12 7V5z" />
+                    </svg>
+                    {recordingsContent.planner.preview}
+                  </button>
+                ) : null}
+              </span>
             </div>
             {props.leaders ? (
               <DefaultLeaderBar
@@ -379,7 +459,9 @@ export function Workspace(props: WorkspaceProps) {
                 <li
                   // A place is known by its own ID, so the same song twice is still two rows.
                   key={places[index]}
+                  id={`place-${places[index]}`}
                   data-flip={`place-${places[index]}`}
+                  aria-current={selected === places[index] ? "true" : undefined}
                   // On a phone a song's key and buttons take a second line
                   // under its title, so the title keeps the width; from `sm`
                   // it is all one line.
@@ -388,6 +470,7 @@ export function Workspace(props: WorkspaceProps) {
                     // With AI, a column before the numbers holds each song's lock.
                     aiAvailable ? "grid-cols-[2.25rem_1.5rem_minmax(0,1fr)_auto] sm:pl-3" : "grid-cols-[1.5rem_minmax(0,1fr)_auto]",
                     song && isInsert(song) && "bg-paper/40",
+                    selected === places[index] && "bg-paper ring-1 ring-inset ring-gold/60",
                   )}
                 >
                   {song && isInsert(song) ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-gold" /> : null}
@@ -425,6 +508,16 @@ export function Workspace(props: WorkspaceProps) {
                         </span>
                       </div>
                       {leaderLine}
+                      {recordingData ? (
+                        <div className="mt-0.5 pl-[2.875rem]">
+                          <RecordingChip
+                            entry={placeRecording(song, places[index], selections, catalog)}
+                            title={song.title}
+                            open={selected === places[index]}
+                            onOpen={() => setSelected(selected === places[index] ? null : places[index])}
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ) : editable ? (
                     <div className="min-w-0 flex-1 py-1">
@@ -589,10 +682,11 @@ export function Workspace(props: WorkspaceProps) {
                         state={stateOf("publish")}
                         pendingLabel={words.publishing}
                         doneLabel={words.published}
-                        onClick={() => save(true)}
+                        // A last look first: the songs, what changes and any warnings (ReviewPublish).
+                        onClick={() => setReviewing(true)}
                         disabled={locking}
                       >
-                        {dirty ? ws.saveAndPublish : ws.publish}
+                        {ws.review.button}
                       </Button>
                     </>
                   )}
@@ -606,7 +700,32 @@ export function Workspace(props: WorkspaceProps) {
         </div>
 
         <aside className="space-y-6">
-          <Checks signals={signals} sheetMusicChecked={props.sheetMusicChecked} serviceStartsAt={service.startsAt} />
+          {/* The chosen song's recordings, beside the list (on a phone, a dialog - below). */}
+          {wide && selectedSong && selected && recordingData ? (
+            <SongPanel
+              song={selectedSong}
+              position={selectedIndex + 1}
+              recordings={recordingData.recordings}
+              links={recordingData.links}
+              canManage={props.canManageSongs}
+              service={{
+                anchor: service.anchor,
+                placeId: selected,
+                planRevision: props.revision,
+                selection: placeRecording(selectedSong, selected, selections, catalog)?.selection ?? { kind: "none" },
+                blocked: editable ? chooseBlocked : ws.locked,
+              }}
+              onClose={() => setSelected(null)}
+            />
+          ) : null}
+          <Checks
+            signals={signals}
+            recordingSignals={recordingChecks}
+            sheetMusicChecked={props.sheetMusicChecked}
+            serviceStartsAt={service.startsAt}
+            onFocus={(placeId) => focusPlace(placeId)}
+            placeOfTitle={placeOfTitle}
+          />
           {props.leaders ? (
             <LeadersPanel people={props.leaders.people} draft={leaders} places={places} date={service.date} reset={props.placesReset} />
           ) : null}
@@ -749,6 +868,52 @@ export function Workspace(props: WorkspaceProps) {
         </Modal>
       ) : null}
 
+      {!wide && selectedSong && selected && recordingData ? (
+        <Modal title={selectedSong.title} closeLabel={ws.songPanel.close} onClose={() => setSelected(null)} size="lg">
+          <SongPanel
+            bare
+            song={selectedSong}
+            position={selectedIndex + 1}
+            recordings={recordingData.recordings}
+            links={recordingData.links}
+            canManage={props.canManageSongs}
+            service={{
+              anchor: service.anchor,
+              placeId: selected,
+              planRevision: props.revision,
+              selection: placeRecording(selectedSong, selected, selections, catalog)?.selection ?? { kind: "none" },
+              blocked: editable ? chooseBlocked : ws.locked,
+            }}
+          />
+        </Modal>
+      ) : null}
+
+      {previewing && recordingData ? (
+        <PlaylistPreview
+          service={{ date: service.date, slot: service.slot, startsAt: service.startsAt, label: label.trim() || service.label }}
+          slots={slots}
+          places={places}
+          recordings={recordingData.recordings}
+          selections={selections}
+          onClose={() => setPreviewing(false)}
+        />
+      ) : null}
+
+      {reviewing ? (
+        <ReviewPublish
+          title={title}
+          saved={service.slots}
+          slots={slots}
+          dirty={dirty}
+          warnings={reviewWarnings}
+          state={stateOf("publish")}
+          onPublish={() => {
+            void save(true).then(() => setReviewing(false));
+          }}
+          onClose={() => setReviewing(false)}
+        />
+      ) : null}
+
       {picker ? (
         <SongPicker
           candidates={candidates}
@@ -858,71 +1023,181 @@ const NOTABLE = new Set<PlanningSignal["kind"]>([
   "out-of-season",
 ]);
 
-/** The service's checks, in words. They inform; nothing here stops a save. */
+/** A planning check in words. */
+function describeSignal(signal: PlanningSignal, start: number): string {
+  const c = copy.checks;
+  switch (signal.kind) {
+    case "duplicate":
+      return c.duplicate.replace("{title}", signal.title);
+    case "recently-sung":
+      return c.recentlySung.replace("{title}", signal.title).replace("{ago}", formatAgo(Date.parse(signal.at), start));
+    case "planned-nearby":
+      return c.plannedNearby.replace("{title}", signal.title).replace("{date}", formatShortDate(signal.at));
+    case "repeated-pair":
+      return c.repeatedPair
+        .replace("{a}", signal.titles[0])
+        .replace("{b}", signal.titles[1])
+        .replace("{date}", formatShortDate(signal.at));
+    case "out-of-season":
+      return c.outOfSeason.replace("{title}", signal.title);
+    case "no-sheet-music-entry":
+      return c.noSheetEntry.replace("{title}", signal.title);
+    case "sheet-music-gap":
+      return signal.everyone
+        ? c.sheetGapEveryone.replace("{title}", signal.title)
+        : c.sheetGap.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
+    case "capo-needed":
+      return c.capoNeeded.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
+    case "no-sheet-music":
+      return signal.anyFiles ? c.noSheetMusicForAnyone : c.noSheetMusic;
+    case "key-differs":
+      return c.keyDiffers.replace("{title}", signal.title).replace("{key}", signal.key).replace("{current}", signal.current);
+    case "empty-places":
+      return signal.count === 1 ? c.emptyPlace : c.emptyPlaces.replace("{count}", String(signal.count));
+  }
+}
+
+/** A recording check in words. */
+function describeRecordingSignal(signal: RecordingSignal): string {
+  const c = copy.checks;
+  if (signal.kind === "recording-issue") {
+    return (signal.reason === "removed" ? c.recordingRemoved : c.recordingUnavailable).replace("{title}", signal.title);
+  }
+  return signal.all ? c.noRecordingsAll : c.noRecordings.replace("{titles}", signal.titles.join(", "));
+}
+
+/** The song a planning check is about, when it is about one. */
+function signalTitle(signal: PlanningSignal): string | null {
+  return "title" in signal && typeof signal.title === "string" ? signal.title : null;
+}
+
+/** The checks worth a second look, in words: for the review before publishing. */
+function notableWarnings(signals: PlanningSignal[], recordingSignals: RecordingSignal[], start: number): string[] {
+  return [
+    ...signals.filter((signal) => NOTABLE.has(signal.kind)).map((signal) => describeSignal(signal, start)),
+    ...recordingSignals.filter((signal) => signal.kind === "recording-issue").map(describeRecordingSignal),
+  ];
+}
+
+interface CheckLine {
+  text: string;
+  notable: boolean;
+  placeId: string | null;
+}
+
+/**
+ * The service's checks, in words. They inform; nothing here stops a save.
+ * A check about one song is a button: it opens that song in the list.
+ * Recordings: a chosen recording that can't be used is worth a look; songs
+ * with no recording are one quiet line - that is normal.
+ */
 function Checks({
   signals,
+  recordingSignals,
   sheetMusicChecked,
   serviceStartsAt,
+  onFocus,
+  placeOfTitle,
 }: {
   signals: PlanningSignal[];
+  recordingSignals: RecordingSignal[];
   sheetMusicChecked: boolean;
   serviceStartsAt: string;
+  onFocus: (placeId: string) => void;
+  placeOfTitle: (title: string) => string | null;
 }) {
   const c = copy.checks;
   const start = Date.parse(serviceStartsAt);
-  const words = (signal: PlanningSignal): string => {
-    switch (signal.kind) {
-      case "duplicate":
-        return c.duplicate.replace("{title}", signal.title);
-      case "recently-sung":
-        return c.recentlySung.replace("{title}", signal.title).replace("{ago}", formatAgo(Date.parse(signal.at), start));
-      case "planned-nearby":
-        return c.plannedNearby.replace("{title}", signal.title).replace("{date}", formatShortDate(signal.at));
-      case "repeated-pair":
-        return c.repeatedPair
-          .replace("{a}", signal.titles[0])
-          .replace("{b}", signal.titles[1])
-          .replace("{date}", formatShortDate(signal.at));
-      case "out-of-season":
-        return c.outOfSeason.replace("{title}", signal.title);
-      case "no-sheet-music-entry":
-        return c.noSheetEntry.replace("{title}", signal.title);
-      case "sheet-music-gap":
-        return signal.everyone
-          ? c.sheetGapEveryone.replace("{title}", signal.title)
-          : c.sheetGap.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
-      case "capo-needed":
-        return c.capoNeeded.replace("{title}", signal.title).replace("{people}", signal.people.join(", "));
-      case "no-sheet-music":
-        return signal.anyFiles ? c.noSheetMusicForAnyone : c.noSheetMusic;
-      case "key-differs":
-        return c.keyDiffers.replace("{title}", signal.title).replace("{key}", signal.key).replace("{current}", signal.current);
-      case "empty-places":
-        return signal.count === 1 ? c.emptyPlace : c.emptyPlaces.replace("{count}", String(signal.count));
-    }
-  };
+  const lines: CheckLine[] = [
+    ...recordingSignals
+      .filter((signal) => signal.kind === "recording-issue")
+      .map((signal) => ({ text: describeRecordingSignal(signal), notable: true, placeId: signal.kind === "recording-issue" ? signal.placeId : null })),
+    ...signals.map((signal) => {
+      const title = signalTitle(signal);
+      return { text: describeSignal(signal, start), notable: NOTABLE.has(signal.kind), placeId: title ? placeOfTitle(title) : null };
+    }),
+    ...recordingSignals
+      .filter((signal) => signal.kind === "no-recordings")
+      .map((signal) => ({
+        text: describeRecordingSignal(signal),
+        notable: false,
+        placeId: signal.kind === "no-recordings" && signal.placeIds.length === 1 ? signal.placeIds[0] : null,
+      })),
+  ];
   // Conductor is told the checks as they read here.
-  useConductorScreen("checks", signals.map(words));
+  useConductorScreen("checks", lines.map((line) => line.text));
 
   return (
     <Panel title={c.title}>
-      {signals.length === 0 ? (
+      {lines.length === 0 ? (
         <p className="text-sm text-muted">{c.none}</p>
       ) : (
         <ul className="space-y-2.5 text-sm" aria-live="polite">
-          {signals.map((signal, index) => (
-            <li key={index} className="flex gap-2.5">
-              <span
-                aria-hidden="true"
-                className={cn("mt-[0.45rem] size-1.5 shrink-0 rounded-full", NOTABLE.has(signal.kind) ? "bg-gold" : "bg-staff")}
-              />
-              <span className={NOTABLE.has(signal.kind) ? "text-ink" : "text-ink-soft"}>{words(signal)}</span>
-            </li>
-          ))}
+          {lines.map((line, index) => {
+            const dot = (
+              <span aria-hidden="true" className={cn("mt-[0.45rem] size-1.5 shrink-0 rounded-full", line.notable ? "bg-gold" : "bg-staff")} />
+            );
+            const text = <span className={line.notable ? "text-ink" : "text-ink-soft"}>{line.text}</span>;
+            return (
+              <li key={index}>
+                {line.placeId ? (
+                  <button
+                    type="button"
+                    onClick={() => onFocus(line.placeId!)}
+                    className="-mx-1.5 flex w-[calc(100%+0.75rem)] gap-2.5 rounded-md px-1.5 py-0.5 text-left transition-colors hover:bg-paper"
+                  >
+                    {dot}
+                    {text}
+                  </button>
+                ) : (
+                  <span className="flex gap-2.5">
+                    {dot}
+                    {text}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {!sheetMusicChecked ? <p className="mt-3 text-xs text-muted">{c.unavailableIndex}</p> : null}
     </Panel>
+  );
+}
+
+/** What a song's row says about its recording; opens the song's panel. */
+function RecordingChip({
+  entry,
+  title,
+  open,
+  onOpen,
+}: {
+  entry: ReturnType<typeof placeRecording>;
+  title: string;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  if (!entry) return null;
+  const status = entry.resolved.kind === "selected" || entry.resolved.kind === "primary" || entry.resolved.kind === "issue" ? entry.resolved.kind : "none";
+  const label = recordingsContent.status[status];
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-expanded={open}
+      aria-label={`${label}. ${copy.workspace.songPanel.open.replace("{title}", title)}`}
+      className={cn(
+        "inline-flex min-h-8 items-center gap-1.5 rounded-full px-2 text-xs transition-colors hover:bg-paper",
+        status === "issue" ? "text-gold-dark" : status === "none" ? "text-muted" : "text-ink-soft",
+        open && "bg-paper text-ink",
+      )}
+    >
+      <span aria-hidden="true" className={cn("size-2 rounded-full", STATUS_DOT[status])} />
+      {label}
+      <svg aria-hidden="true" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 3.5 10.5 8 6 12.5" />
+      </svg>
+    </button>
   );
 }
 

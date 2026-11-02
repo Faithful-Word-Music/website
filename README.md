@@ -309,6 +309,14 @@ Special service (created) ─┘
 
 Every page and every server action checks the permission on the server (`src/app/service-planner/actions.ts`, each wrapped in `withPermission("manage_service_plans")`); hiding the link is never the protection.
 
+**The workspace** (`/service-planner/<anchor>`, `components/service-planner/Workspace.tsx`):
+
+- **Month strip.** The month's services sit above the workspace (`ServiceRail`), each with its status and song count, so you can move between them without going back to the list. Unsaved changes still ask first.
+- **Songs.** Each song row shows its recording status. Choosing it opens the song's panel (`SongPanel`): beside the list on a computer, in a dialog on a phone. The panel shows its recordings and links, which recording this service uses, and a link to the song page.
+- **Checks.** A check about one song is a button that opens that song. Recording problems are warnings; songs with no recording get one quiet line.
+- **Preview playlist** (`PlaylistPreview`) plays the service's recordings privately, as they will be once it is published.
+- **Publish** opens **Review and publish** (`ReviewPublish`): the songs, what changes, and the warnings. It then calls the same actions as before.
+
 **The tables** (created on first use, `lib/service-planner/store.ts`; each row tagged `clerk_env`): `service_plans` (one row per touched service: places as `jsonb`, status, insert mode, revision, created/updated/published by and at), `publications`, `service_plan_events`, `week_inserts` (a week's inserts in order: `insert_index` 1, and 2 for a second), `catalog_songs`. `insert_weeks` is what `week_inserts` replaced, from when a week had exactly one insert: its rows are copied across once per environment, as each week's first insert, the first time that environment's planner runs this code (a `schema_fixups` row records it), and it is then left alone - never read, written or dropped. A new table rather than a new key on the old one, because Local, Preview and Production share the database and a deployment still on the older code keeps writing the old table by its old key until it is redeployed.
 
 ### Song leaders
@@ -319,6 +327,36 @@ Who leads the singing is set in the Service Planner, beside each service's songs
 - **Saved on their own.** "Save leaders" never republishes, withdraws or announces the song list. When songs and leaders change together, they are saved in one transaction, against both revisions.
 - **Private before publication.** A leader sees only which positions they lead until the song list is published. After that, people with `view_service_plans` see every song's leader. The public song list, its cache, PDF and share images never contain leaders. Signed-in pages fetch them from `/api/account/song-leaders`.
 - **Availability.** Leaders who are away are flagged in the planner and on the Dashboard, and schedulers are notified. Nobody is ever reassigned automatically.
+
+### Song recordings and Preparation Playlists
+
+Reference recordings belong to songs, and Preparation Playlists gather the recordings for upcoming published services, in order. The code is in `src/lib/recordings/`, the actions in `src/app/recordings/actions.ts`, and the components in `src/components/recordings/`.
+
+- **One catalog.** There are three tables (`src/lib/recordings/store.ts`, every row tagged with `clerk_env`):
+  - `song_recordings` holds playable recordings. A unique partial index allows at most one `is_primary` per song.
+  - `song_media_links` holds Drive files and other links. They are opened on their own site, never played, and never put in a playlist.
+  - `service_recording_selections` holds a recording chosen for one place of one service.
+  - The song page and the Service Planner read and change the same rows through the same actions.
+- **Providers.** Only addresses are accepted, never embed HTML. YouTube is the one playable provider (`providers.ts`). A provider is added there only once its official player can be controlled and can say when a recording ends. Adding a recording checks it with YouTube's oEmbed (no API key), which also fills in the channel as the source.
+- **Primary.** A recording is primary only when someone chooses it. Adding one never makes it primary, and deleting or restricting the primary never promotes another.
+- **Which recording plays** (`resolve.ts`):
+  1. The recording chosen for the service.
+  2. Otherwise the song's primary.
+  3. Otherwise none.
+  - A chosen recording that was deleted or can't be seen is reported as an issue. It never falls back to the primary.
+  - A choice belongs to a place's stable ID and remembers its song, so it follows a moved song and is dropped when the place holds another song (`pruneSelectionsStatement`, run in the planner's save transaction).
+- **Playlists are worked out, never stored** (`playlist.ts`). They are built from `getPublishedPlans()` (the schedule's cached rows, so published services only) plus the cached public recordings. Past services drop off, and a month with nothing left disappears. Songs without a recording stay in the list and are skipped by Play all.
+- **Public, cached, private where needed.**
+  - `/preparation` and the song pages are static and only ever contain **public** recordings, so a visitor never wakes Neon.
+  - Members-only recordings are fetched by the browser from `/api/recordings` (`private, no-store`).
+  - Changes clear `RECORDINGS_TAG`, and publishing (`refreshEverything`) clears it too.
+- **Player.** YouTube's IFrame API (`youtube-nocookie.com`) is driven by a pure state machine (`playback.ts`). A failed recording is skipped and never retried on its own, and the end of the list is the end.
+- **Keep Screen Awake.** A switch in the player, on by default and remembered on the device (`localStorage` key `fwm:keep-screen-awake`). It holds a Screen Wake Lock only while a playlist is actually playing and the page is visible. It releases on pause, at the end, on unmount, and when switched off. After a revocation or a refusal it asks again only when playback restarts or the page is shown again, never in a loop.
+  - The logic is `WakeLockController` in `src/lib/recordings/wake-lock.ts` (tested without a browser); the hook is `use-keep-awake.ts`.
+  - It never enables background playback. Where the API is missing, the player says so and plays on. Safari supports it from iOS 16.4; in a Home Screen web app it was reported broken until iOS 18.4, so check there. Chrome on Android supports it; battery saver can refuse it.
+- **Permissions.** `manage_songs` adds, edits, deletes and sets the primary. `manage_service_plans` chooses a recording for a service. Choosing one on a published service takes effect at once without unpublishing it, as with leaders.
+- **The disclaimer** is approved wording, kept in `src/content/recordings.ts` and shown only through `RecordingDisclaimer`, beside every set of recordings. Never retype it.
+- **No recording is normal.** Most songs may never have one. The planner mentions them in one quiet line and never blocks publishing.
 
 ### Next and Now
 

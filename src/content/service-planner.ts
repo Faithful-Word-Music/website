@@ -48,6 +48,7 @@ export const servicePlannerContent = {
     open: "Open",
     special: "Special",
     planNext: "Plan next",
+    recordings: "{count} of {total} with recordings",
     ahead: "Planning ahead",
   },
 
@@ -123,6 +124,38 @@ export const servicePlannerContent = {
     leaveTitle: "Leave without saving?",
     leaveStay: "Stay",
     leaveConfirm: "Leave without saving",
+    /** The selected song's panel (beside the list on a computer, over it on a phone). */
+    songPanel: {
+      title: "Song",
+      open: "Details for {title}",
+      close: "Close",
+      chooseHint: "Choose a song in the list to see its recordings and links here.",
+      openSong: "Open song page",
+      keyLabel: "Key",
+      leaderLabel: "Leads",
+    },
+    /** Moving between the month's services without going back to the list. */
+    rail: {
+      label: "Services this month",
+      previous: "Previous service",
+      next: "Next service",
+      current: "This service",
+    },
+    /** Review before publishing. */
+    review: {
+      button: "Review and publish",
+      title: "Publish {service}?",
+      lead: "These songs will appear on the song list and in the Preparation Playlists.",
+      songs: "Songs, in order",
+      changes: "Changes going public",
+      noChanges: "No song changes since it was last saved.",
+      warnings: "Worth a look first",
+      noWarnings: "No warnings.",
+      empty: "{count} places are still empty: they show as “to be announced”.",
+      confirm: "Publish",
+      confirmSave: "Save and publish",
+      cancel: "Not yet",
+    },
   },
 
   /** Song leaders, in the workspace (Workspace.tsx) and its actions. */
@@ -297,6 +330,12 @@ export const servicePlannerContent = {
     emptyPlaces: "{count} places still empty.",
     emptyPlace: "1 place still empty.",
     unavailableIndex: "The Sheet Music Index could not be read, so sheet music is not checked.",
+    /** A recording chosen for this service that can't be used: someone chose it, so it is worth a look. */
+    recordingRemoved: "{title}: the recording chosen for this service was deleted.",
+    recordingUnavailable: "{title}: the recording chosen for this service can't be played.",
+    /** Informational, one quiet line: many songs have no recording, and that is fine. */
+    noRecordings: "No recording yet: {titles}.",
+    noRecordingsAll: "None of these songs has a recording yet.",
   },
 
   availability: {

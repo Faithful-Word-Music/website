@@ -34,11 +34,13 @@ import {
 } from "@/lib/leadership/store";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import { plural } from "@/lib/plural";
+import { RECORDINGS_TAG } from "@/lib/recordings/load";
+import { pruneSelectionsStatement, recordingsSql } from "@/lib/recordings/store";
 import { SCHEDULE_TAG } from "@/lib/schedule";
 import { dayOfWeek } from "@/lib/service-time";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { CATALOG_TAG } from "@/lib/song-archive";
-import { identifySong, indexEntries, referenceEntries, type IdentityEntry, type SongReference } from "@/lib/song-identity";
+import { identifySong, indexEntries, referenceEntries, songIdentity, type IdentityEntry, type SongReference } from "@/lib/song-identity";
 import { startsAtAt } from "@/lib/service-planner/format";
 import { newPlaceId, placeIdsFor } from "@/lib/service-planner/places";
 import {
@@ -134,6 +136,8 @@ function refreshPlanner() {
 function refreshEverything() {
   updateTag(SCHEDULE_TAG);
   updateTag(LEADERSHIP_TAG);
+  // The Preparation Playlists' recording choices, which follow the published services.
+  updateTag(RECORDINGS_TAG);
   revalidatePath("/", "layout");
 }
 
@@ -257,6 +261,13 @@ export async function saveService(
 
     const kind = current?.kind ?? occurrence.kind;
     let changeId: string | null = null;
+    // A recording chosen for a place stays with it only while it holds the same song: one moved
+    // keeps its recording, one replaced loses it (src/lib/recordings/store.ts).
+    const keepSelections = places.flatMap((placeId, index) => {
+      const song = slots[index];
+      return song ? [{ placeId, songId: songIdentity(song) }] : [];
+    });
+    if (current) await recordingsSql();
     const saved = await savePlanWith(
       viewer.env,
       {
@@ -276,6 +287,7 @@ export async function saveService(
       // In the same transaction as the songs: never songs saved with leaders pointing at places
       // that are gone, or leaders saved for songs that were not.
       (sql) => {
+        const selections = current ? [pruneSelectionsStatement(sql, viewer.env, where, keepSelections)] : [];
         if (leadersChanged) {
           const built = leadershipStatements(sql, viewer.env, where, {
             expectedRevision: leadersBefore.revision,
@@ -285,12 +297,12 @@ export async function saveService(
             change: leaderChange,
           });
           changeId = built.changeId;
-          return built.statements;
+          return [...built.statements, ...selections];
         }
-        if (!leaderChange) return [];
+        if (!leaderChange) return selections;
         const built = changeStatement(sql, viewer.env, where, leaderChange, viewer.userId);
         changeId = built.changeId;
-        return [built.statement];
+        return [built.statement, ...selections];
       },
     );
     if (!saved.ok) return { ok: false, error: MESSAGES.conflict };

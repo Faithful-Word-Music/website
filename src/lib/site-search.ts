@@ -150,6 +150,7 @@ const PAGES: PageDefinition[] = [
   { href: "/conductor", copy: "conductor", permission: "use_ai" },
   { href: "/song-list", copy: "songList" },
   { href: "/library", copy: "library" },
+  { href: "/preparation", copy: "preparation", quiet: true },
   { href: "/availability", copy: "availability", permission: "view_availability" },
   { href: "/song-list/archive", copy: "archive" },
   { href: "/song-list/archive/services", copy: "serviceArchive", quiet: true },

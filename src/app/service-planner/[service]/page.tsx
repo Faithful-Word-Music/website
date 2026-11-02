@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { NoAccess } from "@/components/account/Notices";
+import { ServiceRail } from "@/components/service-planner/ServiceRail";
 import { Workspace } from "@/components/service-planner/Workspace";
 import { BackLink } from "@/components/ui/BackLink";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { servicePlannerContent } from "@/content/service-planner";
 import { requireViewer } from "@/lib/auth/session";
+import { loadMonthRail, loadWorkspaceRecordings } from "@/lib/recordings/planner";
 import { loadWorkspace } from "@/lib/service-planner/load";
 import { withoutPlan } from "@/lib/service-planner/model";
 
@@ -38,6 +40,8 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
   const data = await loadWorkspace(viewer, anchor);
   if (!data) notFound();
   const plan = data.service.plan;
+  // Recordings (one catalog with the song pages) and the month's other services, read beside the plan.
+  const [recordings, rail] = await Promise.all([loadWorkspaceRecordings(viewer, data.service), loadMonthRail(viewer, data.service.date)]);
   // The songs' history and the leaders' changes, as one list, newest first.
   const history = [
     ...data.events,
@@ -55,7 +59,10 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
   return (
     <PageTransition>
       <Container size="wide" className="pb-14 pt-10 sm:pb-20 sm:pt-14">
-        <BackLink fallback="/service-planner" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <BackLink fallback="/service-planner" />
+          <ServiceRail services={rail} current={data.service.anchor} className="min-w-0 lg:max-w-[70%]" />
+        </div>
         <div className="mt-6">
           <Workspace
             // A fresh copy of the editor whenever the stored service changes (after a save, or someone else's).
@@ -82,6 +89,8 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
                 : null
             }
             placesReset={plan?.placesReset === true}
+            recordings={recordings}
+            canManageSongs={viewer.can("manage_songs")}
           />
         </div>
       </Container>

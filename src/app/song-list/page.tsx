@@ -6,7 +6,9 @@ import { SongListError } from "@/components/song-list/SongListStates";
 import { SongLeadersProvider } from "@/components/song-list/SongLeaders";
 import { ServicePacketsProvider } from "@/components/song-list/ServicePackets";
 import { SongListView } from "@/components/song-list/SongListView";
+import { ButtonLink } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
+import { recordingsContent } from "@/content/recordings";
 import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
@@ -53,6 +55,9 @@ export default async function SongListPage() {
             </SectionHeading>
 
             <div className="flex shrink-0 flex-wrap gap-3">
+              <ButtonLink href="/preparation" variant="secondary">
+                {recordingsContent.preparation.entry}
+              </ButtonLink>
               {/* Each tab's title, or null for a tab with no schedule to put in a PDF. */}
               <PdfLink
                 months={months.map((month) =>

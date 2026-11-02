@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { SongRecordings } from "@/components/recordings/SongRecordings";
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { SongReportLinks } from "@/components/support/SongReportLinks";
 import { AboutSong, SheetMusic } from "@/components/song-list/SheetMusic";
@@ -14,6 +15,7 @@ import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
 import { songListContent } from "@/content/song-list";
+import { getSongRecordings } from "@/lib/recordings/load";
 import { getSongChoices, getSongPage, type SongPlay } from "@/lib/song-archive";
 import type { Companion } from "@/lib/song-history";
 import { churchYear, formatChurchTime, formatDayDate } from "@/lib/service-time";
@@ -80,6 +82,7 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
   if (song !== data.slug) permanentRedirect(songPath(data.slug));
 
   const { title, number, plays, upcoming, companions, stats, sheetMusic, loadedAt } = data;
+  const recordings = await getSongRecordings(data.songId);
 
   return (
     <PageTransition>
@@ -110,6 +113,9 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
             className="mt-10"
           />
         ) : null}
+
+        {/* Public recordings come with the page; members' are added by the browser. */}
+        <SongRecordings songId={data.songId} songTitle={title} recordings={recordings.recordings} links={recordings.links} className="mt-12" />
 
         {/* For people who look after the sheet music only; nothing for anyone else. */}
         <SongCapoSetting title={title} number={number} songId={data.songId} collection={data.collection} className="mt-10" />

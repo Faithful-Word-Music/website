@@ -37,6 +37,8 @@ export interface QueueRow {
   target: number;
   /** The songs chosen so far, in order. */
   songs: string[];
+  /** How many of its songs have a recording to play; absent when not known. */
+  recordings?: { withRecording: number; songs: number };
 }
 
 /**
@@ -252,6 +254,14 @@ function QueueItem({
           </span>
           {row.songs.length > 0 ? (
             <span className="mt-0.5 block truncate text-sm text-muted">{row.songs.join(" · ")}</span>
+          ) : null}
+          {/* Quiet: many songs have no recording, and that is fine. */}
+          {row.recordings && row.recordings.songs > 0 ? (
+            <span className="mt-0.5 block text-xs text-muted">
+              {copy.queue.recordings
+                .replace("{count}", String(row.recordings.withRecording))
+                .replace("{total}", String(row.recordings.songs))}
+            </span>
           ) : null}
         </span>
         {/* Next to plan - not the song list's Next, which means the next service to happen. */}

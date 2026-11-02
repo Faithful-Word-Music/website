@@ -9,6 +9,7 @@ import { QueueView, type QueueRow } from "@/components/service-planner/QueueView
 import { Container } from "@/components/ui/Container";
 import { servicePlannerContent } from "@/content/service-planner";
 import { requireViewer } from "@/lib/auth/session";
+import { loadRecordingCoverage } from "@/lib/recordings/planner";
 import { addDays } from "@/lib/availability/occurrences";
 import { serviceDate } from "@/lib/service-planner/format";
 import { loadQueue } from "@/lib/service-planner/load";
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 
 const copy = servicePlannerContent;
 
-function toRow(service: PlannerService): QueueRow {
+function toRow(service: PlannerService, coverage: Map<string, { withRecording: number; songs: number }>): QueueRow {
   return {
     anchor: service.anchor,
     date: service.date,
@@ -35,6 +36,7 @@ function toRow(service: PlannerService): QueueRow {
     filled: service.filled,
     target: service.target,
     songs: service.slots.flatMap((song) => (song ? [song.title] : [])),
+    ...(coverage.has(service.anchor) ? { recordings: coverage.get(service.anchor) } : {}),
   };
 }
 
@@ -69,15 +71,18 @@ export default async function ServicePlannerPage(props: PageProps<"/service-plan
 
   const ahead = parseAhead((await props.searchParams).ahead);
   const data = await loadQueue(viewer, ahead);
+  const { needsPlanning, published, cancelled } = data.queue;
+  const coverage = await loadRecordingCoverage(viewer, [...needsPlanning, ...published]);
+  const row = (service: PlannerService) => toRow(service, coverage);
   const throughStart = `${data.through}T12:00:00-07:00`;
 
   return (
     <PlannerShell>
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <QueueView
-          needsPlanning={data.queue.needsPlanning.map(toRow)}
-          published={data.queue.published.map(toRow)}
-          cancelled={data.queue.cancelled.map(toRow)}
+          needsPlanning={needsPlanning.map(row)}
+          published={published.map(row)}
+          cancelled={cancelled.map(row)}
           through={throughStart}
           planAhead={
             <PlanAhead path="/service-planner" ahead={ahead} nextMonth={data.nextMonth} lastMonth={data.lastMonth} />

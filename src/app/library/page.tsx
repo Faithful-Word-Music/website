@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { SongIndex } from "@/components/library/SongIndex";
+import { PreparationLink } from "@/components/recordings/PreparationLink";
 import { Card } from "@/components/ui/Card";
 import { Container } from "@/components/ui/Container";
 import { PageTransition } from "@/components/ui/PageTransition";
@@ -42,7 +43,10 @@ export default async function LibraryPage() {
           <p className="text-base sm:text-lg">{libraryContent.lead}</p>
         </SectionHeading>
 
-        {/* Songs are the Library's only section for now; audio and the like will sit beside it. */}
+        {/* Recordings live on each song's page; the upcoming services' are gathered into playlists. */}
+        <PreparationLink className="mt-8" />
+
+        {/* Songs, A-Z; each song's page holds its sheet music and recordings. */}
         <section aria-labelledby="songs" className="mt-10">
           <h2 id="songs" className="sr-only">
             {libraryContent.songsTitle}

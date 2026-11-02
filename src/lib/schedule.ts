@@ -135,3 +135,22 @@ export const getSchedule = cache(async (): Promise<SongListResult> => {
     return { ok: false, reason: "unavailable" };
   }
 });
+
+/**
+ * Published services from the start of this month on, as stored - for the
+ * Preparation Playlists (src/lib/recordings/load.ts), which need each place's
+ * stable ID to find the recording chosen for it. The same cached rows as
+ * getSchedule(), so no extra read; published services only, never a draft.
+ * null when the planner cannot be read.
+ */
+export const getPublishedPlans = cache(async (): Promise<StoredPlan[] | null> => {
+  if (!plannerConfigured()) return null;
+  try {
+    const fromWeek = weekStartOf(monthRange(churchDate(Date.now()).slice(0, 7)).from);
+    const { plans } = await getScheduleRows(scheduleEnv(), fromWeek);
+    return plans.filter((plan) => plan.status === "published" && plan.date >= fromWeek);
+  } catch (error) {
+    console.error("[schedule] Could not load the published plans:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+});

@@ -9,6 +9,8 @@ import { PushCard } from "@/components/notifications/PushDevice";
 import { AttentionList } from "@/components/dashboard/AttentionList";
 import { AvailabilitySummary } from "@/components/dashboard/AvailabilitySummary";
 import { ComingUp } from "@/components/dashboard/ComingUp";
+import { PreparationLink } from "@/components/recordings/PreparationLink";
+import { recordingsContent } from "@/content/recordings";
 import { DashboardGrid } from "@/components/dashboard/DashboardSection";
 import { BrushUp, NewSheetMusic, QuarterGlance, SheetGaps } from "@/components/dashboard/MusicSections";
 import { PeopleOverview } from "@/components/dashboard/PeopleOverview";
@@ -244,6 +246,7 @@ export default async function DashboardPage() {
           later={leading ? laterAssignments(leading.mine, new Set(comingUp.map((service) => service.id))) : []}
           className="mt-10"
         />
+        {comingUp.length > 0 ? <PreparationLink note={recordingsContent.preparation.entryNote} className="mt-4" /> : null}
         {packetSeed ? <ServicePacketsSeed userId={viewer.userId} packets={packetSeed} /> : null}
 
         {focus.tracksAvailability ? <AvailabilitySummary summary={availability} now={now} className="mt-14" /> : null}
