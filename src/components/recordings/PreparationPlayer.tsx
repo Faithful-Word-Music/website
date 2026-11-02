@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { SongLink, songRef } from "@/components/song-list/SongLink";
 import { Card } from "@/components/ui/Card";
@@ -15,7 +15,6 @@ import type { WakeLockStatus } from "@/lib/recordings/wake-lock";
 
 import { recordingDetails, RecordingDisclaimer, RecordingReminder, SourceAttribution } from "./RecordingNotes";
 import { useKeepAwake } from "./use-keep-awake";
-import { useStickyFit } from "./use-sticky-fit";
 import { useViewerRecordings } from "./use-viewer-recordings";
 import { YouTubePlayer } from "./YouTubePlayer";
 
@@ -96,7 +95,31 @@ export function PreparationPlayer({
     send(event);
   }, []);
 
-  const [stickyRef, stickyTop] = useStickyFit<HTMLDivElement>();
+  // Keep the current song in view inside the playlist panel - scrolling the panel only, never the page.
+  const listRef = useRef<HTMLDivElement>(null);
+  const currentIndex = state.current;
+  useEffect(() => {
+    const panel = listRef.current;
+    if (!panel || currentIndex === null || panel.scrollHeight <= panel.clientHeight) return;
+    const row = panel.querySelector<HTMLElement>(`[data-index="${currentIndex}"]`);
+    if (!row) return;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (top < panel.scrollTop || bottom > panel.scrollTop + panel.clientHeight) {
+      panel.scrollTo({ top: top - (panel.clientHeight - row.offsetHeight) / 2, behavior: "smooth" });
+    }
+  }, [currentIndex]);
+
+  const single = sections.length === 1 ? sections[0] : null;
+  const panelTitle = single?.title ?? copy.playlist;
+  const panelMeta = [
+    single?.subtitle,
+    current && currentRecording
+      ? copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))
+      : recordingsContent.preparation.withRecordings.replace("{count}", String(playableCount)),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const statusLine =
     state.status === "blocked"
@@ -135,36 +158,43 @@ export function PreparationPlayer({
     </div>
   );
 
+  // Laid out like a video site's watch page: the player and its details on the
+  // left, the playlist in its own scrolling panel on the right, kept under the
+  // header. On a phone (and in a dialog) it is one column: player, playlist,
+  // then the details. The DOM order is that phone order; on wide screens the
+  // grid places the details under the player.
   return (
-    <div className={cn("grid gap-6", !stacked && "lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start", className)}>
-      <div
-        ref={stacked ? undefined : stickyRef}
-        style={stacked || stickyTop === undefined ? undefined : { top: stickyTop }}
-        className={cn(!stacked && "lg:sticky lg:top-24")}
-      >
-        <Card className="p-4 sm:p-5">
-          {draft ? (
-            <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
-              {recordingsContent.planner.previewTitle}
-            </p>
-          ) : null}
-          {!anyPlayable ? (
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted">
-                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-ink">{copy.nothingPlayable}</p>
-                <p className="mt-0.5 text-sm text-muted">{copy.nothingPlayableNote}</p>
-              </div>
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)] gap-6",
+        !stacked && "lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)] lg:gap-x-8",
+        className,
+      )}
+    >
+      <div className={cn("min-w-0", !stacked && "lg:col-start-1 lg:row-start-1")}>
+        {draft ? (
+          <p className="mb-3 inline-flex rounded-full border border-gold/60 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-gold-dark">
+            {recordingsContent.planner.previewTitle}
+          </p>
+        ) : null}
+        {!anyPlayable ? (
+          <Card className="flex items-start gap-3 p-4 sm:p-5">
+            <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-muted">
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">{copy.nothingPlayable}</p>
+              <p className="mt-0.5 text-sm text-muted">{copy.nothingPlayableNote}</p>
             </div>
-          ) : (
-            <>
-              {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
+          </Card>
+        ) : (
+          <>
+            {/* Mounted once someone presses play, and kept: unmounting would stop the sound. */}
+            <div className="overflow-hidden rounded-card shadow-card">
               {playerHeld ? (
                 <YouTubePlayer
                   mediaId={currentRecording?.mediaId ?? null}
@@ -193,68 +223,88 @@ export function PreparationPlayer({
                   </span>
                 </button>
               )}
+            </div>
 
-              <div className="mt-4 flex items-start justify-between gap-4">
-                <div className="min-w-0" aria-live="polite">
-                  {current && currentRecording ? (
-                    <>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
-                        {copy.nowPlaying} · {copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))}
-                      </p>
-                      <p className="mt-1 truncate font-display text-xl text-ink">{current.title}</p>
-                      <p className="truncate text-sm text-ink-soft">{currentRecording.title}</p>
-                      {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
-                    </>
-                  ) : null}
-                  {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
-                </div>
-                {controls(false)}
+            <div className="mt-4 flex items-start justify-between gap-4">
+              <div className="min-w-0" aria-live="polite">
+                {current && currentRecording ? (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gold-dark">
+                      {copy.nowPlaying} · {copy.of.replace("{current}", String(position)).replace("{total}", String(playableCount))}
+                    </p>
+                    <p className="mt-1 truncate font-display text-2xl text-ink">{current.title}</p>
+                    <p className="truncate text-sm text-ink-soft">{currentRecording.title}</p>
+                    {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
+                  </>
+                ) : null}
+                {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
               </div>
-              {currentRecording ? <SourceAttribution recording={currentRecording} className="mt-2" /> : null}
-              <RecordingReminder className="mt-1" />
-              <KeepAwakeSetting {...keepAwake} className="mt-4 border-t border-line pt-4" />
-            </>
-          )}
-          <RecordingDisclaimer className="mt-4" />
+              {controls(false)}
+            </div>
+            {currentRecording ? <SourceAttribution recording={currentRecording} className="mt-2" /> : null}
+            <RecordingReminder className="mt-1" />
+          </>
+        )}
+      </div>
+
+      <div className={cn("min-w-0", !stacked && "lg:sticky lg:top-24 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start")}>
+        <Card className={cn("flex flex-col overflow-hidden", !stacked && "lg:max-h-[calc(100dvh-7.5rem)]")}>
+          <div className="border-b border-line px-4 py-3 sm:px-5">
+            <h2 className="truncate font-display text-xl text-ink">{panelTitle}</h2>
+            <p className="tnum truncate text-sm text-muted">{panelMeta}</p>
+          </div>
+          <div ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {sections.map((section) => (
+              <section key={section.id} aria-labelledby={`${section.id}-heading`}>
+                {single ? (
+                  <h3 id={`${section.id}-heading`} className="sr-only">
+                    {section.title}
+                  </h3>
+                ) : (
+                  <div className="flex items-baseline justify-between gap-3 border-b border-line bg-paper px-4 py-2.5 sm:px-5">
+                    <div className="min-w-0">
+                      <h3 id={`${section.id}-heading`} className="truncate text-sm font-semibold text-ink">
+                        {section.title}
+                      </h3>
+                      {section.subtitle ? <p className="truncate text-xs text-muted">{section.subtitle}</p> : null}
+                    </div>
+                    {section.href ? (
+                      <Link href={section.href} className="shrink-0 text-xs text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink">
+                        {recordingsContent.preparation.listenToService}
+                      </Link>
+                    ) : null}
+                  </div>
+                )}
+                <ol className="divide-y divide-line border-b border-line last:border-b-0">
+                  {section.items.map((item) => {
+                    const index = items.indexOf(item);
+                    return (
+                      <PlaylistRow
+                        key={item.key}
+                        index={index}
+                        item={item}
+                        resolved={resolved[index]}
+                        current={state.current === index}
+                        playing={state.current === index && wantsPlaying}
+                        failed={state.failed.includes(index)}
+                        onPlay={() => act({ type: "SELECT", index })}
+                      />
+                    );
+                  })}
+                </ol>
+              </section>
+            ))}
+          </div>
         </Card>
       </div>
 
-      <div className="space-y-6">
-        {sections.map((section) => (
-          <section key={section.id} aria-labelledby={`${section.id}-heading`}>
-            <div className="flex items-baseline justify-between gap-3">
-              <div className="min-w-0">
-                <h3 id={`${section.id}-heading`} className="font-display text-xl text-ink">
-                  {section.title}
-                </h3>
-                {section.subtitle ? <p className="text-sm text-muted">{section.subtitle}</p> : null}
-              </div>
-              {section.href ? (
-                <Link href={section.href} className="shrink-0 text-sm text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink">
-                  {recordingsContent.preparation.listenToService}
-                </Link>
-              ) : null}
-            </div>
-            <Card className="mt-3">
-              <ol className="divide-y divide-line">
-                {section.items.map((item) => {
-                  const index = items.indexOf(item);
-                  return (
-                    <PlaylistRow
-                      key={item.key}
-                      item={item}
-                      resolved={resolved[index]}
-                      current={state.current === index}
-                      playing={state.current === index && wantsPlaying}
-                      failed={state.failed.includes(index)}
-                      onPlay={() => act({ type: "SELECT", index })}
-                    />
-                  );
-                })}
-              </ol>
-            </Card>
-          </section>
-        ))}
+      <div className={cn("min-w-0 space-y-4", !stacked && "lg:col-start-1 lg:row-start-2 lg:self-start")}>
+        {anyPlayable ? (
+          <Card className="p-4 sm:p-5">
+            <KeepAwakeSetting {...keepAwake} />
+          </Card>
+        ) : null}
+        <RecordingDisclaimer />
       </div>
 
       {/* On a phone the player scrolls away with the list: the controls stay at hand. */}
@@ -274,6 +324,7 @@ export function PreparationPlayer({
 }
 
 function PlaylistRow({
+  index,
   item,
   resolved,
   current,
@@ -281,6 +332,8 @@ function PlaylistRow({
   failed,
   onPlay,
 }: {
+  /** Its place in the whole playlist; the panel finds the current row by it. */
+  index: number;
   item: PlaylistItem;
   resolved: Resolved;
   current: boolean;
@@ -298,8 +351,9 @@ function PlaylistRow({
         : copy.noRecording;
   return (
     <li
+      data-index={index}
       aria-current={current ? "true" : undefined}
-      className={cn("flex items-center gap-3 px-4 py-3 sm:px-5", current && "bg-paper", !recording && "text-muted")}
+      className={cn("flex items-center gap-3 px-4 py-3 sm:px-5", current && "bg-gold/10", !recording && "text-muted")}
     >
       <span className="tnum w-6 shrink-0 text-right text-sm text-muted">{item.position}</span>
       <div className="min-w-0 flex-1">
