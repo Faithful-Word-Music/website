@@ -160,6 +160,30 @@ export function PreparationPlayer({
     };
   }, [stacked, anyPlayable]);
 
+  // Whether the video is stuck with the page passing under it: a soft shadow then hangs from its foot.
+  const [videoStuck, setVideoStuck] = useState(false);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || stacked) return;
+    const wide = window.matchMedia("(min-width: 64rem)");
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      setVideoStuck(!wide.matches && window.scrollY > 0 && video.getBoundingClientRect().top <= HEADER_HEIGHT + 1);
+    };
+    const schedule = () => {
+      frame ||= requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [stacked, anyPlayable]);
+
   // The bar at the foot of a phone's screen comes up only once the player's own controls have scrolled away.
   const inlineRef = useRef<HTMLDivElement>(null);
   const [inlineInView, setInlineInView] = useState(true);
@@ -285,6 +309,17 @@ export function PreparationPlayer({
               </button>
             )}
           </div>
+          {!stacked ? (
+            // Like the playlist panel's edges: what scrolls under the stuck video fades away beneath it.
+            <div
+              aria-hidden="true"
+              className={cn(
+                "pointer-events-none absolute inset-x-0 top-full h-8 bg-linear-to-b from-(--scroll-shadow) to-transparent lg:hidden",
+                "transition-opacity duration-200 motion-reduce:transition-none",
+                videoStuck ? "opacity-100" : "opacity-0",
+              )}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -325,7 +360,10 @@ export function PreparationPlayer({
                     {recordingDetails(currentRecording) ? <p className="text-xs text-muted">{recordingDetails(currentRecording)}</p> : null}
                   </>
                 ) : null}
-                {statusLine ? <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p> : null}
+                {/* Not "Loading…" under a song already named: the line would come and go in a moment, nudging all below it. */}
+                {statusLine && !(current && state.status === "loading") ? (
+                  <p className={cn("text-sm text-muted", current ? "mt-1" : "")}>{statusLine}</p>
+                ) : null}
               </div>
               <div className="flex justify-center sm:shrink-0">{controls("main")}</div>
             </div>
