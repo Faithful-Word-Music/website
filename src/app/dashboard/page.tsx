@@ -1,5 +1,4 @@
 import { songIdentity } from "@/lib/song-identity";
-import { currentUser } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -20,23 +19,12 @@ import { PageTransition } from "@/components/ui/PageTransition";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { siteConfig } from "@/config/site";
 import { dashboardContent } from "@/content/dashboard";
-import { activateOwnRequests } from "@/lib/auth/activation";
-import { summarize } from "@/lib/auth/clerk";
-import { requireViewer, viewerProfileStatus } from "@/lib/auth/session";
-import {
-  capoRulesOrNone,
-  countRequestsByStatus,
-  getProfile,
-  getSheetMusicTypes,
-  getUserInstruments,
-  getUserTitles,
-} from "@/lib/auth/store";
+import { requireViewer } from "@/lib/auth/session";
 import { collectAttention } from "@/lib/dashboard/attention";
 import { buildComingUp, servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { buildFocus, servesInMusic } from "@/lib/dashboard/focus";
 import { cardLeaders, laterAssignments, leadershipAttention, myLeadingAttention } from "@/lib/dashboard/leadership";
-import { loadAvailabilitySummary, loadDashboardLeadership, loadInvitationFollowUps, loadMusicData, loadPeople, loadSupportCounts } from "@/lib/dashboard/load";
-import { loadPlannerWork } from "@/lib/service-planner/load";
+import { loadDashboard } from "@/lib/dashboard/data";
 import { newSheetMusic } from "@/lib/dashboard/new-sheet-music";
 import { groupPeople, musiciansWithoutInstruments } from "@/lib/dashboard/people";
 import {
@@ -50,6 +38,7 @@ import {
   supportAttention,
 } from "@/lib/dashboard/providers";
 import { brushUpSongs, quarterGlance } from "@/lib/dashboard/repertoire";
+import { timed } from "@/lib/dashboard/timing";
 import { findSheetGaps } from "@/lib/dashboard/sheet-gaps";
 import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { buildSongRecords } from "@/lib/song-history";
@@ -93,37 +82,26 @@ export const metadata: Metadata = {
  * the focus and data call for it.
  */
 export default async function DashboardPage() {
-  const viewer = await requireViewer("/dashboard");
-  const user = await currentUser();
-  if (!user) return null;
-  const person = summarize(user);
-
-  // The first visit after accepting an invitation closes the request that led to it.
-  await activateOwnRequests(viewer, person.emails);
-
-  const [profile, instruments, titles, sheetTypes, profileStatus] = await Promise.all([
-    getProfile(viewer.env, viewer.userId),
-    getUserInstruments(viewer.env, viewer.userId),
-    getUserTitles(viewer.env, viewer.userId),
-    getSheetMusicTypes(viewer.env, viewer.userId),
-    // Worked out already by requireViewer() for the gate: cached for this request.
-    viewerProfileStatus(viewer),
-  ]);
+  const viewer = await timed("requireViewer", () => requireViewer("/dashboard"));
+  // Every read at once, each failing soft (src/lib/dashboard/data.ts).
+  const {
+    person,
+    profile,
+    instruments,
+    titles,
+    sheetTypes,
+    profileStatus,
+    music,
+    capoRules,
+    requests,
+    people,
+    invitations,
+    availability,
+    plannerWork,
+    leading,
+    support,
+  } = await timed("loadDashboard", () => loadDashboard(viewer));
   const focus = buildFocus({ roleKeys: viewer.roleKeys, permissions: viewer.permissions, titles, instruments });
-
-  // Song leaders: for whoever plans them, leads, or prepares from the published song lists.
-  const followsLeaders = focus.plansServices || viewer.can("lead_songs") || viewer.can("view_service_plans");
-  const [music, capoRules, requests, people, invitations, availability, plannerWork, leading, support] = await Promise.all([
-    loadMusicData(),
-    focus.managesSheetMusic ? capoRulesOrNone(viewer.env) : undefined,
-    focus.reviewsAccounts ? countRequestsByStatus(viewer.env).catch(() => null) : null,
-    focus.seesPeople ? loadPeople(viewer) : null,
-    focus.reviewsAccounts ? loadInvitationFollowUps() : null,
-    focus.tracksAvailability ? loadAvailabilitySummary(viewer) : null,
-    focus.plansServices ? loadPlannerWork(viewer) : null,
-    followsLeaders ? loadDashboardLeadership(viewer) : null,
-    loadSupportCounts(viewer),
-  ]);
   const now = music.loadedAt;
   const { hymnalCollection } = siteConfig.sheetMusic;
 
@@ -193,7 +171,7 @@ export default async function DashboardPage() {
     (earliest, service) => (earliest === null || service.startsAt < earliest ? service.startsAt : earliest),
     null,
   );
-  const name = profile.preferredName || person.firstName;
+  const name = profile?.preferredName || person?.firstName;
   const copy = dashboardContent;
   const hasSideSections = brushUp.length > 0 || recentSheets.length > 0 || (gaps?.length ?? 0) > 0;
 

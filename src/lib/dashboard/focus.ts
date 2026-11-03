@@ -71,6 +71,29 @@ export interface FocusInput {
 
 const SONG_LEADER_TITLE = "song leader";
 
+/** The capabilities of a focus: what permissions alone decide. */
+export type DashboardCapabilities = Omit<DashboardFocus, "plays" | "leadsSinging" | "titles">;
+
+/**
+ * The part of the focus that permissions alone decide - known as soon as the
+ * viewer is, so the Dashboard can start every read at once, before titles
+ * and instruments arrive.
+ */
+export function buildCapabilities(permissions: ReadonlySet<Permission>): DashboardCapabilities {
+  return {
+    administers: canAccessAdmin(permissions),
+    reviewsAccounts: permissions.has("manage_users"),
+    opensMemberSheetMusic: permissions.has("view_sheet_music"),
+    managesSheetMusic: permissions.has("manage_sheet_music"),
+    seesAnalytics: permissions.has("view_analytics"),
+    seesProfiles: permissions.has("view_profiles"),
+    tracksAvailability: permissions.has("view_availability"),
+    managesAvailability: permissions.has("manage_availability"),
+    seesPeople: PEOPLE_PERMISSIONS.some((permission) => permissions.has(permission)),
+    plansServices: permissions.has("manage_service_plans"),
+  };
+}
+
 export function buildFocus(input: FocusInput): DashboardFocus {
   const titles = [...input.titles].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)).map((title) => title.label);
   const titleKeys = titles.map((title) => title.trim().toLowerCase());
@@ -79,16 +102,7 @@ export function buildFocus(input: FocusInput): DashboardFocus {
     plays: input.roleKeys.includes(MUSICIAN_ROLE) || input.instruments.length > 0,
     leadsSinging: input.roleKeys.includes(SONG_LEADER_ROLE) || titleKeys.includes(SONG_LEADER_TITLE),
     titles,
-    administers: canAccessAdmin(input.permissions),
-    reviewsAccounts: input.permissions.has("manage_users"),
-    opensMemberSheetMusic: input.permissions.has("view_sheet_music"),
-    managesSheetMusic: input.permissions.has("manage_sheet_music"),
-    seesAnalytics: input.permissions.has("view_analytics"),
-    seesProfiles: input.permissions.has("view_profiles"),
-    tracksAvailability: input.permissions.has("view_availability"),
-    managesAvailability: input.permissions.has("manage_availability"),
-    seesPeople: PEOPLE_PERMISSIONS.some((permission) => input.permissions.has(permission)),
-    plansServices: input.permissions.has("manage_service_plans"),
+    ...buildCapabilities(input.permissions),
   };
 }
 

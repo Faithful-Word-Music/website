@@ -217,4 +217,29 @@ export const dashboardContent = {
     none: "No services are scheduled yet.",
     unavailable: "The song list could not be loaded just now.",
   },
+
+  /** The next service's readiness (src/lib/dashboard/readiness.ts). Only facts the site can check. */
+  readiness: {
+    overall: {
+      ready: "Ready",
+      attention: "Needs attention",
+      blocked: "Blocked",
+      unknown: "Some details couldn't be checked",
+    },
+    posted: { ok: "Song list published", draft: "Song list not published yet", unknown: "Couldn't check the song list" },
+    /** {filled} and {target} are replaced. */
+    places: { ok: "All {target} songs chosen", short: "{filled} of {target} songs chosen" },
+    leaders: {
+      ok: "Every song has a leader",
+      unled: ["{count} song has no leader", "{count} songs have no leader"],
+      /** {name} is replaced. */
+      away: "{name} is leading but unavailable",
+      ineligible: "{name} can no longer lead",
+      unknown: "Couldn't check the song leaders",
+    },
+    sheet: {
+      ok: "Your sheet music is ready",
+      missing: ["{count} song has none of your sheet music", "{count} songs have none of your sheet music"],
+    },
+  },
 } as const;

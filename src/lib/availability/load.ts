@@ -1,6 +1,6 @@
 import "server-only";
 
-import { listAccounts } from "@/lib/auth/clerk";
+import { accountsByIds } from "@/lib/auth/clerk";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import type { Viewer } from "@/lib/auth/session";
 import { scheduledServices } from "@/lib/service-planner/store";
@@ -25,7 +25,7 @@ export async function loadRoster(env: ClerkEnv): Promise<RosterPerson[]> {
   const records = await loadRosterRecords(env);
   if (records.length === 0) return [];
 
-  const accounts = await listAccounts({ userIds: records.map((record) => record.id), limit: 500, offset: 0 });
+  const accounts = await accountsByIds(records.map((record) => record.id));
   const byId = accounts.ok ? new Map(accounts.value.accounts.map((account) => [account.id, account])) : null;
 
   return records

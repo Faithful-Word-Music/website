@@ -2,7 +2,7 @@ import "server-only";
 
 import { unstable_cache } from "next/cache";
 
-import { listAccounts } from "@/lib/auth/clerk";
+import { accountsByIds } from "@/lib/auth/clerk";
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { effectiveAvailability } from "@/lib/availability/effective";
 import { addDays, churchDate, regularKeyFor, serviceOccurrences } from "@/lib/availability/occurrences";
@@ -103,7 +103,7 @@ export async function loadLeaderPeople(env: ClerkEnv, assigned: readonly string[
   const holders = new Map(records.map((record) => [record.id, record]));
   const ids = [...new Set([...holders.keys(), ...assigned.filter((id) => id.startsWith("user_"))])];
   if (ids.length === 0) return [];
-  const accounts = await listAccounts({ userIds: ids, limit: 500, offset: 0 });
+  const accounts = await accountsByIds(ids);
   if (!accounts.ok) throw new Error("Could not read the song leaders' accounts.");
   const byId = new Map(accounts.value.accounts.map((account) => [account.id, account]));
 

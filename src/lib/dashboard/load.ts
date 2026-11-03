@@ -1,7 +1,7 @@
 import "server-only";
 
 import { siteConfig } from "@/config/site";
-import { listAccounts, listInvitations } from "@/lib/auth/clerk";
+import { accountDirectory, listInvitations } from "@/lib/auth/clerk";
 import type { Viewer } from "@/lib/auth/session";
 import {
   instrumentCountsForUsers,
@@ -28,6 +28,8 @@ import type { DatedService, Service } from "@/types/song-list";
 import type { Rosters } from "./leadership";
 import type { SupportCounts } from "./providers";
 import { invitationFollowUps, type InvitationFollowUps, type Person } from "./people";
+// How far ahead the leader problems look - the same two weeks as the planner's own items.
+import { LEADERSHIP_ATTENTION_DAYS } from "./readiness";
 
 /**
  * The Dashboard's reads, each failing soft: a source that is down leaves its
@@ -71,7 +73,7 @@ export async function loadMusicData(): Promise<MusicData> {
 /** Everyone with an account here, with their roles and primary title; null if Clerk or the database failed. */
 export async function loadPeople(viewer: Viewer): Promise<{ people: Person[]; instrumentCounts: Map<string, number> } | null> {
   try {
-    const accounts = await listAccounts({ limit: 500, offset: 0 });
+    const accounts = await accountDirectory();
     if (!accounts.ok) return null;
     const ids = accounts.value.accounts.map((account) => account.id);
     const [roles, titles, instrumentCounts, sheetTypes, offered] = await Promise.all([
@@ -103,7 +105,7 @@ export async function loadPeople(viewer: Viewer): Promise<{ people: Person[]; in
   }
 }
 
-/** Invitations to chase up; null if Clerk could not be reached. */
+/** Invitations to chase up; null if Clerk could not be reached. Never throws. */
 export async function loadInvitationFollowUps(): Promise<InvitationFollowUps | null> {
   const [pending, expired] = await Promise.all([
     listInvitations({ status: "pending" }),
@@ -113,8 +115,11 @@ export async function loadInvitationFollowUps(): Promise<InvitationFollowUps | n
   return invitationFollowUps(pending.value, expired.value, siteConfig.accounts.invitationDays, Date.now());
 }
 
-/** How far ahead the Availability section looks for the person's own changes. */
-const AVAILABILITY_DAYS = 365;
+/**
+ * How far ahead the Availability section looks for the person's own changes.
+ * The Dashboard shows the next few; /availability holds the whole year.
+ */
+export const AVAILABILITY_DAYS = 60;
 
 /**
  * The Availability section's summary (src/lib/availability/summary.ts);
@@ -156,8 +161,6 @@ export interface DashboardLeadership {
   problems: LeadershipProblem[];
 }
 
-/** How far ahead the leader problems look - the same two weeks as the planner's own items. */
-const LEADERSHIP_ATTENTION_DAYS = 14;
 
 /**
  * The song leaders the viewer may see (src/lib/leadership/access.ts), for the

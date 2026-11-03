@@ -2,6 +2,7 @@ import "server-only";
 
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import { clerkClient, type User } from "@clerk/nextjs/server";
+import { cache } from "react";
 
 import { siteConfig } from "@/config/site";
 
@@ -113,6 +114,34 @@ export async function listAccounts(params: {
   } catch (error) {
     return fail("getUserList", error);
   }
+}
+
+/** How many accounts the request's directory reads at once - more than this ministry has. */
+const DIRECTORY_LIMIT = 500;
+
+/**
+ * Every account (up to DIRECTORY_LIMIT, newest first), read at most once per
+ * request (React cache - never shared between requests or people). Callers
+ * must have checked the viewer's permission to see the people they name.
+ */
+export const accountDirectory = cache(() => listAccounts({ limit: DIRECTORY_LIMIT, offset: 0 }));
+
+/**
+ * The accounts with these IDs, for naming people. Picks them from the
+ * request's directory, so the features that name people on one page (the
+ * availability board, the song leaders, People) share one Clerk read rather
+ * than each listing their own. When the directory could not hold everyone,
+ * asks Clerk for exactly these IDs instead.
+ */
+export async function accountsByIds(ids: readonly string[]): Promise<ClerkResult<{ accounts: AccountSummary[]; total: number }>> {
+  if (ids.length === 0) return { ok: true, value: { accounts: [], total: 0 } };
+  const directory = await accountDirectory();
+  if (directory.ok && directory.value.total <= directory.value.accounts.length) {
+    const wanted = new Set(ids);
+    const accounts = directory.value.accounts.filter((account) => wanted.has(account.id));
+    return { ok: true, value: { accounts, total: accounts.length } };
+  }
+  return listAccounts({ userIds: [...ids], limit: DIRECTORY_LIMIT, offset: 0 });
 }
 
 export async function countAccounts(): Promise<ClerkResult<number>> {
