@@ -7,6 +7,8 @@ import { useAccount } from "@/components/account/AccountContext";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
+import { Icon } from "@/components/ui/Icon";
+import { Notice, NoticeDismiss } from "@/components/ui/Notice";
 import { notificationsContent } from "@/content/notifications";
 
 import { disablePush, enablePush, repairPush, usePushDevice } from "./push-device";
@@ -144,30 +146,41 @@ export function PushCard({ className }: { className?: string }) {
   if (!userId || status !== "off" || dismissed || hiddenHere) return null;
 
   return (
-    <Card barline className={cn("px-5 py-4 sm:px-6", className)}>
-      <p className="font-medium text-ink">{copy.card.title}</p>
-      <p className="mt-0.5 text-sm text-muted">{copy.card.detail}</p>
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button state={busy === "enable" ? "pending" : "idle"} pendingLabel={copy.enabling} disabled={busy !== null} onClick={() => void enablePush(userId)}>
-          {copy.card.button}
-        </Button>
-        <button
-          type="button"
-          aria-label={copy.card.dismissLabel}
+    <Notice
+      compact
+      tone="info"
+      icon="bell"
+      title={copy.card.title}
+      className={className}
+      dismiss={
+        <NoticeDismiss
+          label={copy.card.dismissLabel}
           onClick={() => {
             setHiddenHere(true);
             dismissCard();
           }}
-          className="min-h-11 text-sm text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current"
+        />
+      }
+    >
+      <p>{copy.card.detail}</p>
+      <div className="mt-3">
+        <Button
+          variant="secondary"
+          className="min-h-10 px-4"
+          state={busy === "enable" ? "pending" : "idle"}
+          pendingLabel={copy.enabling}
+          disabled={busy !== null}
+          onClick={() => void enablePush(userId)}
         >
-          {copy.card.dismiss}
-        </button>
+          {copy.card.button}
+        </Button>
       </div>
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-ink">
+        <p role="alert" className="mt-3 flex items-start gap-1.5 text-sm text-danger">
+          <Icon name="alert-circle" size={14} className="mt-0.5" />
           {error}
         </p>
       ) : null}
-    </Card>
+    </Notice>
   );
 }

@@ -14,6 +14,7 @@ import {
   getUserInstruments,
   getUserTitles,
 } from "@/lib/auth/store";
+import { getPreparation } from "@/lib/recordings/load";
 import { loadPlannerWork } from "@/lib/service-planner/load";
 
 import { buildCapabilities, type DashboardCapabilities } from "./focus";
@@ -63,6 +64,12 @@ export async function loadDashboard(viewer: Viewer) {
     found ? settle("activateOwnRequests", activateOwnRequests(viewer, summarize(found).emails), null) : null,
   );
 
+  // The Preparation Playlists (the cached public read the playlist pages make):
+  // started with everything else but NOT awaited here. Only the playlist links
+  // wait for it, each behind its own Suspense boundary, so it can never hold up
+  // the page - and a failure (null) just leaves those links out.
+  const preparation = settle("preparation", getPreparation(), null);
+
   const [person, , profile, instruments, titles, sheetTypes, profileStatus, music, capoRules, requests, people, invitations, availability, plannerWork, leading, support] =
     await Promise.all([
       user.then((found) => (found ? summarize(found) : null)),
@@ -101,6 +108,8 @@ export async function loadDashboard(viewer: Viewer) {
     plannerWork,
     leading,
     support,
+    /** A promise: await it only inside a Suspense boundary (see above). */
+    preparation,
   };
 }
 

@@ -47,6 +47,38 @@ export function ExpandableList({
   );
 }
 
+/**
+ * A button that opens a whole list in the dialog, with nothing shown before
+ * it - for a summary row ("Musicians 12") whose names are there on request.
+ */
+export function ListDialogButton({
+  rows,
+  title,
+  lead,
+  className,
+  children,
+}: {
+  rows: ReactNode[];
+  title: string;
+  lead?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className={className}>
+        {children}
+      </button>
+      {open ? (
+        <ListDialog title={title} lead={lead} onClose={() => setOpen(false)}>
+          {rows}
+        </ListDialog>
+      ) : null}
+    </>
+  );
+}
+
 /** Every row, in the site's dialog (Modal); focus returns to "Show all". */
 function ListDialog({
   title,

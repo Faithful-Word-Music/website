@@ -6,7 +6,11 @@ import { Card } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { accountContent } from "@/content/account";
 
-/** A quiet bordered message, in the style of the contact form's alerts. */
+/**
+ * A quiet bordered message, in the style of the contact form's alerts.
+ * The signed-in app's newer notices (icon, actions, severity tones) are
+ * components/ui/Notice.tsx; pages still on this one can move to it.
+ */
 export function Notice({
   title,
   children,

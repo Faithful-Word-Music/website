@@ -6,7 +6,7 @@ import { useAccount } from "@/components/account/AccountContext";
 import { isStandalone, STANDALONE_QUERY } from "@/components/app/standalone";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { cn } from "@/components/ui/cn";
+import { Notice, NoticeDismiss } from "@/components/ui/Notice";
 import { accountContent } from "@/content/account";
 import { detectInstallMode, INSTALL_PROMPT_EVENT, INSTALL_PROMPT_KEY, type InstallMode } from "@/lib/install";
 
@@ -194,35 +194,66 @@ function dismissCard() {
   window.dispatchEvent(new Event(DISMISS_EVENT));
 }
 
-/** /dashboard: a short reminder that the app can be installed on this device. */
+/**
+ * /dashboard: a short reminder that the app can be installed on this device -
+ * one compact row in the Dashboard's device setup, put away with its ×.
+ * Where the browser cannot be asked, its button shows the steps in the row.
+ */
 export function InstallAppCard({ className }: { className?: string }) {
   const mode = useOfferedMode();
   const [hiddenHere, setHiddenHere] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
+  const stepsId = useId();
   const dismissed = useSyncExternalStore(subscribeDismissed, dismissedSnapshot, () => true);
   if (!mode || dismissed || hiddenHere) return null;
 
+  const guide = mode === "prompt" ? null : { ios: copy.ios, "ios-open-safari": copy.iosOpenSafari, "mac-safari": copy.macSafari }[mode];
+
   return (
-    <Card barline className={cn("px-5 py-4 sm:px-6", className)}>
-      <p className="font-medium text-ink">{copy.cardTitle}</p>
-      <p className="mt-0.5 text-sm text-muted">{copy.cardDetail}</p>
-      <div className="mt-4">
-        <InstallAction
-          mode={mode}
-          beside={
-            <button
-              type="button"
-              aria-label={copy.dismissLabel}
-              onClick={() => {
-                setHiddenHere(true);
-                dismissCard();
-              }}
-              className="min-h-11 text-sm text-muted underline decoration-transparent underline-offset-4 transition-colors hover:text-ink hover:decoration-current"
-            >
-              {copy.dismiss}
-            </button>
-          }
+    <Notice
+      compact
+      tone="info"
+      icon="device"
+      title={copy.cardTitle}
+      className={className}
+      dismiss={
+        <NoticeDismiss
+          label={copy.dismissLabel}
+          onClick={() => {
+            setHiddenHere(true);
+            dismissCard();
+          }}
         />
+      }
+    >
+      <p>{copy.cardDetail}</p>
+      <div className="mt-3">
+        {guide ? (
+          <Button
+            variant="secondary"
+            className="min-h-10 px-4"
+            aria-expanded={showSteps}
+            aria-controls={stepsId}
+            onClick={() => setShowSteps((open) => !open)}
+          >
+            {showSteps ? copy.hideSteps : copy.showSteps}
+          </Button>
+        ) : (
+          <Button variant="secondary" className="min-h-10 px-4" onClick={() => void promptInstall()}>
+            {copy.cardButton}
+          </Button>
+        )}
       </div>
-    </Card>
+      {guide ? (
+        <div id={stepsId} hidden={!showSteps} className="mt-3 text-sm text-ink-soft">
+          <p>{guide.intro}</p>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5">
+            {guide.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+    </Notice>
   );
 }

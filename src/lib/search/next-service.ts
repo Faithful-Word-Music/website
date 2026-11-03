@@ -48,7 +48,7 @@ export function pickNextService(
  * playlists that could not be read, gives null.
  */
 export function nextServiceListenHref(
-  service: Pick<Service, "id" | "date" | "songs">,
+  service: Pick<Service, "id" | "date"> & { songs: readonly unknown[] },
   status: ServiceStatus,
   preparation: { ok: boolean; months: readonly PlaylistMonth[] } | null,
 ): string | null {

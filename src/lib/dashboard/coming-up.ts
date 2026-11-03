@@ -92,6 +92,9 @@ export interface ComingUpSong {
 export interface ComingUpService {
   id: string;
   status: ComingUpStatus;
+  /** "2026-11-08": with the id, where its playlist and song list card are. */
+  date: string;
+  slot: Service["slot"];
   dateLabel: string;
   serviceLabel: string | null;
   startsAt: string;
@@ -290,6 +293,8 @@ export function buildComingUp(
     return {
       id: service.id,
       status,
+      date: service.date ?? service.startsAt!.slice(0, 10),
+      slot: service.slot,
       dateLabel: service.dateLabel,
       serviceLabel: service.serviceLabel,
       startsAt: service.startsAt!,

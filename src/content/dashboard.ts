@@ -11,7 +11,6 @@ export const dashboardContent = {
   profileLink: "Your profile",
 
   attention: {
-    title: "Needs your attention",
     // A profile that still needs something is no longer an item here: the
     // profile notice above everything else says it (ProfileStatusNotice).
     requests: {
@@ -59,11 +58,6 @@ export const dashboardContent = {
   lists: {
     showAll: "Show all {count}",
     close: "Close",
-  },
-
-  /** The row under Coming up: sheet music to finish, new sheet music, brush up. */
-  gettingReady: {
-    title: "Getting ready",
   },
 
   brushUp: {
@@ -116,7 +110,6 @@ export const dashboardContent = {
   },
 
   people: {
-    title: "People",
     musicians: "Musicians",
     songLeaders: "Song leaders",
     membersOnly: "Members only",
@@ -125,7 +118,6 @@ export const dashboardContent = {
     sheetMusicLabel: "Sheet music",
     /** Under a name with no title, so every row has two lines. */
     noTitle: "No title",
-    all: "All people",
     unavailable: "The list of people could not be loaded just now.",
   },
 
@@ -143,9 +135,6 @@ export const dashboardContent = {
     tagLedBy: "Led by",
     /** On a card whose songs are not posted yet. */
     youLeadDraft: "You're leading {songs}",
-    /** The viewer's next assignments beyond Coming up. */
-    title: "Your song leading",
-    notPublished: "Song list not published yet",
     unavailable: "You are marked unavailable",
     attention: {
       unled: ["{count} service in the next two weeks has songs without a leader", "{count} services in the next two weeks have songs without a leader"],
@@ -160,8 +149,6 @@ export const dashboardContent = {
   },
 
   comingUp: {
-    title: "Coming up",
-    fullList: "Full song list",
     notPosted: "Songs not posted yet",
     pendingSong: "To be announced",
     /** Under a song: the person's other sheet music types it has, e.g. "also Standard (Chords)". */
@@ -214,12 +201,109 @@ export const dashboardContent = {
         },
       },
     },
-    none: "No services are scheduled yet.",
-    unavailable: "The song list could not be loaded just now.",
+  },
+
+  /** The next service, at the top of the page (NextServiceHero). */
+  hero: {
+    label: "Next service",
+    labelNow: "Happening now",
+    /** {count} songs, before the first few titles. */
+    songs: ["{count} song", "{count} songs"],
+    notPosted: "Songs not posted yet",
+    primary: {
+      plan: "Continue planning",
+      reviewSongs: "Review your songs",
+      songList: "View on the song list",
+    },
+    secondary: {
+      plan: "Open in planner",
+      songList: "Song list",
+      listen: "Listen",
+    },
+    details: { show: "Songs and readiness", showSongs: "Show songs", hide: "Hide details" },
+    readinessHeading: "Readiness",
+    readinessNote: "Checked for you from the song list, the planner and your sheet music.",
+    none: { title: "No services are scheduled yet", body: "The next service will appear here as soon as it's on the song list." },
+    unavailable: { title: "The song list couldn't be loaded", body: "Your services will be back when it can be read. The song list page may still have them." },
+    fullList: "Open the song list",
+  },
+
+  /** "For you": the things to do (attention.ts), five at a time. */
+  forYou: {
+    title: "For you",
+    /** Read with the count beside the title. */
+    count: ["{count} thing to do", "{count} things to do"],
+    /** {count} is replaced. */
+    seeAll: "See all {count}",
+    seeFewer: "Show fewer",
+    urgent: "Urgent",
+    clear: { title: "You're all caught up", body: "Nothing needs you right now." },
+    incomplete: { title: "Some items couldn't be checked", body: "Part of the site didn't answer just now, so this list may be missing something." },
+  },
+
+  /** The services after the next one (LaterServices). */
+  later: {
+    title: "Later",
+    lead: "Coming up after that",
+    notPosted: "Not posted yet",
+    /** {songs} is "song 5" or "songs 2 and 5". */
+    youLead: "You lead {songs}",
+    sheetMusic: "Sheet music",
+    plan: "Plan",
+    view: "View",
+    fullList: "Full song list",
+  },
+
+  /** Preparation: playlists and songs to learn. */
+  preparation: {
+    title: "Preparation",
+    lead: "Listen ahead and brush up before you serve.",
+    /** {service} is the service's name. */
+    listen: "Listen to {service}",
+    playlistDetail: "Preparation playlist, in service order",
+    allPlaylists: "All playlists",
+    tabsLabel: "Songs to prepare",
+    brushUp: "Brush up",
+    newSheet: "New sheet music",
+  },
+
+  /** For whoever looks after part of the ministry (Ministry.tsx). */
+  team: {
+    title: "Ministry",
+    lead: "Who's serving, and what's left to set up.",
+    availability: "Availability, next three services",
+    /** {count} of {total}. */
+    expected: "{count} of {total} expected",
+    away: ["{count} away", "{count} away"],
+    allThere: "No one away",
+    /** {count} people. */
+    unset: ["{count} person hasn't set normal services", "{count} people haven't set normal services"],
+    peopleTitle: "People",
+    tools: {
+      planner: "Service Planner",
+      availability: "Availability",
+      people: "People",
+      requests: "Account requests",
+      support: "Support Center",
+    },
+  },
+
+  /** Your own availability, in the side column. */
+  yourAvailability: {
+    title: "Your availability",
+  },
+
+  /** Install and push prompts, together. */
+  setup: {
+    title: "This device",
   },
 
   /** The next service's readiness (src/lib/dashboard/readiness.ts). Only facts the site can check. */
   readiness: {
+    /** Beside a check that needs doing: where it is done. */
+    fix: "Fix",
+    /** Read before each check, for screen readers. */
+    states: { ok: "Done:", attention: "Needs attention:", blocked: "Blocked:", unknown: "Not checked:" },
     overall: {
       ready: "Ready",
       attention: "Needs attention",

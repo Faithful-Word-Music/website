@@ -124,8 +124,8 @@ The song list's leaders come from `GET /api/account/song-leaders` (`private, no-
   - **Anything else:** each song has a short line of its own under its title, "Led by Brian", "Led by a guest" or "No leader yet". It sits on a separate line from "Last sung…" and the sheet music, because those describe the song, not the leader. No song ever looks as if it is led by someone it is not.
   - **The viewer's own songs** say "Led by you" in gold, which makes them easy to find without highlighting the whole row.
   - A service not posted yet shows only the viewer's own part: "You're leading songs 2 and 5". That includes a scheduler, who sees the rest in the planner.
-- **Your song leading:** the viewer's next assignments beyond the cards.
-- **Needs your attention:**
+- **Later:** the viewer's next assignments beyond the next service, one row each.
+- **For you:**
   - For schedulers: songs without a leader (one item for all such services in the next two weeks), leaders who are away, and leaders who can no longer lead.
   - For a leader: "you're leading … but are marked unavailable".
 

@@ -106,6 +106,8 @@ export const accountContent = {
     cardTitle: `Install ${siteConfig.name}`,
     cardDetail: "Open it from your home screen or dock, like any other app.",
     button: `Install ${siteConfig.name}`,
+    /** The Dashboard row's button, beside the title that already names the app. */
+    cardButton: "Install",
     showSteps: "Show me how",
     hideSteps: "Hide the steps",
     dismiss: "Not now",
