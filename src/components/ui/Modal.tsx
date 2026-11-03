@@ -37,7 +37,8 @@ export function Modal({
   bare?: boolean;
   /**
    * On a phone, a sheet that rises from the foot of the screen instead of a
-   * panel near the top; from `sm` the usual dialog. For something opened from
+   * panel near the top; from `sm` the usual dialog. Its foot keeps clear of the
+   * phone's home bar and rounded corners. For something opened from
    * a row in a list. Not for forms that are mostly typing: a sheet at the foot
    * can sit under the phone's keyboard (Conductor's sheet handles that itself).
    */
@@ -73,7 +74,7 @@ export function Modal({
           "mx-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-clip rounded-card border border-line bg-surface shadow-lift sm:max-h-[80vh]",
           size === "lg" ? "max-w-xl" : "max-w-lg",
           sheet
-            ? "modal-sheet max-sm:max-h-[88dvh] max-sm:rounded-b-none max-sm:rounded-t-[1.25rem] max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[env(safe-area-inset-bottom)]"
+            ? "modal-sheet max-sm:max-h-[88dvh] max-sm:rounded-b-none max-sm:rounded-t-[1.25rem] max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
             : "animate-enter",
         )}
       >

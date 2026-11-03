@@ -185,7 +185,7 @@ function AccountLinks({ variant, onNavigate }: { variant: "popover" | "sheet"; o
  */
 function AppCredit() {
   return (
-    <div className="mt-1 hidden border-t border-line px-3 pb-1 pt-3 text-xs leading-relaxed text-muted standalone:block">
+    <div className="mt-1 hidden border-t border-line px-3 pb-2 pt-3 text-xs leading-relaxed text-muted standalone:block">
       <p>{copyrightLine()}</p>
       <p>
         <DeveloperCredit />
