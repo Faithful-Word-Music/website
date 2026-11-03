@@ -1,4 +1,5 @@
 
+import { copyrightLine, DeveloperCredit } from "@/components/layout/FooterCredit";
 import { FooterNav } from "@/components/layout/FooterNav";
 import { Logo } from "@/components/layout/Logo";
 import { Container } from "@/components/ui/Container";
@@ -8,16 +9,15 @@ import { siteConfig } from "@/config/site";
 import { footerContent } from "@/content/footer";
 
 /**
- * Site footer. External resources live here rather than on a dedicated page -
- * there are not enough of them yet to justify one.
+ * Site footer, for visitors. External resources live here rather than on a
+ * dedicated page - there are not enough of them yet to justify one.
+ * Signed-in members see the compact AppFooter instead (globals.css chooses;
+ * see src/lib/member-hint.ts).
  */
 export function Footer() {
-  const year = new Date().getFullYear();
-
   return (
-    // Anchored like the header, so it stays put during a page transition.
     <footer
-      style={{ viewTransitionName: "site-footer" }}
+      data-footer="site"
       // In the installed app's login screen, only the closing line stays.
       className="mt-24 border-t border-line bg-surface app-login:mt-0 app-login:border-t-0 app-login:bg-transparent"
     >
@@ -103,20 +103,14 @@ export function Footer() {
             The footer is the same height whichever buttons are showing. The
             installed app's login screen keeps both lines, centred. */}
         <div className="mt-12 flex flex-col gap-2 border-t border-line pt-6 text-xs text-muted sm:flex-row sm:items-center min-[1440px]:justify-between app-login:mt-0 app-login:flex-col app-login:items-center app-login:gap-1 app-login:border-t-0 app-login:pt-0 app-login:text-center">
-          <p>{footerContent.copyright.replace("{year}", String(year))}</p>
+          <p>{copyrightLine()}</p>
           {/* Bounded on both sides: a later `min-[1440px]:hidden` would lose
               to `sm:inline`, which Tailwind emits after arbitrary widths. */}
           <span aria-hidden="true" className="hidden text-staff sm:max-[1440px]:inline app-login:hidden">
             ·
           </span>
           <p>
-            {footerContent.developer.prompt}{" "}
-            <ExternalLink
-              href={footerContent.developer.href}
-              className="text-ink underline decoration-gold underline-offset-4 hover:text-gold-dark"
-            >
-              {footerContent.developer.name}
-            </ExternalLink>
+            <DeveloperCredit />
           </p>
         </div>
       </Container>

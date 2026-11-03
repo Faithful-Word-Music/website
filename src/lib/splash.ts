@@ -75,8 +75,13 @@ export function isSignInCallback(pathname: string): boolean {
   return pathname.startsWith(SIGN_IN_CALLBACK);
 }
 
-/** A Clerk sign-in cookie with a time in it, rather than 0. */
-export const SIGNED_IN_COOKIE = /(?:^|;\s*)__client_uat(?:_[^=;]*)?=[1-9]/;
+/**
+ * A Clerk sign-in cookie with a time in it. Clerk writes the last sign-in as
+ * whole seconds, or 0 when signed out, and reads it back as
+ * parseInt(value) || 0. Here only a positive whole number counts: 0, an empty
+ * value or anything else ("true", "1abc") is read as signed out.
+ */
+export const SIGNED_IN_COOKIE = /(?:^|;\s*)__client_uat(?:_[^=;]*)?=[1-9]\d*(?:;|$)/;
 
 /** Whether the page's cookies say someone is signed in. */
 export function looksSignedIn(cookie: string): boolean {

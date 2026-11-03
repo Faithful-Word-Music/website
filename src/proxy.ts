@@ -2,6 +2,7 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextMiddleware, type NextRequest } from "next/server";
 
 import { currentClerkConfig } from "@/lib/auth/clerk-env";
+import { isMemberPath } from "@/lib/navigation";
 
 /**
  * Runs before the account routes and the home page only - the rest of the
@@ -23,15 +24,13 @@ import { currentClerkConfig } from "@/lib/auth/clerk-env";
  */
 
 /**
- * The signed-in sections. Matched here by their first path segment, only to
- * decide who is sent to log in - never as the protection itself, which each
- * page and action does for its own data (requireViewer, withPermission).
+ * The signed-in sections (MEMBER_SECTIONS, src/lib/navigation.ts). Matched
+ * here only to decide who is sent to log in - never as the protection itself,
+ * which each page and action does for its own data (requireViewer,
+ * withPermission).
  */
-const ACCOUNT_SECTIONS = ["/dashboard", "/service-planner", "/conductor", "/availability", "/notifications", "/profile", "/welcome", "/account", "/admin", "/contact/requests"];
-
 function isAccountRoute(request: NextRequest): boolean {
-  const { pathname } = request.nextUrl;
-  return ACCOUNT_SECTIONS.some((section) => pathname === section || pathname.startsWith(`${section}/`));
+  return isMemberPath(request.nextUrl.pathname);
 }
 
 let clerk: NextMiddleware | null = null;

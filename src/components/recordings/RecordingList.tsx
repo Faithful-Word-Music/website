@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { ExternalLink } from "@/components/ui/ExternalLink";
-
+import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/ui/Modal";
 import { useAction } from "@/components/ui/use-action";
 import { recordingsContent } from "@/content/recordings";
@@ -104,7 +104,19 @@ export function RecordingList({
         </p>
       ) : null}
 
-      {empty ? <p className="text-sm text-muted">{copy.song.none}</p> : null}
+      {/* A quiet placeholder in the shape of a recording row - most songs have
+          none, so this is a normal state, never a warning. */}
+      {empty ? (
+        <div className="flex items-center gap-3 rounded-card border border-dashed border-line px-4 py-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line text-muted">
+            <Icon name="headphones" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-ink-soft">{copy.song.none}</p>
+            <p className="text-xs text-muted">{copy.song.noneDetail}</p>
+          </div>
+        </div>
+      ) : null}
 
       {recordings.length > 0 ? (
         <ul className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">

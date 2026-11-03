@@ -82,7 +82,11 @@ describe("UserMenu", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(within(panel).getByText("Ada Lovelace")).toBeTruthy();
-    expect(within(panel).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["/notifications", "/profile", "/account"]);
+    const list = within(panel).getByRole("list");
+    expect(within(list).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["/notifications", "/profile", "/account"]);
+    // The footer's closing line, after the links - shown only inside the installed app.
+    const credit = within(panel).getByRole("link", { name: /^Alexander D\. Ball/ });
+    expect(credit.closest(".standalone\\:block")?.className).toContain("hidden");
 
     within(panel).getByText("Profile").focus();
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });

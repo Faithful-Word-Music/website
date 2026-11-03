@@ -45,14 +45,23 @@ export function isSitePath(entry: string): boolean {
 }
 
 /**
+ * Pages that only send the visitor on somewhere else (/song-list/year goes to
+ * the latest year). Nobody ever sees them, so they are never anyone's
+ * origin: "back" from the year page leads to where the visitor really was.
+ */
+const REDIRECT_ONLY = new Set(["/song-list/year"]);
+
+/**
  * The history after visiting `entry` (a path with its query).
  *
+ *   a page that only redirects     -> not recorded
  *   same page again (a new query)  -> replaces the last entry
  *   the page before the last one   -> a step back: the last entry is dropped
  *   anything else                  -> added
  */
 export function recordVisit(history: readonly string[], entry: string): string[] {
   const path = pathOf(entry);
+  if (REDIRECT_ONLY.has(path)) return [...history];
   const last = history.length - 1;
   if (last >= 0 && pathOf(history[last]) === path) return [...history.slice(0, last), entry];
   if (last >= 1 && pathOf(history[last - 1]) === path) return [...history.slice(0, last - 1), entry];
@@ -78,7 +87,7 @@ export function findOrigin(
   for (let index = end - 1; index >= 0; index -= 1) {
     if (!isSitePath(history[index])) continue;
     const path = pathOf(history[index]);
-    if (path === current) continue;
+    if (path === current || REDIRECT_ONLY.has(path)) continue;
     if (options.skipSongPages && isSongPage(path)) continue;
     return history[index];
   }

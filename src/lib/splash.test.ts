@@ -23,6 +23,14 @@ describe("looksSignedIn", () => {
     expect(looksSignedIn("")).toBe(false);
     expect(looksSignedIn("not__client_uat=123")).toBe(false);
   });
+
+  it("ignores a value that is not a whole number of seconds", () => {
+    expect(looksSignedIn("__client_uat=")).toBe(false);
+    expect(looksSignedIn("__client_uat=true")).toBe(false);
+    expect(looksSignedIn("__client_uat=1abc; theme=dark")).toBe(false);
+    expect(looksSignedIn("__client_uat=-1")).toBe(false);
+    expect(looksSignedIn("__client_uat=01")).toBe(false);
+  });
 });
 
 describe("splashInitScript", () => {

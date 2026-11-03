@@ -4,10 +4,12 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AccountProvider } from "@/components/account/AccountContext";
+import { MemberHint } from "@/components/account/MemberHint";
 import { AppOnly } from "@/components/app/AppOnly";
 import { InstalledApp } from "@/components/app/InstalledApp";
 import { Splash } from "@/components/app/Splash";
 import { ConductorDock } from "@/components/conductor/ConductorDock";
+import { AppFooter } from "@/components/layout/AppFooter";
 import { Footer } from "@/components/layout/Footer";
 import { Header } from "@/components/layout/Header";
 import { SkipLink } from "@/components/layout/SkipLink";
@@ -22,6 +24,7 @@ import { currentClerkConfig, warnIfMisconfigured } from "@/lib/auth/clerk-env";
 import { appOnlyInitScript } from "@/lib/app-only";
 import { installPromptCaptureScript } from "@/lib/install";
 import { launchScreenLinks } from "@/lib/launch-screens";
+import { memberInitScript } from "@/lib/member-hint";
 import { packetsInitScript } from "@/lib/service-packets";
 import { splashInitScript } from "@/lib/splash";
 import { canvasStyle, PAPER_DARK, PAPER_LIGHT, themeInitScript } from "@/lib/theme";
@@ -122,6 +125,8 @@ function AccountsProvider({ enabled, children }: { enabled: boolean; children: R
       <AccountProvider>
         {/* The installed app: members only (src/lib/app-only.ts). */}
         <AppOnly />
+        {/* Keeps the member's footer true to the session once Clerk has loaded. */}
+        <MemberHint />
         {/* Push: the service worker, this device's subscription, and the
             app icon's unread count (src/components/notifications/PushSync.tsx). */}
         <PushSync />
@@ -171,6 +176,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* The installed app is members-only: signed out, it goes straight
             to log in. See src/lib/app-only.ts. */}
         {authEnabled ? <script dangerouslySetInnerHTML={{ __html: appOnlyInitScript }} /> : null}
+        {/* Marks <html> for a signed-in member before the first paint, so the
+            compact footer shows with no flash. Presentation only. See
+            src/lib/member-hint.ts. */}
+        {authEnabled ? <script dangerouslySetInnerHTML={{ __html: memberInitScript }} /> : null}
       </head>
       <body className="flex min-h-full flex-col bg-paper">
         {/* Scroll-reveal content starts hidden and is revealed by JavaScript.
@@ -193,7 +202,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <main id="main" className="flex-1">
             {children}
           </main>
-          <Footer />
+          {/* Both footers, every page; globals.css shows the visitor's or the
+              member's (src/lib/member-hint.ts). One wrapper carries the view
+              transition name, so the footer stays put during a page change. */}
+          <div style={{ viewTransitionName: "site-footer" }}>
+            <Footer />
+            {authEnabled ? <AppFooter /> : null}
+          </div>
           {/* Conductor, the AI assistant, beside or over whatever page is
               open - only for someone holding use_ai, and never on its own
               page. Here, not in a page, so it stays open between pages. */}

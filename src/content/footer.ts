@@ -37,6 +37,16 @@ export const footerContent = {
     href: "https://alexball.dev",
   },
 
+  /**
+   * The compact footer signed-in members see (AppFooter.tsx): the copyright,
+   * Support and the developer credit - nothing else.
+   */
+  app: {
+    label: "Site",
+    support: "Support",
+    supportHref: "/contact",
+  },
+
   /** {year} is replaced with the current year at render time. */
   copyright: `{year} ${siteConfig.name}`,
 } as const;

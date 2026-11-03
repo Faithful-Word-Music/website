@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
+import { copyrightLine, DeveloperCredit } from "@/components/layout/FooterCredit";
 import { disconnectForSignOut } from "@/components/notifications/push-device";
 import { cn } from "@/components/ui/cn";
 import { Modal } from "@/components/ui/Modal";
@@ -117,6 +118,7 @@ export function UserMenu({ wide }: { wide: boolean }) {
             )}
           </div>
           <AccountLinks variant="popover" onNavigate={close} />
+          <AppCredit />
         </Popover>
       ) : null}
 
@@ -133,6 +135,7 @@ export function UserMenu({ wide }: { wide: boolean }) {
           <nav aria-label={accountContent.menu.button}>
             <AccountLinks variant="sheet" onNavigate={close} />
           </nav>
+          <AppCredit />
         </Modal>
       ) : null}
     </div>
@@ -172,6 +175,22 @@ function AccountLinks({ variant, onNavigate }: { variant: "popover" | "sheet"; o
         </button>
       </li>
     </ul>
+  );
+}
+
+/**
+ * The footer's closing line, for the installed app only: a member has no
+ * footer there (globals.css), so the copyright and credit live here instead.
+ * In a browser the footer has them and this stays hidden.
+ */
+function AppCredit() {
+  return (
+    <div className="mt-1 hidden border-t border-line px-3 pb-1 pt-3 text-xs leading-relaxed text-muted standalone:block">
+      <p>{copyrightLine()}</p>
+      <p>
+        <DeveloperCredit />
+      </p>
+    </div>
   );
 }
 

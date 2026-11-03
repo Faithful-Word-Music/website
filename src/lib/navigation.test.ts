@@ -136,6 +136,9 @@ describe("isMemberPath", () => {
     expect(isMemberPath("/")).toBe(false);
     expect(isMemberPath("/song-list")).toBe(false);
     expect(isMemberPath("/accounts")).toBe(false);
+    expect(isMemberPath("/dashboardx")).toBe(false);
+    expect(isMemberPath("/contact/requests/R-12345678")).toBe(true);
+    expect(isMemberPath("/contact")).toBe(false);
   });
 });
 

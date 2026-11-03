@@ -13,6 +13,156 @@
   }
 }
 
+/* Inside the installed app (display-mode: standalone), whoever is using it. */
+@custom-variant standalone {
+  @media (display-mode: standalone) {
+    @slot;
+  }
+}
+
+/* Which footer (src/lib/member-hint.ts): the full one for visitors, the
+   compact AppFooter for a signed-in member - <html data-member>, set in
+   <head> before the first paint and kept true by MemberHint. Inside the
+   installed app a member has no footer at all (the account menu carries its
+   closing line); the signed-out app login screen keeps its own. */
+[data-footer="app"] {
+  display: none;
+}
+
+html[data-member] [data-footer="site"] {
+  display: none;
+}
+
+html[data-member] [data-footer="app"] {
+  display: block;
+}
+
+@media (display-mode: standalone) {
+  html[data-member] [data-footer] {
+    display: none;
+  }
+
+  /* With no footer below it, the page's end still clears the floating
+     buttons and the phone's home indicator. */
+  html[data-member] #main {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Dropdowns: every native <select> gets the site's own chevron (Icon's
+   chevron-down, in the muted colour of the theme) with the same breathing
+   room from its edge, instead of each browser's own arrow pressed against
+   it. Unlayered, so a field's own padding utility can't crowd the arrow. A
+   select that draws its own arrow (PillSelect) opts out with appearance-none. */
+/* Light here; the dark version is set with the other dark tokens (DARK MODE). */
+:root {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%236b6b68' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+select:not([multiple], [size], .appearance-none) {
+  appearance: none;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.5rem;
+}
+
+/* Where the browser lets a dropdown's open list be styled (Chrome and Edge,
+   appearance: base-select), it becomes a card like the site's own menus:
+   surface, hairline border, rounded rows, the chosen one ticked in gold, and
+   the chevron turned up while it is open. Everywhere else - Safari, Firefox,
+   and phones' own pickers - the native list stays, with the chevron above. */
+@supports (appearance: base-select) {
+  select:not([multiple], [size], .appearance-none),
+  select:not([multiple], [size], .appearance-none)::picker(select) {
+    appearance: base-select;
+  }
+
+  select:not([multiple], [size], .appearance-none) {
+    background-image: none;
+    padding-right: 0.875rem;
+    gap: 0.5rem;
+    /* Fields set a min-height, not vertical padding: keep the value and the
+       chevron centred in it, as the native control does. */
+    align-items: center;
+  }
+
+  select:not([multiple], [size], .appearance-none)::picker-icon {
+    content: "";
+    width: 1rem;
+    height: 1rem;
+    background: var(--select-chevron) center / 1rem 1rem no-repeat;
+    transition: rotate 0.2s ease;
+  }
+
+  select:not([multiple], [size], .appearance-none):open::picker-icon {
+    rotate: 180deg;
+  }
+
+  select:not([multiple], [size], .appearance-none)::picker(select) {
+    /* Below the field, like every menu on the site; above it only when it
+       does not fit below. (Chrome's default opens on whichever side has
+       more room, so a field low on the screen opened upwards.) */
+    position-try-order: normal;
+    margin-block: 0.375rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.35);
+  }
+
+  select:not([multiple], [size], .appearance-none) option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.5rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--color-ink);
+    font-size: 0.875rem;
+  }
+
+  select:not([multiple], [size], .appearance-none) option:not(:disabled):hover,
+  select:not([multiple], [size], .appearance-none) option:not(:disabled):focus-visible {
+    background: var(--color-paper);
+    outline: none;
+  }
+
+  select:not([multiple], [size], .appearance-none) option:checked {
+    font-weight: 500;
+  }
+
+  /* The tick sits at the row's end, in gold, only on the chosen row. */
+  select:not([multiple], [size], .appearance-none) option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: var(--color-gold-dark);
+  }
+
+  /* A disabled row (a "Choose..." placeholder, an option that can't be
+     picked): muted, no hover, and - if it is the current value - a muted tick
+     rather than the gold one, so it never reads as something to choose. */
+  select:not([multiple], [size], .appearance-none) option:disabled {
+    color: var(--color-muted);
+    font-weight: 400;
+    cursor: default;
+  }
+
+  select:not([multiple], [size], .appearance-none) option:disabled::checkmark {
+    color: var(--color-muted);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    select:not([multiple], [size], .appearance-none)::picker-icon {
+      transition: none;
+    }
+  }
+}
+
 /* The header with its links in a row rather than behind the menu button. The
    header measures whether they fit (src/components/layout/use-nav-fit.ts) and
    marks itself data-nav="wide" or "narrow"; before it has measured ("auto"),
@@ -204,6 +354,7 @@
   --color-ink: #f2f0ea;
   --color-ink-soft: #d9d6ce;
   --color-muted: #a3a19a;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%23a3a19a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --color-line: #2e2d2a;
   --color-staff: #3a3935;
   --color-gold: #c9a36b;
@@ -234,6 +385,7 @@
     --color-ink: #f2f0ea;
     --color-ink-soft: #d9d6ce;
     --color-muted: #a3a19a;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%23a3a19a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
     --color-line: #2e2d2a;
     --color-staff: #3a3935;
     --color-gold: #c9a36b;
@@ -991,7 +1143,7 @@ html[data-conductor-resizing] body {
   }
 
   body > header,
-  body > footer,
+  [data-footer],
   body > a[href="#main"] {
     display: none !important;
   }

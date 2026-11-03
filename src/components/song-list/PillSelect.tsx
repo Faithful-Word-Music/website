@@ -33,7 +33,8 @@ export function PillSelect<T extends string>({
         value={value}
         onChange={(event) => onChange(event.target.value as T)}
         className={cn(
-          "glass min-h-11 w-full cursor-pointer appearance-none rounded-full pl-4 pr-9 text-sm transition-[border-color,box-shadow] duration-200 hover:border-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/40",
+          // The chevron and the open list are the site's shared dropdown (globals.css).
+          "glass min-h-11 w-full cursor-pointer rounded-full pl-4 text-sm transition-[border-color,box-shadow] duration-200 hover:border-gold focus:outline-none focus-visible:ring-2 focus-visible:ring-gold/40",
           value === "" ? "text-muted" : "text-ink",
         )}
       >
@@ -45,15 +46,6 @@ export function PillSelect<T extends string>({
           </option>
         ))}
       </select>
-      <svg
-        aria-hidden="true"
-        width="12"
-        height="12"
-        viewBox="0 0 12 12"
-        className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted"
-      >
-        <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-      </svg>
     </div>
   );
 }

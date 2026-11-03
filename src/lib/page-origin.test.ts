@@ -61,6 +61,15 @@ describe("findOrigin", () => {
     expect(findOrigin(history, "/song-list/archive")).toBe("/dashboard");
   });
 
+  it("passes over a page that only redirects: Song List -> year in song -> back to the song list", () => {
+    // /song-list/year sends the visitor straight on to the latest year.
+    const history = visit("/song-list", "/song-list/year", "/song-list/year/2026");
+    expect(history).toEqual(["/song-list", "/song-list/year/2026"]);
+    expect(findOrigin(history, "/song-list/year/2026")).toBe("/song-list");
+    // A history recorded before this rule still leads past it.
+    expect(findOrigin(["/song-list", "/song-list/year", "/song-list/year/2026"], "/song-list/year/2026")).toBe("/song-list");
+  });
+
   it("is null for a page opened straight from a link", () => {
     expect(findOrigin(visit("/library/songs/a"), "/library/songs/a")).toBeNull();
     expect(findOrigin([], "/library/songs/a")).toBeNull();

@@ -12,7 +12,8 @@ export const recordingsContent = {
 
   song: {
     title: "Recordings",
-    none: "No recordings yet.",
+    none: "No recordings yet",
+    noneDetail: "When one is added, you can play it right here.",
     primary: "Primary",
     membersOnly: "Members only",
     otherMedia: "Other media",
