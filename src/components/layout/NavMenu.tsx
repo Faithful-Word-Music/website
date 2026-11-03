@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { Icon } from "@/components/ui/Icon";
+import { Popover } from "@/components/ui/popover/Popover";
 import { usePagePath } from "@/components/ui/use-page-path";
 import type { NavItem } from "@/lib/navigation";
-
-/** The panel's width (w-56), for keeping it on screen. */
-const PANEL_WIDTH = 224;
-const EDGE = 16;
 
 /**
  * A menu in the header's row of links ("Tools"): a button that opens a short
@@ -22,17 +20,27 @@ const EDGE = 16;
  * links, not an ARIA menu, so a screen reader meets ordinary links; the Down
  * arrow opens it and moves into them.
  *
- * The panel is `fixed`, placed from the button: the links' row clips what
- * overflows it (use-nav-fit.ts measures that), so a panel positioned inside
- * the row would be cut off.
+ * The panel is a Popover (ui/popover), placed from the button: the links'
+ * row clips what overflows it (use-nav-fit.ts measures that), so a panel
+ * positioned inside the row would be cut off. It stays beside the button in
+ * the page, so Tab runs from the button into the links and on along the bar.
+ * If the bar gives way to the menu button at a narrower width, the panel
+ * closes and focus goes to that menu button (`fallbackFocus`).
  */
-export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: string) => boolean }) {
+export function NavMenu({
+  item,
+  isActive,
+  fallbackFocus,
+}: {
+  item: NavItem;
+  isActive: (href: string) => boolean;
+  /** Where focus goes if the bar is put away while the panel is open: the menu button that replaces it. */
+  fallbackFocus?: () => HTMLElement | null;
+}) {
   const children = item.children ?? [];
   const pathname = usePagePath();
   const [open, setOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
-  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
-  const rootRef = useRef<HTMLLIElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   /** Set when the Down arrow opened it: focus then goes to the first link. */
@@ -45,44 +53,12 @@ export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: st
     setOpen(false);
   }
 
-  useLayoutEffect(() => {
-    if (!open) return;
-    function place() {
-      const rect = buttonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setPosition({
-        left: Math.max(EDGE, Math.min(rect.left, window.innerWidth - PANEL_WIDTH - EDGE)),
-        top: rect.bottom + 4,
-      });
-    }
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [open]);
-
+  // Opened with the Down arrow: into the first link.
   useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      buttonRef.current?.focus();
-    }
-    function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !position || !focusFirst.current) return;
+    if (!open || !focusFirst.current) return;
     focusFirst.current = false;
     panelRef.current?.querySelector<HTMLAnchorElement>("a")?.focus();
-  }, [open, position]);
+  }, [open]);
 
   function onButtonKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "ArrowDown") return;
@@ -102,7 +78,7 @@ export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: st
   }
 
   return (
-    <li ref={rootRef}>
+    <li>
       <button
         ref={buttonRef}
         type="button"
@@ -116,16 +92,7 @@ export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: st
         )}
       >
         {item.label}
-        <svg
-          aria-hidden="true"
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-          fill="none"
-          className={cn("transition-transform", open && "rotate-180")}
-        >
-          <path d="M2 3.75L5 6.75l3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <Icon name="chevron-down" size={10} strokeWidth={2.2} className={cn("transition-transform", open && "rotate-180")} />
         {/* The same barline the links wear, when one of its pages is open. */}
         <span
           aria-hidden="true"
@@ -134,13 +101,16 @@ export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: st
       </button>
 
       {open ? (
-        <div
-          ref={panelRef}
+        <Popover
           id={panelId}
+          triggerRef={buttonRef}
+          placement="bottom-start"
+          onClose={() => setOpen(false)}
+          fallbackFocus={fallbackFocus}
           onKeyDown={onPanelKeyDown}
-          style={position ?? { visibility: "hidden" }}
-          className="animate-enter fixed z-50 w-56 rounded-card border border-line bg-surface p-2 shadow-lift"
+          className="w-56 p-2"
         >
+          <div ref={panelRef}>
           <ul>
             {children.map((child) => {
               const current = isActive(child.href);
@@ -161,7 +131,8 @@ export function NavMenu({ item, isActive }: { item: NavItem; isActive: (href: st
               );
             })}
           </ul>
-        </div>
+          </div>
+        </Popover>
       ) : null}
     </li>
   );

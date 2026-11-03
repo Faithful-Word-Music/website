@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { currentHref } from "@/lib/current-href";
 
@@ -25,7 +26,8 @@ export function SectionNav({
   label,
   trailing,
 }: {
-  items: Array<{ href: string; label: string; badge?: number }>;
+  /** `badge`: a count beside the label; `badgeLabel` says what it counts ("3 waiting"), read in its place. */
+  items: Array<{ href: string; label: string; badge?: number; badgeLabel?: string }>;
   label: string;
   trailing?: ReactNode;
 }) {
@@ -50,9 +52,7 @@ export function SectionNav({
                 )}
               >
                 {item.label}
-                {item.badge ? (
-                  <span className="rounded-full bg-ink px-2 py-0.5 text-[0.7rem] font-semibold text-paper">{item.badge}</span>
-                ) : null}
+                {item.badge ? <CountBadge count={item.badge} label={item.badgeLabel} /> : null}
                 <span
                   aria-hidden="true"
                   className={cn(

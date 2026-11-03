@@ -5,6 +5,8 @@ export const searchContent = {
   /** The dialog's accessible name. */
   dialogLabel: "Search",
   placeholder: "Search songs, services and pages",
+  /** The mobile menu's search bar on the narrowest phones (under 360px), where the full wording does not fit. */
+  placeholderShort: "Search songs and pages",
   closeLabel: "Close search",
 
   /** Result groups, in the order they are shown. */
@@ -104,6 +106,13 @@ export const searchContent = {
     availability: { label: "Update my availability…", keywords: "away unavailable available out of town vacation sick cannot make it can't come mark myself sunday wednesday" },
     /** Sends what was typed to Conductor. {query} is replaced. For someone who may use AI. */
     askConductor: { label: "Ask Conductor: “{query}”", keywords: "" },
+    /**
+     * The next service, three ways in. Each shows only when it leads somewhere
+     * real for this person; the service itself is named underneath.
+     */
+    nextSheetMusic: { label: "Open next service's sheet music", keywords: "print pdf my parts music next sunday wednesday" },
+    nextListen: { label: "Listen to next service", keywords: "preparation playlist recordings practice audio hear next" },
+    nextPlan: { label: "Plan next service", keywords: "service planner edit songs plan next" },
   },
 
   /** Asking Conductor from the search. */

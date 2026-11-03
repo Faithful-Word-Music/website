@@ -80,6 +80,14 @@
    Dark mode redefines the same tokens further down (DARK MODE), so components
    never need a `dark:` class. Its figures, on dark paper:
      ink 16.2:1 · muted 7.1:1 · gold-dark 9.2:1 · gold 7.8:1
+
+   Status colours (each foreground on its own -bg / on surface / on paper):
+     light  success 5.6 / 6.4 / 6.1    warning 6.2 / 6.9 / 6.6
+            danger  5.7 / 6.7 / 6.3    info    6.1 / 7.1 / 6.7
+     dark   success 8.3 / 9.6 / 10.4   warning 8.7 / 9.9 / 10.7
+            danger  7.6 / 8.4 / 9.1    info    8.3 / 9.3 / 10.0
+   src/lib/design-tokens.test.ts holds every one of these at 4.5:1 or more,
+   so an edit that breaks contrast fails the tests.
    =========================================================================== */
 @theme {
   /* Surfaces */
@@ -102,6 +110,23 @@
   --color-stage: #111111;
   --color-on-stage: #faf9f6;
 
+  /* Status - the dashboard's states, named for what they mean:
+       success  positive       ready, done, confirmed
+       warning  attention      needs a look before the service
+       danger   critical       blocked, failed, missing
+       info     informational  a note, nothing to act on
+     The plain token is for text and icons; -bg is a tinted fill behind that
+     text. Always with words or an icon as well: colour never carries a state
+     alone. Gold stays the brand accent, not a status. */
+  --color-success: #2f6b3a;
+  --color-success-bg: #e9f3ea;
+  --color-warning: #7a5200;
+  --color-warning-bg: #fbf1dc;
+  --color-danger: #a8322d;
+  --color-danger-bg: #fbe9e7;
+  --color-info: #2d5b8a;
+  --color-info-bg: #e8f0f8;
+
   /* Typography - wired up in src/app/layout.tsx */
   --font-display: var(--font-source-serif), Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -110,6 +135,8 @@
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 32px -16px rgba(17, 17, 17, 0.18);
 
   --radius-card: 0.75rem;
+  /* Small controls: buttons, inputs, menu rows, tabs (rounded-control). */
+  --radius-control: 0.5rem;
 
   /* Motion: every hover and state change on the site eases the same way,
      unhurried enough to be seen, quick enough never to lag. Tailwind's own
@@ -140,7 +167,7 @@
   /* The next service's glow (.card-next). */
   --shadow-card-next: 0 1px 2px rgba(17, 17, 17, 0.04), 0 0 28px -6px rgba(176, 141, 87, 0.35);
   /* The edge of a scroll panel with more beyond it (ScrollArea.tsx). */
-  --scroll-shadow: rgba(17, 17, 17, 0.14);
+  --scroll-shadow: rgba(17, 17, 17, 0.1);
   /* The width Conductor's panel takes from the right of the window while it
      is open beside the page; nothing otherwise. See CONDUCTOR, below. */
   --conductor-inset: 0px;
@@ -181,10 +208,18 @@
   --color-staff: #3a3935;
   --color-gold: #c9a36b;
   --color-gold-dark: #d4b27d;
+  --color-success: #8fd19e;
+  --color-success-bg: #1d2b20;
+  --color-warning: #e6c07a;
+  --color-warning-bg: #2d2618;
+  --color-danger: #f0a29b;
+  --color-danger-bg: #33201e;
+  --color-info: #9cc3ea;
+  --color-info-bg: #1b2633;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
   --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
   --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
-  --scroll-shadow: rgba(0, 0, 0, 0.65);
+  --scroll-shadow: rgba(0, 0, 0, 0.45);
   --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
   --glass-bg: rgba(28, 28, 26, 0.8);
   --glass-bg-blur: rgba(28, 28, 26, 0.65);
@@ -203,10 +238,18 @@
     --color-staff: #3a3935;
     --color-gold: #c9a36b;
     --color-gold-dark: #d4b27d;
+    --color-success: #8fd19e;
+    --color-success-bg: #1d2b20;
+    --color-warning: #e6c07a;
+    --color-warning-bg: #2d2618;
+    --color-danger: #f0a29b;
+    --color-danger-bg: #33201e;
+    --color-info: #9cc3ea;
+    --color-info-bg: #1b2633;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
     --shadow-card-next: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 28px -6px color-mix(in srgb, var(--color-gold) 22%, transparent);
     --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -10px rgba(0, 0, 0, 0.8);
-    --scroll-shadow: rgba(0, 0, 0, 0.65);
+    --scroll-shadow: rgba(0, 0, 0, 0.45);
     --shadow-glass: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 8px 32px -16px rgba(0, 0, 0, 0.6);
     --glass-bg: rgba(28, 28, 26, 0.8);
     --glass-bg-blur: rgba(28, 28, 26, 0.65);
@@ -937,6 +980,14 @@ html[data-conductor-resizing] body {
     --color-staff: #d8d7d1;
     --color-gold: #b08d57;
     --color-gold-dark: #84683f;
+    --color-success: #2f6b3a;
+    --color-success-bg: #e9f3ea;
+    --color-warning: #7a5200;
+    --color-warning-bg: #fbf1dc;
+    --color-danger: #a8322d;
+    --color-danger-bg: #fbe9e7;
+    --color-info: #2d5b8a;
+    --color-info-bg: #e8f0f8;
   }
 
   body > header,

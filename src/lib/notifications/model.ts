@@ -28,6 +28,7 @@
  */
 
 import type { Permission } from "@/lib/auth/permissions";
+import { countLabel } from "@/lib/count-label";
 import { isSitePath } from "@/lib/page-origin";
 
 export const CHANNELS = ["in_app", "push", "email"] as const;
@@ -311,6 +312,5 @@ export function safeActionUrl(value: unknown): string | null | undefined {
 
 /** The count on the bell: "99+" rather than a number too wide for it. Empty at zero. */
 export function badgeLabel(count: number): string {
-  if (!Number.isFinite(count) || count <= 0) return "";
-  return count > 99 ? "99+" : String(Math.floor(count));
+  return countLabel(count, 99);
 }

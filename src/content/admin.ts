@@ -5,6 +5,8 @@ export const adminContent = {
     /** Read out before the open section on the phone's menu button. */
     menu: "Admin section",
     close: "Close",
+    /** Read out in place of the bare number on a section's count ({count} is replaced). */
+    waiting: ["{count} waiting", "{count} waiting"],
     groups: {
       people: "People",
       setup: "Setup",

@@ -3,6 +3,7 @@
 import { useId, useRef, type ReactNode } from "react";
 
 import { cn } from "@/components/ui/cn";
+import { Icon } from "@/components/ui/Icon";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { modalDialogFocusClasses, modalDialogProps, useModalDialog } from "@/components/ui/use-modal-dialog";
 
@@ -89,9 +90,7 @@ export function Modal({
             aria-label={closeLabel}
             className="-mr-2 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink"
           >
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <Icon name="close" strokeWidth={1.5} />
           </button>
         </header>
 

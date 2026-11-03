@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/components/ui/cn";
+import { usePopover } from "@/components/ui/popover/usePopover";
 
 /**
  * A small menu that opens against the button that owns it: the share menu on
@@ -15,6 +16,8 @@ import { cn } from "@/components/ui/cn";
  * it goes into that dialog instead: a dialog is in the top layer, and anything
  * under <body> would sit behind it. Works fully from the
  * keyboard: arrows, Home/End, Escape (back to the button), Tab (on past it).
+ * It flips to the other side when there is no room, stays inside the window
+ * and clear of Conductor's panel, and closes if its button is put away.
  *
  * The button itself is the caller's: give it aria-haspopup="menu",
  * aria-expanded and aria-controls={id}.
@@ -52,77 +55,39 @@ export function Menu({
   id: string;
   menuRef: RefObject<HTMLDivElement | null>;
   triggerRef: RefObject<HTMLButtonElement | null>;
-  /** Which side of the button it opens on. */
+  /** Which side of the button it opens on (it flips if there is no room there). */
   placement: "below" | "above";
   items: MenuItem[];
   onSelect: (item: MenuItem) => void;
   onClose: (options?: { refocus?: boolean }) => void;
 }) {
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
-  /** Where it is portalled: the button's open dialog, else <body>. Known once mounted. */
-  const [container, setContainer] = useState<Element | null>(null);
-  useLayoutEffect(() => {
-    setContainer(triggerRef.current?.closest("dialog[open]") ?? document.body);
-  }, [triggerRef]);
-
-  // Sit against the button, right edges aligned, and follow it on scroll.
-  useLayoutEffect(() => {
-    function place() {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      const menu = menuRef.current;
-      if (!rect || !menu) return;
-      const gap = 8;
-      const top =
-        placement === "below" ? rect.bottom + gap : rect.top - gap - menu.offsetHeight;
-      setPosition({ top, right: Math.max(8, window.innerWidth - rect.right) });
-    }
-    place();
-    window.addEventListener("scroll", place, { passive: true });
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place);
-      window.removeEventListener("resize", place);
-    };
-  }, [menuRef, triggerRef, placement, container]);
-
-  // The latest onClose, read by the listener below without re-subscribing it
-  // on every render (the page re-renders each time its clock ticks).
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
+  // Placement, the move into a dialog, following the button and dismissal
+  // are the shared popover mechanics (popover/usePopover.ts); what makes it a
+  // menu - the role, the arrow keys - is here.
+  const { container, style, placed } = usePopover({
+    triggerRef,
+    popoverRef: menuRef,
+    placement: placement === "below" ? "bottom-end" : "top-end",
+    portal: true,
+    initialFocus: "first",
+    itemSelector: "[role=menuitem]",
+    closeOnTab: true,
+    fallbackFocus: () => null,
+    // Escape (handled before this menu sees it) goes back to the button; anything else leaves focus be.
+    onDismiss: (reason) => onClose(reason === "escape" ? { refocus: true } : undefined),
   });
-
-  // Focus the first choice on opening; close on a press anywhere else.
-  useEffect(() => {
-    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus({ preventScroll: true });
-
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      onCloseRef.current();
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [menuRef, triggerRef, container]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const all = Array.from(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
     const index = all.indexOf(document.activeElement as HTMLElement);
 
-    if (event.key === "Escape") {
-      // Handled here, so it does not also leave select mode.
-      event.preventDefault();
-      event.stopPropagation();
-      onClose({ refocus: true });
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
       all[(index + step + all.length) % all.length]?.focus();
     } else if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
       all[event.key === "Home" ? 0 : all.length - 1]?.focus();
-    } else if (event.key === "Tab") {
-      onClose();
     }
   }
 
@@ -136,15 +101,11 @@ export function Menu({
       ref={menuRef}
       role="menu"
       onKeyDown={onKeyDown}
-      style={{
-        position: "fixed",
-        top: position?.top ?? -9999,
-        right: position?.right ?? 0,
-      }}
+      style={style}
       className={cn(
-        "animate-enter z-50 min-w-52 rounded-card border border-line bg-surface p-1.5 shadow-card",
-        // Transparent, not hidden, until placed: a hidden menu could not take focus.
-        !position && "opacity-0",
+        "z-50 min-w-52 overflow-y-auto rounded-card border border-line bg-surface p-1.5 shadow-card",
+        // Transparent (in the style), not hidden, until placed: a hidden menu could not take focus.
+        placed && "animate-enter",
       )}
     >
       {items.map((item) => {

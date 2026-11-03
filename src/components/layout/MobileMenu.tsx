@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { useId, useState, type CSSProperties } from "react";
 
 import { MobileSearchBar } from "@/components/search/CommandPalette";
 import { Collapse } from "@/components/ui/Collapse";
@@ -95,7 +95,15 @@ function MenuRow({
 }
 
 /**
- * The mobile navigation: a full-screen overlay below the header bar.
+ * The navigation behind the menu button, for whenever the header's links do
+ * not fit in the bar (use-nav-fit.ts):
+ *
+ *   phones (under 640px)   a full-screen overlay below the bar
+ *   wider (tablets, a narrow desktop window, a window beside Conductor)
+ *                          a panel under the menu button, at the bar's right
+ *                          edge, over a light dim of the page that closes it
+ *                          when pressed - a whole screen of a few links would
+ *                          be mostly empty there
  *
  * It stays mounted so it can animate both in and out, and uses `inert` when
  * closed - which takes it out of the accessibility tree AND out of the tab
@@ -108,7 +116,6 @@ export function MobileMenu({
   items,
   isActive,
   onSearch,
-  account,
 }: {
   open: boolean;
   onClose: () => void;
@@ -118,8 +125,6 @@ export function MobileMenu({
   isActive: (href: string) => boolean;
   /** Opens the search palette (the menu closes as it opens). */
   onSearch: () => void;
-  /** The signed-in person's account section, when accounts are on. */
-  account?: ReactNode;
 }) {
   // Lock the page while the menu is open. (The header closes it once its
   // links fit in the bar again - otherwise `nav-wide:hidden` would hide the
@@ -127,86 +132,103 @@ export function MobileMenu({
   useScrollLock(open);
 
   return (
-    <div
-      id={panelId}
-      inert={!open}
-      className={cn(
-        // Fixed to the viewport, starting below the 64px header bar - and
-        // stopping short of Conductor's panel, when that is open beside the page.
-        "fixed bottom-0 left-0 right-(--conductor-inset) top-16 z-30 nav-wide:hidden",
-        // The menu scrolls itself if the list ever outgrows the screen;
-        // overscroll-contain stops a flick chaining through to the page.
-        "overflow-y-auto overscroll-contain bg-paper",
-        "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
-        open
-          ? "translate-y-0 opacity-100"
-          : "pointer-events-none -translate-y-1 opacity-0",
-      )}
-    >
-      <div className="flex min-h-full flex-col justify-between">
-        <div className="px-5 pt-6">
-          {/* Arrives with the links, a step ahead of the first. */}
-          <MobileSearchBar
-            onOpen={onSearch}
-            className={cn(
-              "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
-              open ? "translate-y-0 opacity-100 delay-[60ms]" : "translate-y-2 opacity-0",
-            )}
-          />
-          <nav aria-label="Primary" className="mt-2">
-            <ul className="flex flex-col">
-              {items.map((item, index) => {
-                // A short stagger on the way in; immediate on the way out, so
-                // closing feels responsive rather than draggy.
-                const enter: Enter = {
-                  style: { transitionDelay: open ? `${90 + index * 60}ms` : "0ms" },
-                  className: cn(
-                    "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
-                    open ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
-                  ),
-                };
-                if (item.children) {
-                  // Several destinations behind one row ("Tools"), which opens in place.
-                  return <MenuRow key={item.label} item={item} isActive={isActive} onClose={onClose} enter={enter} />;
-                }
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      onClick={onClose}
-                      aria-current={isActive(item.href) ? "page" : undefined}
-                      style={enter.style}
-                      className={cn(rowClasses, enter.className, isActive(item.href) ? "text-ink" : "text-muted")}
-                    >
-                      {/* Barline marking the current page. */}
-                      <span
-                        aria-hidden="true"
-                        className={cn("h-7 w-0.5 rounded-full", isActive(item.href) ? "bg-gold" : "bg-transparent")}
-                      />
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        </div>
+    <>
+      {/* From sm: the page behind the panel, dimmed and softly blurred (as behind a dialog), closing the menu when pressed. */}
+      <div
+        aria-hidden="true"
+        onClick={onClose}
+        className={cn(
+          "fixed bottom-0 left-0 right-(--conductor-inset) top-16 z-30 hidden bg-black/40 backdrop-blur-[2px] transition-opacity duration-300 ease-out sm:block nav-wide:hidden",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
+      <div
+        id={panelId}
+        inert={!open}
+        className={cn(
+          // Fixed to the viewport, starting below the 64px header bar - and
+          // stopping short of Conductor's panel, when that is open beside the page.
+          "fixed bottom-0 left-0 right-(--conductor-inset) top-16 z-30 nav-wide:hidden",
+          // The menu scrolls itself if the list ever outgrows the screen;
+          // overscroll-contain stops a flick chaining through to the page.
+          "overflow-y-auto overscroll-contain bg-paper",
+          // From sm, a panel under the menu button: its right edge on the bar's
+          // (the header's max-w-7xl container, px-8, less the button's -mr-2),
+          // just clear of the bar, as tall as its links and no taller than the screen.
+          "sm:bottom-auto sm:left-auto sm:top-[4.5rem] sm:w-[24rem] sm:max-h-[calc(100dvh-5.5rem)]",
+          // (100vw counts the page's scrollbar, which stays on screen: --scrollbar-gap, from the scroll lock, takes it back out.)
+          "sm:right-[calc(var(--conductor-inset)+max(1.5rem,(100vw-var(--conductor-inset)-var(--scrollbar-gap,0px)-80rem)/2+1.5rem))]",
+          "sm:rounded-card sm:border sm:border-line sm:bg-surface sm:shadow-lift",
+          "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
+          open
+            ? "translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-1 opacity-0",
+        )}
+      >
+        <div className="flex min-h-full flex-col justify-between sm:min-h-0">
+          <div className="px-5 pt-6 sm:pt-5">
+            {/* Arrives with the links, a step ahead of the first. */}
+            <MobileSearchBar
+              onOpen={onSearch}
+              className={cn(
+                "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
+                open ? "translate-y-0 opacity-100 delay-[60ms]" : "translate-y-2 opacity-0",
+              )}
+            />
+            <nav aria-label="Primary" className="mt-2">
+              <ul className="flex flex-col">
+                {items.map((item, index) => {
+                  // A short stagger on the way in; immediate on the way out, so
+                  // closing feels responsive rather than draggy.
+                  const enter: Enter = {
+                    style: { transitionDelay: open ? `${90 + index * 60}ms` : "0ms" },
+                    className: cn(
+                      "transition-[opacity,transform,translate,scale,rotate] duration-300 ease-out",
+                      open ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                    ),
+                  };
+                  if (item.children) {
+                    // Several destinations behind one row ("Tools"), which opens in place.
+                    return <MenuRow key={item.label} item={item} isActive={isActive} onClose={onClose} enter={enter} />;
+                  }
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={onClose}
+                        aria-current={isActive(item.href) ? "page" : undefined}
+                        style={enter.style}
+                        className={cn(rowClasses, enter.className, isActive(item.href) ? "text-ink" : "text-muted")}
+                      >
+                        {/* Barline marking the current page. */}
+                        <span
+                          aria-hidden="true"
+                          className={cn("h-7 w-0.5 rounded-full", isActive(item.href) ? "bg-gold" : "bg-transparent")}
+                        />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          </div>
 
-        <div className="space-y-6 px-5 pb-10 pt-8">
-          {/* Signed in: who, and their account links (in place of the
-              header's avatar menu, which phones have no room for). */}
-          {account}
-          <div className="border-t border-line pt-6">
-            <a
-              href={`mailto:${siteConfig.contactEmail}`}
-              onClick={onClose}
-              className="text-sm text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold"
-            >
-              {siteConfig.contactEmail}
-            </a>
+          <div className="space-y-6 px-5 pb-10 pt-8 sm:pb-5 sm:pt-4">
+            {/* The account links are not here: signed in, the avatar in the
+                bar opens them on every screen (UserMenu.tsx). */}
+            <div className="border-t border-line pt-6 sm:pt-4">
+              <a
+                href={`mailto:${siteConfig.contactEmail}`}
+                onClick={onClose}
+                className="text-sm text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold"
+              >
+                {siteConfig.contactEmail}
+              </a>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -44,6 +44,31 @@ export interface SearchIndex {
   years: number[];
   /** Months that can be downloaded as a PDF, in tab order. */
   pdfs: Array<{ month: string; href: string }>;
+  /**
+   * The next service, for the next-service commands - public facts only.
+   * `listenHref` is its Preparation Playlist, when that page has it (see
+   * nextServiceListenHref). Absent from an index cached before it existed.
+   */
+  nextService?: NextServicePublic | null;
+}
+
+/** The next service as anyone may see it (/api/search). */
+export interface NextServicePublic {
+  /** Its anchor, "2026-11-08-am": the id every page knows it by. */
+  anchor: string;
+  /** "Sunday Morning · Nov 8 · 10:30 AM" */
+  heading: string;
+  listenHref: string | null;
+}
+
+/**
+ * The next service as the signed-in person sees it (/api/account/next-service),
+ * fetched privately: only their own sheet music link, and only when the PDF
+ * route would give them one.
+ */
+export interface NextServicePrivate {
+  anchor: string | null;
+  sheetMusicHref: string | null;
 }
 
 export type SearchGroup = "songs" | "services" | "pages" | "actions" | "conductor";
@@ -199,6 +224,76 @@ const COMMANDS: Array<Audience & { action: Exclude<SearchAction, "toggle-theme" 
   { action: "update-availability", copy: "availability", permission: "view_availability" },
 ];
 
+/**
+ * The next-service commands, in order: who each is for, and where it leads.
+ * An entry is offered only when the person may use it AND its `href` gives
+ * a real destination - null means there is nowhere to go (no sheet music of
+ * theirs, no playlist yet), and the command is left out rather than shown
+ * pointing at nothing.
+ *
+ * Leaving one out is a convenience, not the protection: the sheet music PDF
+ * and the Service Planner check who is asking on the server, every time,
+ * whatever link brought them there.
+ */
+const NEXT_SERVICE_COMMANDS: Array<
+  Audience & {
+    id: "sheet-music" | "listen" | "plan";
+    copy: "nextSheetMusic" | "nextListen" | "nextPlan";
+    href: (next: NextServicePublic, mine: NextServicePrivate | null) => string | null;
+    /** Opens in a new tab (the sheet music PDF, as from the Dashboard). */
+    external?: true;
+  }
+> = [
+  {
+    id: "sheet-music",
+    copy: "nextSheetMusic",
+    only: "member",
+    // Theirs only, and only for the same service the public index calls next: never a stale one.
+    href: (next, mine) => (mine?.anchor === next.anchor ? mine.sheetMusicHref : null),
+    external: true,
+  },
+  { id: "listen", copy: "nextListen", href: (next) => next.listenHref },
+  { id: "plan", copy: "nextPlan", permission: "manage_service_plans", href: (next) => servicePlanPath(next.anchor) },
+];
+
+/** A service's page in the Service Planner: /service-planner/2026-11-08-am. Null for an anchor that is not one. */
+export function servicePlanPath(anchor: string): string | null {
+  return SERVICE_ANCHOR.test(anchor) ? `/service-planner/${anchor}` : null;
+}
+
+/** What serviceAnchor() makes: a date, and the time of day when there is one. */
+const SERVICE_ANCHOR = /^\d{4}-\d{2}-\d{2}(-(am|pm))?$/;
+
+/**
+ * The next-service commands one person is offered: "Open next service's
+ * sheet music", "Listen to next service", "Plan next service". `next` is
+ * from the public index; `mine` from the person's own private fetch (null
+ * while it loads, signed out, or when it failed).
+ */
+export function nextServiceEntries(
+  next: NextServicePublic | null | undefined,
+  mine: NextServicePrivate | null,
+  context: NavContext = SIGNED_OUT,
+): SearchEntry[] {
+  if (!next) return [];
+  const { actions } = searchContent;
+  return NEXT_SERVICE_COMMANDS.flatMap((command): SearchEntry[] => {
+    if (!offeredTo(command, context)) return [];
+    const href = command.href(next, mine);
+    if (!href) return [];
+    return [
+      {
+        id: `action:next-${command.id}`,
+        group: "actions",
+        href,
+        detail: next.heading,
+        ...(command.external ? { external: true } : {}),
+        ...actions[command.copy],
+      },
+    ];
+  });
+}
+
 /** Who may ask Conductor: every question is paid for, so it is its own permission. */
 const ASK_CONDUCTOR: Audience = { permission: "use_ai" };
 
@@ -320,15 +415,24 @@ function rankEntries(entries: SearchEntry[], query: string): SearchEntry[] {
  * appear once something is typed; there are too many to list.
  *
  * `index` is null until /api/search has answered. `context` is who is
- * looking (useAccount().nav): a visitor, when left out.
+ * looking (useAccount().nav): a visitor, when left out. `mine` is the
+ * signed-in person's own next-service links (/api/account/next-service),
+ * null until they arrive.
  *
  * "Ask Conductor" comes last, after everything that matched. So Enter still
  * opens the best match for a song or a page, and a question - which matches
  * nothing - finds Conductor first in line.
  */
-export function searchSite(index: SearchIndex | null, query: string, dark: boolean, context: NavContext = SIGNED_OUT): SearchResults {
+export function searchSite(
+  index: SearchIndex | null,
+  query: string,
+  dark: boolean,
+  context: NavContext = SIGNED_OUT,
+  mine: NextServicePrivate | null = null,
+): SearchResults {
   const pages = pageEntries(index?.years, context);
-  const actions = actionEntries(dark, index?.pdfs, context);
+  // The next service's commands lead the actions: the likeliest reason to open the palette before a service.
+  const actions = [...nextServiceEntries(index?.nextService, mine, context), ...actionEntries(dark, index?.pdfs, context)];
   const typed = query.trim() !== "";
 
   if (!typed) {

@@ -5,11 +5,13 @@ import { useId, useState } from "react";
 
 import { cn } from "@/components/ui/cn";
 import { Collapse } from "@/components/ui/Collapse";
+import { CountBadge } from "@/components/ui/CountBadge";
 import { Modal } from "@/components/ui/Modal";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { adminContent } from "@/content/admin";
 import type { AdminIconName } from "@/lib/admin-sections";
 import { currentHref, isGroupOpen, toggleGroup, type GroupToggles } from "@/lib/current-href";
+import { plural } from "@/lib/plural";
 
 const copy = adminContent.nav;
 
@@ -226,10 +228,9 @@ function Marker({ shown }: { shown: boolean }) {
   );
 }
 
+/** A count of things waiting, read out as "3 waiting" rather than a bare number. */
 function Badge({ count }: { count: number }) {
-  return (
-    <span className="shrink-0 rounded-full bg-ink px-2 py-0.5 text-[0.7rem] font-semibold text-paper">{count}</span>
-  );
+  return <CountBadge count={count} label={plural(copy.waiting, count)} />;
 }
 
 const ICONS: Record<AdminIconName, string> = {

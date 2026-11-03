@@ -7,6 +7,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useAccount } from "@/components/account/AccountContext";
 import { disconnectForSignOut } from "@/components/notifications/push-device";
 import { cn } from "@/components/ui/cn";
+import { Modal } from "@/components/ui/Modal";
+import { Popover } from "@/components/ui/popover/Popover";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { accountContent } from "@/content/account";
 import { profileSetupContent } from "@/content/profile-setup";
@@ -24,148 +26,88 @@ async function logOut(signOut: (options: { redirectUrl: string }) => Promise<voi
 }
 
 /**
- * The account section at the foot of the mobile menu: who is signed in, then
- * the same links as the header's account menu, and Log out.
- */
-export function MobileAccountMenu({ onNavigate }: { onNavigate: () => void }) {
-  const { isSignedIn, me, nav } = useAccount();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const pathname = usePagePath();
-
-  if (!isSignedIn || !user) return null;
-
-  const name = user.fullName || user.primaryEmailAddress?.emailAddress || "Your account";
-  const links = accountMenu(nav);
-
-  return (
-    <div className="border-t border-line pt-6">
-      <div className="flex items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized by Clerk */}
-        <img
-          src={user.imageUrl}
-          alt=""
-          width={40}
-          height={40}
-          className="h-10 w-10 rounded-full border border-line object-cover"
-        />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">{name}</p>
-          <p className="truncate text-xs text-muted">{me?.title ?? user.primaryEmailAddress?.emailAddress}</p>
-        </div>
-      </div>
-      <ul className="mt-4">
-        {links.map((item) => (
-          <li key={item.href}>
-            <Link
-              href={item.href}
-              onClick={onNavigate}
-              aria-current={isActivePath(pathname, item.href) ? "page" : undefined}
-              className={cn(
-                "flex min-h-11 items-center text-base transition-colors hover:text-ink",
-                isActivePath(pathname, item.href) ? "text-ink" : "text-muted",
-              )}
-            >
-              {item.label}
-              {item.href === "/profile" ? <ProfileMarker state={me?.profileAttention} /> : null}
-            </Link>
-          </li>
-        ))}
-        <li>
-          <button
-            type="button"
-            onClick={() => void logOut(signOut)}
-            className="flex min-h-11 w-full items-center text-left text-base text-muted transition-colors hover:text-ink"
-          >
-            {accountContent.menu.logout}
-          </button>
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-/**
- * The signed-in person's menu in the header: their photo, and links to their
- * Notifications, Profile, Account settings, the admin area (if they may use it)
- * and Log out. Editing lives on the pages themselves, not here.
+ * The signed-in person's menu in the header: their photo, on every screen.
+ * It holds their Notifications, Profile, Account settings, the admin area (if
+ * they may use it) and Log out. Editing lives on the pages themselves, not
+ * here.
  *
- * Renders nothing for visitors who are not signed in - the public header looks
- * exactly as it always has. Which links show comes from src/lib/navigation.ts
- * and the person's permissions (/api/account/me); it is only a convenience,
- * and every page checks permissions again itself.
+ *   wide (the header's links in a row)  a panel under the photo - a button
+ *                                       and a list of links (a disclosure,
+ *                                       not an ARIA menu)
+ *   narrow (phones, tablets)            a sheet rising from the foot of the
+ *                                       screen (Modal's sheet)
+ *
+ * `wide` comes from the header's own measure of whether its links fit
+ * (use-nav-fit.ts), so the account menu changes form exactly when the bar
+ * does. If that happens while it is open it closes, and focus goes back to
+ * the photo.
+ *
+ * Renders nothing for visitors who are not signed in - the public header
+ * looks exactly as it always has. Which links show comes from
+ * src/lib/navigation.ts and the person's permissions (/api/account/me); it is
+ * only a convenience, and every page checks permissions again itself.
  */
-export function UserMenu() {
-  const { isSignedIn, me, nav } = useAccount();
+export function UserMenu({ wide }: { wide: boolean }) {
+  const { isSignedIn, me } = useAccount();
   const { user } = useUser();
-  const { signOut } = useClerk();
   const pathname = usePagePath();
   const [open, setOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
+  const [lastWide, setLastWide] = useState(wide);
+  /** Whether it was open as of the last render on screen: read when a change of width closes it. */
+  const wasOpen = useRef(false);
   const menuId = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   if (pathname !== lastPathname) {
     setLastPathname(pathname);
     setOpen(false);
   }
+  if (wide !== lastWide) {
+    setLastWide(wide);
+    setOpen(false);
+  }
 
+  // A change of width closed it while open: focus back to the photo - but only
+  // if the closing left focus nowhere, never taking it from where the person
+  // put it. (Before the effect below, so it still sees the open state.)
   useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [open]);
+    if (!wasOpen.current) return;
+    const active = document.activeElement;
+    if (!active || active === document.body) buttonRef.current?.focus({ preventScroll: true });
+  }, [wide]);
+  useEffect(() => {
+    wasOpen.current = open;
+  });
 
   if (!isSignedIn || !user) return null;
 
   const name = user.fullName || user.primaryEmailAddress?.emailAddress || "Your account";
-  const itemClass =
-    "flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-paper";
+  const attention = !!me && me.profileAttention !== "none";
+  const close = () => setOpen(false);
 
   return (
-    // Only while the header has its links in a row: otherwise it has no room,
-    // and the same links sit at the foot of the mobile menu (MobileAccountMenu).
-    <div ref={rootRef} className="relative hidden shrink-0 nav-wide:block print:hidden">
+    <div className="relative shrink-0 print:hidden">
       <button
+        ref={buttonRef}
         type="button"
+        // The sheet is a dialog; the panel is a disclosure of links.
+        aria-haspopup={wide ? undefined : "dialog"}
         aria-expanded={open}
-        aria-controls={menuId}
-        aria-label={
-          me && me.profileAttention !== "none"
-            ? `${accountContent.menu.button} - ${profileSetupContent.status.menuMarker}`
-            : accountContent.menu.button
-        }
+        aria-controls={open && wide ? menuId : undefined}
+        aria-label={attention ? `${accountContent.menu.button} - ${profileSetupContent.status.menuMarker}` : accountContent.menu.button}
         onClick={() => setOpen((value) => !value)}
         className="relative inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-paper"
       >
-        {me && me.profileAttention !== "none" ? (
+        {attention ? (
           <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-gold-dark" />
         ) : null}
         {/* eslint-disable-next-line @next/next/no-img-element -- Clerk-hosted avatar, already sized by Clerk */}
-        <img
-          src={user.imageUrl}
-          alt=""
-          width={28}
-          height={28}
-          className="h-7 w-7 rounded-full border border-line object-cover"
-        />
+        <img src={user.imageUrl} alt="" width={28} height={28} className="h-7 w-7 rounded-full border border-line object-cover" />
       </button>
 
-      {open ? (
-        <div
-          id={menuId}
-          className="absolute right-0 top-full z-50 mt-2 w-64 rounded-card border border-line bg-surface p-2 shadow-lift animate-enter"
-        >
+      {open && wide ? (
+        <Popover id={menuId} triggerRef={buttonRef} onClose={close} placement="bottom-end" className="w-64 p-2">
           <div className="border-b border-line px-3 pb-3 pt-2">
             <p className="truncate text-sm font-medium text-ink">{name}</p>
             {me?.title ? (
@@ -174,35 +116,62 @@ export function UserMenu() {
               <p className="truncate text-xs text-muted">{user.primaryEmailAddress?.emailAddress}</p>
             )}
           </div>
-          <ul className="pt-2">
-            {accountMenu(nav).map((item) => {
-              const current = isActivePath(pathname, item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={current ? "page" : undefined}
-                    className={cn(itemClass, current && "bg-paper")}
-                  >
-                    {item.label}
-                    {item.href === "/profile" ? <ProfileMarker state={me?.profileAttention} /> : null}
-                  </Link>
-                </li>
-              );
-            })}
-            <li className="mt-1 border-t border-line pt-1">
-              <button
-                type="button"
-                onClick={() => void logOut(signOut)}
-                className={cn(itemClass, "text-muted hover:text-ink")}
-              >
-                {accountContent.menu.logout}
-              </button>
-            </li>
-          </ul>
-        </div>
+          <AccountLinks variant="popover" onNavigate={close} />
+        </Popover>
+      ) : null}
+
+      {open && !wide ? (
+        <Modal
+          sheet
+          title={name}
+          subtitle={me?.title ?? user.primaryEmailAddress?.emailAddress}
+          closeLabel={accountContent.menu.close}
+          onClose={close}
+          bare
+          bodyClassName="p-2"
+        >
+          <nav aria-label={accountContent.menu.button}>
+            <AccountLinks variant="sheet" onNavigate={close} />
+          </nav>
+        </Modal>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The account links and Log out: the same list in the panel and the sheet.
+ * Which links come from accountMenu(nav) - the person's permissions - and
+ * nothing here grants anything: every page checks again on the server.
+ */
+function AccountLinks({ variant, onNavigate }: { variant: "popover" | "sheet"; onNavigate: () => void }) {
+  const { me, nav } = useAccount();
+  const { signOut } = useClerk();
+  const pathname = usePagePath();
+  const row = cn(
+    "flex w-full items-center rounded-control px-3 text-left text-ink transition-colors hover:bg-paper",
+    variant === "sheet" ? "min-h-12 text-base" : "min-h-11 text-sm",
+  );
+
+  return (
+    <ul className={variant === "popover" ? "pt-2" : undefined}>
+      {accountMenu(nav).map((item) => {
+        const current = isActivePath(pathname, item.href);
+        return (
+          <li key={item.href}>
+            <Link href={item.href} onClick={onNavigate} aria-current={current ? "page" : undefined} className={cn(row, current && "bg-paper")}>
+              {item.label}
+              {item.href === "/profile" ? <ProfileMarker state={me?.profileAttention} /> : null}
+            </Link>
+          </li>
+        );
+      })}
+      <li className="mt-1 border-t border-line pt-1">
+        <button type="button" onClick={() => void logOut(signOut)} className={cn(row, "text-muted hover:text-ink")}>
+          {accountContent.menu.logout}
+        </button>
+      </li>
+    </ul>
   );
 }
 

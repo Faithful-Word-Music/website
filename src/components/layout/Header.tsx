@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
-import { MobileAccountMenu, UserMenu } from "@/components/account/UserMenu";
+import { UserMenu } from "@/components/account/UserMenu";
 import { Brand } from "@/components/layout/Brand";
 import { MobileMenu } from "@/components/layout/MobileMenu";
 import { NavMenu } from "@/components/layout/NavMenu";
@@ -23,15 +23,21 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
   const panelId = useId();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   // Visitors get the public navigation; a signed-in person the Dashboard and
   // whatever their permissions open (src/lib/navigation.ts).
-  const { nav } = useAccount();
+  const { nav, isSignedIn } = useAccount();
   const items = primaryNav(nav);
   // The links sit in the bar while they fit and go behind the menu button
   // when they don't - how many there are depends on who is signed in.
   const { mode, rowRef, navRef } = useNavFit(
     items.map((item) => `${item.href} ${item.label}${item.children ? ` +${item.children.length}` : ""}`).join("|"),
   );
+
+  // Measured, so "auto" (before the first measurement) counts as not yet wide.
+  const wide = mode === "wide";
+  // If the bar gives way while a panel in it is open, focus goes to the menu button that takes its place.
+  const focusMenuButton = useCallback(() => menuButtonRef.current, []);
 
   // Close the mobile menu whenever the route changes. Adjusting state during
   // render is React's recommended way to reset state when an input changes -
@@ -92,7 +98,8 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
       >
         <Container size="wide">
           <div ref={rowRef} className="flex h-16 items-center justify-between gap-4">
-            <Brand href={homeHref(nav)} className="shrink-0" />
+            {/* Signed in, a phone's bar also holds the bell and the avatar: the mark alone there (Brand). */}
+            <Brand href={homeHref(nav)} compact={authEnabled && isSignedIn} className="shrink-0" />
 
             <div className="flex min-w-0 items-center gap-1">
               {/* The links in a row, while they fit (use-nav-fit.ts) */}
@@ -101,7 +108,7 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
                   {items.map((item) =>
                     item.children ? (
                       // Several destinations behind one label ("Tools").
-                      <NavMenu key={item.label} item={item} isActive={isActive} />
+                      <NavMenu key={item.label} item={item} isActive={isActive} fallbackFocus={focusMenuButton} />
                     ) : (
                     <li key={item.href}>
                       <Link
@@ -140,12 +147,15 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
               {/* Unread notifications, and the latest of them: on phones too,
                   beside the menu button. Signed-in people only. */}
               {authEnabled ? <NotificationBell /> : null}
-              {/* The signed-in person's menu. Nothing shows for visitors, and
-                  nothing at all while accounts are switched off. */}
-              {authEnabled ? <UserMenu /> : null}
+              {/* The signed-in person's menu, on every screen: a panel when
+                  the links are in a row, a sheet from the foot of the screen
+                  when they are not. Nothing shows for visitors, and nothing
+                  at all while accounts are switched off. */}
+              {authEnabled ? <UserMenu wide={wide} /> : null}
 
               {/* Mobile toggle */}
               <button
+                ref={menuButtonRef}
                 type="button"
                 aria-expanded={open}
                 aria-controls={panelId}
@@ -191,7 +201,6 @@ export function Header({ authEnabled = false }: { authEnabled?: boolean }) {
         items={items}
         isActive={isActive}
         onSearch={openSearch}
-        account={authEnabled ? <MobileAccountMenu onNavigate={close} /> : null}
       />
     </div>
   );

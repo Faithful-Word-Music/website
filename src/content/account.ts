@@ -146,6 +146,8 @@ export const accountContent = {
   /** The avatar menu in the header. */
   menu: {
     button: "Account menu",
+    /** The phone's account sheet: its close button. */
+    close: "Close account menu",
     logout: "Log out",
   },
 

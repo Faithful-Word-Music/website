@@ -1,19 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { useAccount } from "@/components/account/AccountContext";
 import { buttonClasses } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
+import { CountBadge } from "@/components/ui/CountBadge";
+import { Icon } from "@/components/ui/Icon";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { Modal } from "@/components/ui/Modal";
+import { Popover } from "@/components/ui/popover/Popover";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { notificationsContent } from "@/content/notifications";
-import { NOTIFICATION_LIMITS, badgeLabel } from "@/lib/notifications/model";
+import { NOTIFICATION_LIMITS } from "@/lib/notifications/model";
 import { plural } from "@/lib/plural";
 
-import { BELL_ICON, NotificationList, NotificationsEmpty } from "./NotificationList";
+import { NotificationList, NotificationsEmpty } from "./NotificationList";
 import { loadNotifications, markAllNotificationsRead, useNotificationSync, useNotifications } from "./notification-store";
 import { NotificationsError, NotificationsLoading } from "./StatusLine";
 
@@ -33,8 +36,9 @@ function subscribeWide(onChange: () => void) {
  * of them a press away. Only for someone signed in - visitors see nothing,
  * and nothing is asked of the server for them.
  *
- * From `sm` up it opens a panel under the bell (Escape or a press elsewhere
- * closes it); on a phone, where a panel that size would be cramped, the same
+ * From `sm` up it opens a panel under the bell - a non-modal dialog on the
+ * shared Popover (Escape, which hands focus back to the bell, or a press
+ * elsewhere closes it); on a phone, where a panel that size would be cramped, the same
  * list opens as a dialog. Both end in "View all notifications".
  *
  * The count is text on the badge and in the button's name ("Notifications, 3
@@ -53,43 +57,19 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
   const panelId = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   if (pathname !== lastPathname) {
     setLastPathname(pathname);
     setOpen(false);
   }
 
-  // The panel: Escape hands focus back to the bell; a press elsewhere closes it.
-  // (The phone's dialog does both for itself.)
-  useEffect(() => {
-    if (!open || !wide) return;
-    panelRef.current?.focus({ preventScroll: true });
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      buttonRef.current?.focus({ preventScroll: true });
-    }
-    function onPointerDown(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onPointerDown);
-    };
-  }, [open, wide]);
-
   if (!isSignedIn) return null;
 
-  const badge = badgeLabel(unread);
   const close = () => setOpen(false);
 
   return (
-    <div ref={rootRef} className="relative shrink-0 print:hidden">
+    <div className="relative shrink-0 print:hidden">
       <button
         ref={buttonRef}
         type="button"
@@ -104,27 +84,22 @@ export function NotificationBell() {
         }}
         className="relative inline-flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink"
       >
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16" fill="none">
-          <path d={BELL_ICON} stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {badge ? (
-          <span
-            aria-hidden="true"
-            className="absolute right-0.5 top-1 inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-ink px-1 text-[0.65rem] font-semibold leading-none text-paper ring-2 ring-surface tabular-nums"
-          >
-            {badge}
-          </span>
-        ) : null}
+        <Icon name="bell" size={18} strokeWidth={1.2} />
+        {/* The count is in the button's name already, so the badge is not read out again. */}
+        <CountBadge count={unread} variant="overlay" />
       </button>
 
       {open && wide ? (
-        <div
+        <Popover
           id={panelId}
-          ref={panelRef}
+          triggerRef={buttonRef}
+          onClose={close}
+          placement="bottom-end"
+          initialFocus="container"
           role="dialog"
           aria-label={copy.bell.panelTitle}
           tabIndex={-1}
-          className="absolute right-0 top-full z-50 mt-2 flex max-h-[min(34rem,calc(100dvh-6rem))] w-[24rem] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-lift outline-none animate-enter"
+          className="flex w-[24rem] max-w-[calc(100vw-1rem)] flex-col overflow-hidden [--popover-max-height:34rem]"
         >
           <header className="flex items-center justify-between gap-3 border-b border-line py-2 pl-4 pr-2">
             <h2 className="font-display text-lg text-ink">{copy.bell.panelTitle}</h2>
@@ -134,7 +109,7 @@ export function NotificationBell() {
           <footer className="border-t border-line p-2">
             <ViewAllLink onNavigate={close} className="w-full" />
           </footer>
-        </div>
+        </Popover>
       ) : null}
 
       {open && !wide ? (

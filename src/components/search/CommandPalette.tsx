@@ -11,12 +11,14 @@ import { NoteMark } from "@/components/library/SongIndex";
 import { songLinkProps } from "@/components/song-list/SongLink";
 import { Highlight, searchPillClass } from "@/components/song-list/Suggestions";
 import { cn } from "@/components/ui/cn";
+import { Icon } from "@/components/ui/Icon";
 import { ScrollArea } from "@/components/ui/ScrollArea";
 import { usePagePath } from "@/components/ui/use-page-path";
 import { useScrollLock } from "@/components/ui/use-scroll-lock";
 import { searchContent } from "@/content/search";
 import { requestConductorOpen } from "@/lib/ai/conductor/open";
 import {
+  type NextServicePrivate,
   type SearchEntry,
   type SearchIndex,
   SHOW_SERVICE_EVENT,
@@ -24,6 +26,7 @@ import {
 } from "@/lib/site-search";
 
 import { AvailabilityCommand } from "./AvailabilityCommand";
+import { forgetLinks, linksKey, loadLinks } from "./next-service-links";
 
 /**
  * Site search: a palette opened from the header's magnifier, Ctrl/⌘ K or "/".
@@ -37,6 +40,11 @@ import { AvailabilityCommand } from "./AvailabilityCommand";
  * same permissions the header's links go by - and returns only the pages and
  * commands they may use. This component shows what comes back and carries
  * out what is chosen; it holds no permission check of its own.
+ *
+ * The next service's commands (Open its sheet music, Listen, Plan) are links,
+ * offered by searchSite() only where they lead somewhere real for this person.
+ * Their own sheet music link comes from /api/account/next-service, fetched
+ * privately when a signed-in person opens the palette (next-service-links.ts).
  *
  * Two entries are commands rather than places to go:
  *
@@ -104,6 +112,13 @@ export function CommandPalette({
   const modifier = useModifierKey();
   const close = useCallback(() => onOpenChange(false), [onOpenChange]);
 
+  // A different person, or the same person with different permissions (or
+  // signed out): whatever was kept for the last one goes at once, not on the
+  // next opening.
+  const { nav, userId } = useAccount();
+  const key = linksKey(userId, nav.signedIn, nav.permissions);
+  useEffect(() => forgetLinks(key), [key]);
+
   // Ctrl/⌘ K anywhere; "/" when not already typing somewhere.
   const openRef = useRef(open);
   useEffect(() => {
@@ -157,10 +172,13 @@ export function MobileSearchBar({ onOpen, className }: { onOpen: () => void; cla
       onPointerDown={() => void loadIndex()}
       onFocus={() => void loadIndex()}
       aria-haspopup="dialog"
-      className={cn(searchPillClass, "min-h-12 w-full gap-3 px-4 text-left text-base text-muted", className)}
+      className={cn(searchPillClass, "min-h-12 w-full gap-3 px-4 text-left text-muted", className)}
     >
       <Magnifier />
-      {searchContent.placeholder}
+      {/* One line at every width: full size from 400px, a touch smaller below, and the shorter
+          wording below 360px, where even the smaller full one would be cut off. */}
+      <span className="min-w-0 truncate text-sm max-[22.5rem]:hidden min-[25rem]:text-base">{searchContent.placeholder}</span>
+      <span className="hidden min-w-0 truncate text-sm max-[22.5rem]:inline">{searchContent.placeholderShort}</span>
     </button>
   );
 }
@@ -224,7 +242,21 @@ function Palette({ onClose }: { onClose: () => void }) {
   }, [pathname, openedOn, onClose]);
 
   const { nav, userId } = useAccount();
-  const results = useMemo(() => searchSite(index, query, dark, nav), [index, query, dark, nav]);
+  // This person's own next-service links: asked for once the palette opens, for whoever is signed in now.
+  const key = linksKey(userId, nav.signedIn, nav.permissions);
+  const [mine, setMine] = useState<{ key: string | null; value: NextServicePrivate | null }>({ key: null, value: null });
+  useEffect(() => {
+    let current = true;
+    loadLinks(key).then((value) => {
+      if (current) setMine({ key, value });
+    });
+    return () => {
+      current = false;
+    };
+  }, [key]);
+  // Never links fetched for someone else (a sign-out while it was open).
+  const mineNow = mine.key === key ? mine.value : null;
+  const results = useMemo(() => searchSite(index, query, dark, nav, mineNow), [index, query, dark, nav, mineNow]);
   // The shared conversation, joined only by someone who may use it: the same store the panel and the page show.
   const conductor = useConductor(nav.permissions.has("use_ai") ? userId : null);
   const moreSongsEntry: SearchEntry | null =
@@ -572,8 +604,12 @@ function OptionBody({ entry, query }: { entry: SearchEntry; query: string }): Re
 
   return (
     <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-      <span className={cn("truncate text-sm", entry.id === "more-songs" ? "text-gold-dark" : "text-ink")}>
-        {entry.label}
+      <span className="min-w-0">
+        <span className={cn("block truncate text-sm", entry.id === "more-songs" ? "text-gold-dark" : "text-ink")}>
+          {entry.label}
+        </span>
+        {/* Which service a next-service command is about. */}
+        {entry.detail ? <span className="mt-0.5 block truncate text-xs text-muted">{entry.detail}</span> : null}
       </span>
       {entry.external ? (
         <>
@@ -601,10 +637,5 @@ function Hint({ keys, label }: { keys: string[]; label: string }) {
 }
 
 function Magnifier() {
-  return (
-    <svg aria-hidden="true" width="17" height="17" viewBox="0 0 16 16" fill="none">
-      <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M11 11L14.5 14.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
+  return <Icon name="search" size={17} strokeWidth={1.5} />;
 }
