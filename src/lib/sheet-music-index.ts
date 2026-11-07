@@ -143,13 +143,16 @@ async function listDrive(): Promise<DriveItem[]> {
 
 async function fetchSources(): Promise<SheetMusicSources> {
   const [tabs, drive] = await Promise.all([fetchTabs(), listDrive()]);
-  const sources = readSheetMusic({ songs: tabs.songs, versions: tabs.versions, drive });
+  const sources = readSheetMusic(
+    { songs: tabs.songs, versions: tabs.versions, drive },
+    [siteConfig.sheetMusic.hymnalCollection, "Other Songs", "Psalms"],
+  );
   if (sources.songs.length === 0) throw new Error("The Index has no readable Songs rows");
   return sources;
 }
 
 /** Failures are not cached, so a fixed sheet or key is picked up on the next visit. */
-const getCachedSources = unstable_cache(fetchSources, ["sheet-music-sources"], {
+const getCachedSources = unstable_cache(fetchSources, ["sheet-music-sources-website-collections"], {
   tags: [SHEET_MUSIC_TAG],
   revalidate: siteConfig.sheetMusic.revalidateSeconds,
 });

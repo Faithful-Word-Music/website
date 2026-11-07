@@ -409,8 +409,13 @@ export function collectionNames(sources: Pick<SheetMusicSources, "songs">): (nam
  * one song has it. A file that matches no song is left out: with no Songs
  * row there is no rights decision, so it could never be shared anyway.
  */
-export function readSheetMusic(sources: IndexSources): SheetMusicSources {
-  const songs = parseSongs(sources.songs).map((song) => ({ ...song, files: [] as DriveFile[] }));
+export function readSheetMusic(sources: IndexSources, allowedCollections?: readonly string[]): SheetMusicSources {
+  const allowed = allowedCollections
+    ? new Set(allowedCollections.map((collection) => collection.toLowerCase()))
+    : null;
+  const songs = parseSongs(sources.songs)
+    .filter((song) => !allowed || allowed.has(song.collection?.toLowerCase() ?? ""))
+    .map((song) => ({ ...song, files: [] as DriveFile[] }));
   const isCollection = collectionNames({ songs });
 
   const byNumber = new Map<string, Array<(typeof songs)[number]>>();
@@ -429,6 +434,8 @@ export function readSheetMusic(sources: IndexSources): SheetMusicSources {
   const sheets = sheetsFromDrive(sources.drive);
   for (const sheet of sheets) {
     const collection = sheet.folders.findLast(isCollection)?.toLowerCase();
+    // A personal collection must never fall back to a website song by title.
+    if (allowed && (!collection || !allowed.has(collection))) continue;
     const numbered = collection && sheet.number ? byNumber.get(`${collection}|${normalizeNumber(sheet.number)}`) ?? [] : [];
     let song = numbered.length === 1 ? numbered[0] : undefined;
     // A duplicate or conflicting collection/number must not inherit another
