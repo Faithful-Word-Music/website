@@ -4,7 +4,8 @@ import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE } from "@/lib/auth/sess
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { serviceSheets } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
-import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { pdfVersionsOfType } from "@/lib/sheet-music-type";
 import { getSheetMusicIndex, openDriveFile } from "@/lib/sheet-music-index";
 import { buildServicePacket, type PacketSong } from "@/lib/service-sheet-pdf";
 import { serviceAnchor } from "@/lib/site-search";
@@ -15,7 +16,8 @@ import { serviceAnchor } from "@/lib/site-search";
  * Everything the signed-in person plays from for one service, as one PDF to
  * print in one go (see src/lib/service-sheet-pdf.ts). Their files only: for
  * each song, the first of their assigned sheet music types it has, among the
- * files their permissions open - the same serviceSheets() rule as the
+ * files their permissions open, including every PDF version of that type.
+ * The type follows the same serviceSheets() rule as the
  * Dashboard's links, with access decided here on the server, never trusted
  * from the page.
  *
@@ -72,18 +74,26 @@ export async function GET(request: Request, ctx: RouteContext<"/dashboard/sheet-
     .find((candidate) => !candidate.placeholder && candidate.date && serviceAnchor(candidate.date, candidate.slot) === anchor);
   if (!service) return jsonError(404, "not-found");
 
+  const sheetViewer = viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER;
   const sheets = serviceSheets(service, {
     index: sheetMusic.index,
     sheetTypes,
-    viewer: viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER,
+    viewer: sheetViewer,
   });
   if (!sheets.some((sheet) => sheet.found)) return jsonError(404, "no-sheet-music");
 
   const songs: PacketSong[] = (
     await Promise.all(
-      sheets.map(async (sheet) => {
-        const pdf = sheet.found ? await readDriveFile(sheet.found.file.driveFileId) : null;
-        return pdf ? { number: sheet.number, title: sheet.title, pdf } : null;
+      sheets.flatMap(({ found, number, title }) => {
+        if (!found) return [];
+        const versions = pdfVersionsOfType(found.song, found.version.typeId, (file) =>
+          canAccessFile(found.song, file, sheetViewer),
+        );
+        return versions.map(async ({ version, file }) => {
+          const pdf = await readDriveFile(file.driveFileId);
+          const editionTitle = versions.length > 1 ? `${title} · Version ${version.version}` : title;
+          return pdf ? { number, title: editionTitle, pdf } : null;
+        });
       }),
     )
   ).filter((song) => song !== null);

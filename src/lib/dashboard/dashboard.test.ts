@@ -15,6 +15,7 @@ import {
   DEFAULT_SHEET_MUSIC_TYPES,
   describeSource,
   fileOfType,
+  pdfVersionsOfType,
   legacyVariant,
   songCount,
 } from "@/lib/sheet-music-type";
@@ -226,6 +227,17 @@ describe("fileOfType", () => {
       version(STANDARD, [file("standard-1.pdf")]),
     ]);
     expect(fileOfType(two, STANDARD, anyFile)?.file.slug).toBe("standard-1.pdf");
+  });
+
+  it("returns every accessible PDF edition of the selected type in packet order", () => {
+    const editions = song([
+      version(STANDARD, [file("standard-1.pdf"), file("standard-1.mscz", "musescore")]),
+      { ...version(STANDARD, [file("standard-2.pdf")]), version: "2" },
+      { ...version(STANDARD, [file("standard-3.pdf")]), version: "3" },
+      version(CLARINET, [file("clarinet-1.pdf")]),
+    ]);
+    const files = pdfVersionsOfType(editions, STANDARD, (pdf) => pdf.slug !== "standard-3.pdf");
+    expect(files.map(({ file }) => file.slug)).toEqual(["standard-1.pdf", "standard-2.pdf"]);
   });
 
   it("counts the songs that have a type", () => {
