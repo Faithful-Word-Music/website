@@ -373,8 +373,10 @@ export function PreparationPlayer({
         )}
       </div>
 
-      <div className={cn("min-w-0", !stacked && "lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:self-start", !stacked && (anyPlayable ? "lg:row-span-3" : "lg:row-span-2"))}>
-        <Card className={cn("flex flex-col overflow-hidden", !stacked && "lg:max-h-[calc(100dvh-7.5rem)]")}>
+      {/* On a wide screen the playlist is as tall as the column beside it, never taller: its size is
+          contained so a long list scrolls inside the card instead of stretching the page. */}
+      <div className={cn("min-w-0", !stacked && "lg:col-start-2 lg:row-start-1 lg:min-h-96 lg:contain-size", !stacked && (anyPlayable ? "lg:row-span-3" : "lg:row-span-2"))}>
+        <Card className={cn("flex flex-col overflow-hidden", !stacked && "lg:sticky lg:top-24 lg:max-h-[min(100%,calc(100dvh-7.5rem))]")}>
           <div className="border-b border-line px-4 py-3 sm:px-5">
             <h2 className="truncate font-display text-xl text-ink">{panelTitle}</h2>
             <p className="tnum truncate text-sm text-muted">{panelMeta}</p>

@@ -113,10 +113,10 @@ function LaterItem({ row, now }: { row: LaterRow; now: number }) {
 function DateTile({ startsAt }: { startsAt: string }) {
   const [weekday, month, day] = serviceParts(startsAt);
   return (
-    <span aria-hidden="true" className="flex w-11 shrink-0 flex-col items-center rounded-control border border-line bg-paper py-1.5 leading-none">
-      <span className="text-[0.65rem] font-medium text-muted">{month}</span>
-      <span className="tnum mt-1 font-display text-xl text-ink">{day}</span>
-      <span className="mt-1 text-[0.65rem] text-muted">{weekday}</span>
+    <span aria-hidden="true" className="flex w-12 shrink-0 flex-col items-center self-start rounded-control border border-line bg-paper px-1 pb-2 pt-1.5 leading-none">
+      <span className="text-[0.6rem] font-semibold uppercase tracking-wider text-gold-dark">{month}</span>
+      <span className="tnum mt-1.5 font-display text-2xl text-ink">{day}</span>
+      <span className="mt-1.5 text-[0.65rem] text-muted">{weekday}</span>
     </span>
   );
 }

@@ -65,8 +65,9 @@ export default async function ServiceWorkspacePage(props: PageProps<"/service-pl
         </div>
         <div className="mt-6">
           <Workspace
-            // A fresh copy of the editor whenever the stored service changes (after a save, or someone else's).
-            key={`${plan?.revision ?? 0}-${plan?.status ?? "new"}-${data.leaders?.leadership.revision ?? "x"}`}
+            // One editor per service. A save does not replace it: it takes the stored copy itself, keeping
+            // anything edited since (Workspace), so editing never waits for the page to refresh.
+            key={data.service.anchor}
             now={data.now}
             service={withoutPlan(data.service)}
             revision={plan?.revision ?? null}

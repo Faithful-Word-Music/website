@@ -156,20 +156,14 @@ export function Workspace(props: WorkspaceProps) {
 
   /**
    * A change was saved (or the service's status changed) and the page's fresh
-   * copy has not arrived yet. It holds until that copy arrives - the editor is
-   * remounted then, or, when the stored service kept its key, given a new
-   * `service` below - never on a timer, so a slow refresh never makes the
-   * saved work look unsaved again.
+   * copy has not arrived yet. It holds until that copy arrives (below) - never
+   * on a timer, so a slow refresh never makes the saved work look unsaved
+   * again. Editing goes on meanwhile; only saving again waits for it, so the
+   * next save is made against the stored revision.
    */
   const [settled, setSettled] = useState(false);
   /** What the last successful save sent: what "unsaved" is measured against until the fresh copy arrives. */
   const [savedAs, setSavedAs] = useState<{ songs: string; leaders: LeaderDraft } | null>(null);
-  const [shown, setShown] = useState(service);
-  if (shown !== service) {
-    setShown(service);
-    setSettled(false);
-    setSavedAs(null);
-  }
 
   const status = service.status;
   const editable = !locked && status !== "cancelled";
@@ -184,6 +178,25 @@ export function Workspace(props: WorkspaceProps) {
   const songsDirty = currentSongs !== (savedAs?.songs ?? initialSongs);
   const leadersDirty = props.leaders !== null && !sameLeadership(leadersNow, savedAs?.leaders ?? initialLeaders);
   const dirty = songsDirty || leadersDirty;
+
+  // The page's fresh copy has arrived. When the stored service itself changed (a save, a status change, or
+  // someone else's work) the editor takes the stored copy - unless this was our own save and something was
+  // edited since, which stays, now measured against the stored copy.
+  const stored = `${props.revision ?? 0}-${status}-${props.leaders?.revision ?? "x"}`;
+  const [shown, setShown] = useState({ service, stored });
+  if (shown.service !== service || shown.stored !== stored) {
+    const editedSince = savedAs !== null && (currentSongs !== savedAs.songs || !sameLeadership(leadersNow, savedAs.leaders));
+    if (shown.stored !== stored && !editedSince) {
+      setState({ slots: service.slots, places: service.places });
+      setLeaders(props.leaders?.draft ?? NO_LEADERS);
+      setLabel(service.label ?? "");
+      setTime(churchTimeOf(service.startsAt));
+      setConflict(false);
+    }
+    setShown({ service, stored });
+    setSettled(false);
+    setSavedAs(null);
+  }
   const filled = slots.filter(Boolean).length;
   // Places taken away that had a leader of their own: said before saving, never a surprise.
   const clearing = Object.keys(initialLeaders.overrides).filter((placeId) => !places.includes(placeId)).length;
@@ -305,6 +318,9 @@ export function Workspace(props: WorkspaceProps) {
       {
         key,
         toast: true,
+        // Each of these actions revalidates this page, so its fresh copy comes back with the answer: a
+        // second refresh would only render the whole page again.
+        refresh: false,
         onOk: () => {
           setSettled(true);
           onSaved?.();
@@ -342,16 +358,21 @@ export function Workspace(props: WorkspaceProps) {
                 time,
                 publish,
               }),
-      () => setSavedAs(sent),
+      () => {
+        setSavedAs(sent);
+        // AI's plan is saved now: undoing it would be an edit of its own.
+        setAiResult(null);
+      },
     );
   };
 
   const title = serviceTitle({ slot: service.slot, startsAt: service.startsAt, label: label.trim() || service.label });
-  // Saving, or saved with the fresh copy still to come: nothing can be saved twice, and nothing is edited
-  // (an edit made now would be lost when the fresh copy replaces this editor).
-  const locking = pending || settled;
+  // While saving nothing is edited. Once saved, editing goes on at once (an edit made before the fresh
+  // copy arrives is kept, above); only saving again waits for that copy and its revision.
+  const locking = pending;
+  const saveLocked = pending || settled;
   // Leaving with changes not saved asks first, however the page is left.
-  const guard = useUnsavedGuard(dirty && !settled);
+  const guard = useUnsavedGuard(dirty);
   // Conductor, asked over this page, is told the songs as they stand here - saved or not - and the rest of
   // what the editor shows.
   usePlannerDraft(service.anchor, slots, dirty);
@@ -636,7 +657,7 @@ export function Workspace(props: WorkspaceProps) {
                 <div className="min-w-0 basis-full text-sm sm:basis-auto sm:flex-1">
                   {result ? (
                     <ActionMessage result={result} />
-                  ) : settled ? (
+                  ) : settled && !dirty ? (
                     <ActionMessage result={{ ok: true, message: ws.saved }} />
                   ) : dirty ? (
                     <span className="inline-flex flex-wrap items-center gap-x-2 text-gold-dark">
@@ -658,7 +679,7 @@ export function Workspace(props: WorkspaceProps) {
                       pendingLabel={words.saving}
                       doneLabel={words.saved}
                       onClick={() => save(false)}
-                      disabled={locking || !dirty}
+                      disabled={saveLocked || !dirty}
                     >
                       {leadersDirty && !songsDirty ? copy.leaders.saveLeaders : ws.saveChanges}
                     </Button>
@@ -673,7 +694,7 @@ export function Workspace(props: WorkspaceProps) {
                           pendingLabel={words.saving}
                           doneLabel={words.saved}
                           onClick={() => save(false)}
-                          disabled={locking}
+                          disabled={saveLocked}
                         >
                           {leadersDirty && !songsDirty ? copy.leaders.saveLeaders : ws.save}
                         </Button>
@@ -685,7 +706,7 @@ export function Workspace(props: WorkspaceProps) {
                         doneLabel={words.published}
                         // A last look first: the songs, what changes and any warnings (ReviewPublish).
                         onClick={() => setReviewing(true)}
-                        disabled={locking}
+                        disabled={saveLocked}
                       >
                         {ws.review.button}
                       </Button>
@@ -763,7 +784,7 @@ export function Workspace(props: WorkspaceProps) {
                     state={stateOf("status")}
                     pendingLabel={words.updating}
                     doneLabel={words.done}
-                    disabled={locking}
+                    disabled={saveLocked}
                     onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
                   >
                     {ws.unpublish}
@@ -777,7 +798,7 @@ export function Workspace(props: WorkspaceProps) {
                     state={stateOf("status")}
                     pendingLabel={words.restoring}
                     doneLabel={words.restored}
-                    disabled={locking}
+                    disabled={saveLocked}
                     onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "draft" }))}
                   >
                     {ws.restore}
@@ -790,7 +811,7 @@ export function Workspace(props: WorkspaceProps) {
                     state={stateOf("delete")}
                     pendingLabel={words.deleting}
                     doneLabel={words.deleted}
-                    disabled={locking}
+                    disabled={saveLocked}
                     onClick={() =>
                       run("delete", async () => {
                         const outcome = await deleteSpecialService({ anchor: service.anchor });
@@ -810,7 +831,7 @@ export function Workspace(props: WorkspaceProps) {
                     state={stateOf("status")}
                     pendingLabel={words.updating}
                     doneLabel={words.done}
-                    disabled={locking}
+                    disabled={saveLocked}
                     onClick={() => run("status", () => setServiceStatus({ anchor: service.anchor, status: "cancelled" }))}
                   >
                     {ws.cancelService}
