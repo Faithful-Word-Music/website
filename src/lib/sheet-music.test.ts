@@ -492,3 +492,24 @@ describe("versionedFileHref", () => {
     expect(versionedFileHref(href, {})).toBe(href);
   });
 });
+
+describe("website collection scope", () => {
+  it("excludes personal rows and prevents private files matching retained titles", () => {
+    const scopedSongs = [
+      SONGS_HEADER,
+      song("SSSH1989-121", "Like a River Glorious", "121", HYMNAL, "No"),
+      song("MH-121", "Like a River Glorious", "121", "Majesty Hymns", "No"),
+    ];
+    const result = readSheetMusic({
+      songs: scopedSongs,
+      versions: [],
+      drive: drive([
+        [`01 - Congregational/Hymnals/${HYMNAL}/Standard/PDF`, "121 - Like a River Glorious.pdf", "website"],
+        ["01 - Congregational/Hymnals/Majesty Hymns/Standard/PDF", "121 - Like a River Glorious.pdf", "private"],
+        ["02 - Instrument Parts/Saxophone/Eb/Other Personal Music/PDF", "Like a River Glorious.pdf", "private-unnumbered"],
+      ]),
+    }, [HYMNAL, "Other Songs", "Psalms"]);
+    expect(result.songs.map((song) => song.id)).toEqual(["SSSH1989-121"]);
+    expect(result.songs[0].files.map((file) => file.driveFileId)).toEqual(["website"]);
+  });
+});

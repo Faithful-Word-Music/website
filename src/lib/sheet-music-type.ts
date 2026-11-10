@@ -91,19 +91,26 @@ export function describeSource(source: readonly string[]): string {
 }
 
 /**
- * The PDF of exactly this type for a song, among the files the person may
- * open - version 1 when there are several - or null. Never another type.
- */
+/** Every accessible PDF edition of this type, in index order. */
+export function pdfVersionsOfType(
+  song: IndexSong,
+  typeId: number,
+  mayOpen: (file: SheetFile) => boolean,
+): Array<{ version: SongVersion; file: SheetFile }> {
+  return song.versions
+    .filter((version) => version.typeId === typeId)
+    .flatMap((version) =>
+      version.files.filter((file) => file.format === "pdf" && mayOpen(file)).map((file) => ({ version, file })),
+    );
+}
+
+/** The preferred PDF of this type, with version 1 first when available. */
 export function fileOfType(
   song: IndexSong,
   typeId: number,
   mayOpen: (file: SheetFile) => boolean,
 ): { version: SongVersion; file: SheetFile } | null {
-  const matches = song.versions
-    .filter((version) => version.typeId === typeId)
-    .flatMap((version) =>
-      version.files.filter((file) => file.format === "pdf" && mayOpen(file)).map((file) => ({ version, file })),
-    );
+  const matches = pdfVersionsOfType(song, typeId, mayOpen);
   return matches.find(({ version }) => version.version === "1") ?? matches[0] ?? null;
 }
 
