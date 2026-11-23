@@ -42,6 +42,7 @@ export type AdminPageId =
   | "users"
   | "roles"
   | "configuration"
+  | "sheetAccess"
   | "notificationsSend"
   | "notificationsHistory"
   | "notificationsTemplates"
@@ -87,6 +88,8 @@ export const ADMIN_SECTIONS: AdminSectionGroup[] = [
         icon: "configuration",
         anyOf: ["manage_profiles", "manage_sheet_music", "manage_site_settings"],
       },
+      // Activating needs an Administrator; the page checks that itself.
+      { id: "sheetAccess", href: "/admin/sheet-access", label: nav.items.sheetAccess, icon: "roles", anyOf: ["manage_sheet_music"] },
       {
         id: "notifications",
         label: nav.items.notifications,

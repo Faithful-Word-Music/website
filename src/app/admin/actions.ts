@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -27,6 +29,11 @@ import { GRACE_DAYS } from "@/lib/auth/profile-requirements";
 import { normalizeEmail } from "@/lib/auth/request-status";
 import { activateProfileRequirements } from "@/lib/auth/requirements-activation";
 import { extendDeadlines, getRequirementPolicy, patchPolicy } from "@/lib/auth/requirements-store";
+import { canDelegate } from "@/lib/auth/assignable-roles";
+import { INVITATION_DECISION_KEY } from "@/lib/auth/invitation-claim";
+import { activationBlocker, affiliationRefusal, parseAffiliationChange } from "@/lib/auth/membership-rules";
+import { bindDecisionInvitation, changeAffiliation, createInvitationDecision, retireDecisionForInvitation } from "@/lib/auth/membership-store";
+import { loadSheetAccessReport, runSheetAccessActivation, runSheetAccessRollback } from "@/lib/auth/sheet-access";
 import { ACTION_ERRORS, siteOrigin, withPermissionExempt, type ActionResult, type Viewer } from "@/lib/auth/session";
 import {
   addOption,
@@ -38,9 +45,11 @@ import {
   deleteRole,
   deleteUserData,
   getRole,
+  isMembershipInstalled,
   listRoles,
   loadAuthorization,
   markInvitationRevoked,
+  membershipClient,
   moveOption,
   recordRequestInvitation,
   rejectRequest,
@@ -64,8 +73,10 @@ import {
   setCapoPolicy,
   type OptionList,
   SHEET_MUSIC_TYPES_TAG,
+  SHEET_POLICY_TAG,
 } from "@/lib/auth/store";
 import { siteConfig } from "@/config/site";
+import { adminContent } from "@/content/admin";
 import { aiContent } from "@/content/ai";
 import { isMemoryScope } from "@/lib/ai/memory/memory";
 import { createMemory, deleteMemory, moveMemory, updateMemory, type MemoryProblem, type MemoryResult } from "@/lib/ai/memory/service";
@@ -111,7 +122,7 @@ const isAdmin = (viewer: Viewer) => viewer.roleKeys.includes(ADMIN_ROLE);
  * hold every permission, so this never limits them.
  */
 function exceedsOwn(viewer: Viewer, permissions: readonly Permission[]): boolean {
-  return permissions.some((permission) => !viewer.can(permission));
+  return permissions.some((permission) => !canDelegate(viewer, permission));
 }
 
 /** Changes to someone who is an administrator can only be made by an administrator. */
@@ -166,6 +177,52 @@ async function checkInvitationRoles(
   return { ok: true, value: keys };
 }
 
+/**
+ * Sends a Clerk invitation and records what it should give. Once the
+ * membership tables are installed, the choice is a decision tied to this one
+ * invitation by an ID in its Clerk metadata. Clerk goes first: if it refuses,
+ * an existing decision is left alone. If saving fails afterwards, the
+ * invitation carries an ID nothing knows, so it grants nothing.
+ */
+async function sendInvitation(
+  viewer: Viewer,
+  address: string,
+  roleKeys: string[],
+  accountRequestId: number | null,
+  verifyAffiliation: boolean,
+  onSent?: (invitationId: string) => Promise<unknown>,
+) {
+  const redirectUrl = `${await siteOrigin()}/accept-invite`;
+  if (!(await isMembershipInstalled(viewer.env))) {
+    const invitation = await createInvitation(address, redirectUrl);
+    if (invitation.ok) {
+      await onSent?.(invitation.value.id);
+      await setInvitationRoles(viewer.env, invitation.value.id, address, roleKeys, viewer.userId);
+    }
+    return invitation;
+  }
+
+  const decisionId = `dec_${randomUUID()}`;
+  const invitation = await createInvitation(address, redirectUrl, { [INVITATION_DECISION_KEY]: decisionId });
+  if (!invitation.ok) return invitation;
+  await onSent?.(invitation.value.id);
+  // Any older role choice for this address no longer applies.
+  await setInvitationRoles(viewer.env, invitation.value.id, address, [], viewer.userId);
+  const sql = await membershipClient(viewer.env);
+  await createInvitationDecision(sql, {
+    id: decisionId,
+    env: viewer.env,
+    email: address,
+    verifyAffiliation,
+    roleKeys,
+    accountRequestId,
+    actor: viewer.userId,
+    expiresAt: new Date(Date.now() + siteConfig.accounts.invitationDays * 24 * 60 * 60 * 1000),
+  });
+  await bindDecisionInvitation(sql, viewer.env, decisionId, invitation.value.id);
+  return invitation;
+}
+
 function parseId(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 }
@@ -180,25 +237,28 @@ function parseId(value: unknown): number | null {
  * the claim is released and the request is pending again - the database and
  * Clerk never disagree about whether an invitation went out.
  */
-export async function approveRequestAction(id: unknown, roleKeys: unknown = []): Promise<ActionResult> {
+export async function approveRequestAction(id: unknown, roleKeys: unknown = [], verifyAffiliation: unknown = false): Promise<ActionResult> {
   return withPermissionExempt("manage_users", async (viewer) => {
     const requestId = parseId(id);
     if (!requestId) return { ok: false, error: "Unknown request." };
     // Checked before anything is sent, so a refused role never leaves a half-done approval.
     const roles = await checkInvitationRoles(viewer, roleKeys);
     if (!roles.ok) return roles;
+    if (verifyAffiliation === true && !(await isMembershipInstalled(viewer.env))) {
+      return { ok: false, error: adminContent.sheetAccess.affiliation.unavailable };
+    }
 
     const request = await claimRequestForApproval(viewer.env, requestId, viewer.userId);
     if (!request) return { ok: false, error: "This request has already been reviewed." };
 
-    const invitation = await createInvitation(normalizeEmail(request.email), `${await siteOrigin()}/accept-invite`);
+    const invitation = await sendInvitation(viewer, normalizeEmail(request.email), roles.value, requestId, verifyAffiliation === true, (invitationId) =>
+      recordRequestInvitation(viewer.env, requestId, invitationId),
+    );
     if (!invitation.ok) {
       await releaseRequestClaim(viewer.env, requestId);
       return clerkError(invitation, "The invitation could not be sent. The request is still pending - please try again.");
     }
 
-    await recordRequestInvitation(viewer.env, requestId, invitation.value.id);
-    await setInvitationRoles(viewer.env, invitation.value.id, normalizeEmail(request.email), roles.value, viewer.userId);
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: `Invitation sent to ${request.email}.` };
   });
@@ -222,22 +282,24 @@ export async function rejectRequestAction(id: unknown, note: unknown): Promise<A
 // Invitations
 // ---------------------------------------------------------------------------
 
-export async function inviteAction(email: unknown, roleKeys: unknown = []): Promise<ActionResult> {
+export async function inviteAction(email: unknown, roleKeys: unknown = [], verifyAffiliation: unknown = false): Promise<ActionResult> {
   return withPermissionExempt("manage_users", async (viewer) => {
     const parsed = inviteSchema.safeParse({ email });
     if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
     const roles = await checkInvitationRoles(viewer, roleKeys);
     if (!roles.ok) return roles;
+    if (verifyAffiliation === true && !(await isMembershipInstalled(viewer.env))) {
+      return { ok: false, error: adminContent.sheetAccess.affiliation.unavailable };
+    }
 
     const address = normalizeEmail(parsed.data.email);
-    const invitation = await createInvitation(address, `${await siteOrigin()}/accept-invite`);
+    const invitation = await sendInvitation(viewer, address, roles.value, null, verifyAffiliation === true);
     if (!invitation.ok) {
       if (invitation.reason === "already-exists") {
         return { ok: false, error: "That address already has an account or a pending invitation." };
       }
       return clerkError(invitation, "The invitation could not be sent. Please try again.");
     }
-    await setInvitationRoles(viewer.env, invitation.value.id, address, roles.value, viewer.userId);
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: `Invitation sent to ${invitation.value.email}.` };
   });
@@ -252,8 +314,104 @@ export async function revokeInvitationAction(invitationId: unknown): Promise<Act
     if (!revoked.ok) return clerkError(revoked, "The invitation could not be revoked. Please try again.");
     await markInvitationRevoked(viewer.env, parsed.data);
     await deleteInvitationRoles(viewer.env, parsed.data);
+    if (await isMembershipInstalled(viewer.env)) {
+      await retireDecisionForInvitation(await membershipClient(viewer.env), {
+        env: viewer.env,
+        invitationId: parsed.data,
+        status: "revoked",
+        actor: viewer.userId,
+        reason: "",
+      });
+    }
     revalidatePath("/admin", "layout");
     return { ok: true, value: null, message: "Invitation revoked. Its link no longer works." };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Church affiliation and sheet access (docs/membership-authorization.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Verifies or revokes someone's church affiliation. Needs "Manage users", not
+ * "Manage roles": it never touches roles. Nobody changes their own, and only
+ * an Administrator changes an Administrator's.
+ */
+export async function setChurchAffiliationAction(
+  userId: unknown,
+  expected: unknown,
+  next: unknown,
+  reason: unknown,
+): Promise<ActionResult> {
+  return withPermissionExempt("manage_users", async (viewer) => {
+    const copy = adminContent.sheetAccess.affiliation;
+    const target = clerkUserIdSchema.safeParse(userId);
+    const change = parseAffiliationChange(expected, next, reason);
+    if (!target.success || !change) return { ok: false, error: copy.invalid };
+    if (!(await isMembershipInstalled(viewer.env))) return { ok: false, error: copy.unavailable };
+
+    const targetRoles = (await loadAuthorization(viewer.env, target.data)).roleKeys;
+    const refusal = affiliationRefusal({
+      actorId: viewer.userId,
+      targetId: target.data,
+      actorIsAdmin: isAdmin(viewer),
+      targetIsAdmin: targetRoles.includes(ADMIN_ROLE),
+    });
+    if (refusal) return { ok: false, error: copy.refused[refusal] };
+
+    const result = await changeAffiliation(await membershipClient(viewer.env), {
+      env: viewer.env,
+      userId: target.data,
+      expected: change.expected,
+      next: change.next,
+      actor: viewer.userId,
+      reason: change.reason,
+    });
+    revalidatePath(`/admin/users/${target.data}`);
+    revalidatePath("/admin/sheet-access");
+    if (!result.ok) return { ok: false, error: copy.conflict };
+    await notifyBestEffort(viewer.env, accountAccessChanged({ actorId: viewer.userId, userId: target.data, changed: true }));
+    return { ok: true, value: null, message: change.next === "verified" ? copy.verified : copy.revoked };
+  });
+}
+
+/**
+ * Turns on the sheet music policy for THIS Clerk environment only. Refused
+ * unless the report is still exactly what the Administrator reviewed.
+ */
+export async function activateSheetAccessAction(reportHash: unknown): Promise<ActionResult> {
+  return withPermissionExempt("manage_roles", async (viewer) => {
+    const copy = adminContent.sheetAccess.activation;
+    if (!isAdmin(viewer)) return { ok: false, error: ACTION_ERRORS.forbidden };
+    if (typeof reportHash !== "string") return { ok: false, error: copy.changed };
+
+    const loaded = await loadSheetAccessReport(viewer.env);
+    if (!loaded.ok) return { ok: false, error: copy.unavailable };
+    const blocker = activationBlocker(loaded.report);
+    if (blocker) return { ok: false, error: copy.blocked[blocker] };
+    if (loaded.report.reportHash !== reportHash) {
+      revalidatePath("/admin/sheet-access");
+      return { ok: false, error: copy.changed };
+    }
+
+    const status = await runSheetAccessActivation(viewer.env, loaded.report.stateHash, reportHash, viewer.userId);
+    updateTag(SHEET_POLICY_TAG);
+    updateTag(SHEET_MUSIC_TAG);
+    revalidatePath("/admin", "layout");
+    if (status === "stale") return { ok: false, error: copy.changed };
+    return { ok: true, value: null, message: copy.activated };
+  });
+}
+
+/** Undoes what activation added. Never restores universal Member access. */
+export async function rollbackSheetAccessAction(): Promise<ActionResult> {
+  return withPermissionExempt("manage_roles", async (viewer) => {
+    const copy = adminContent.sheetAccess.activation;
+    if (!isAdmin(viewer)) return { ok: false, error: ACTION_ERRORS.forbidden };
+    const status = await runSheetAccessRollback(viewer.env, viewer.userId);
+    revalidatePath("/admin", "layout");
+    if (status !== "rolled_back") return { ok: false, error: copy.rollbackUnavailable };
+    return { ok: true, value: null, message: copy.rolledBack };
   });
 }
 
@@ -523,7 +681,8 @@ export async function updateRoleAction(key: unknown, input: unknown): Promise<Ac
       return { ok: false, error: "You cannot add permissions you do not have yourself." };
     }
     // Someone who holds this role could otherwise hand themselves more.
-    if (!isAdmin(viewer) && viewer.roleKeys.includes(key) && added.length > 0) {
+    // Everyone holds Member, whether or not it is listed among their roles.
+    if (!isAdmin(viewer) && (key === MEMBER_ROLE || viewer.roleKeys.includes(key)) && added.length > 0) {
       return { ok: false, error: "You cannot add permissions to a role you hold yourself." };
     }
 

@@ -103,7 +103,8 @@ export function needsEveryAccount(audience: Audience, rolePermissions: ReadonlyM
     case "role":
       return audience.role === MEMBER_ROLE;
     case "permission":
-      return (rolePermissions.get(MEMBER_ROLE) ?? []).includes(audience.permission);
+      // A stale Member row for sheet music reaches nobody (resolvePermissions ignores it too).
+      return audience.permission !== "view_sheet_music" && (rolePermissions.get(MEMBER_ROLE) ?? []).includes(audience.permission);
     case "any":
       return audience.of.some((part) => needsEveryAccount(part, rolePermissions));
     default:

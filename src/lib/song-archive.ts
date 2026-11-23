@@ -17,7 +17,7 @@ import {
   toPublicSheetMusic,
   versionedFileHref,
 } from "@/lib/sheet-music";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
+import { canAccessFile, ENTITLED_VIEWER, PUBLIC_VIEWER, type Viewer } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex, SHEET_MUSIC_TAG, type SheetMusicErrorReason } from "@/lib/sheet-music-index";
 import {
   buildCompanions,
@@ -388,7 +388,7 @@ function publicSheetMusic(slug: string, song: IndexSong, viewer: Viewer): Public
     song,
     (file) => canAccessFile(song, file, viewer),
     (file) => versionedFileHref(`${songPath(slug)}/sheet-music/${file.slug}`, file),
-    (file) => canAccessFile(song, file, MEMBER_VIEWER),
+    (file) => canAccessFile(song, file, ENTITLED_VIEWER),
   );
 }
 

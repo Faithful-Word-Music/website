@@ -17,6 +17,7 @@ import {
 
 import { currentClerkConfig, type ClerkEnv } from "./clerk-env";
 import {
+  MEMBER_ROLE,
   ADMIN_ROLE,
   DEFAULT_ROLES,
   PERMISSION_FIXUPS,
@@ -34,7 +35,10 @@ import {
   type VoicePart,
 } from "./profile-options";
 import type { RequestStatus } from "./request-status";
+import { MEMBERSHIP_SCHEMA, MEMBERSHIP_SCHEMA_READY } from "./membership-schema.mjs";
+import type { MembershipSql } from "./membership-store";
 import { AUTH_SCHEMA, AUTH_SCHEMA_READY } from "./schema.mjs";
+import { resolveSheetPolicyMode, SHEET_POLICY_SETTING, type SheetPolicyMode } from "./sheet-policy-state";
 
 /**
  * Reading and writing the account tables (see schema.mjs). Every function
@@ -55,6 +59,7 @@ export class AccountsUnavailableError extends Error {
 }
 
 let schemaReady = false;
+let membershipAttempted = false;
 const seeded = new Set<ClerkEnv>();
 
 /**
@@ -68,6 +73,17 @@ export async function db(env: ClerkEnv): Promise<Sql> {
   if (!schemaReady) {
     await applySchema(sql, AUTH_SCHEMA, AUTH_SCHEMA_READY);
     schemaReady = true;
+  }
+  if (!membershipAttempted) {
+    // Additive, and inert until an Administrator activates sheet access. If it
+    // fails the site carries on exactly as before, and the next server retries.
+    membershipAttempted = true;
+    try {
+      await applySchema(sql, MEMBERSHIP_SCHEMA, MEMBERSHIP_SCHEMA_READY);
+      membershipInstalled = true;
+    } catch (error) {
+      console.error("[auth] Could not install the membership tables:", error instanceof Error ? error.message : "unknown error");
+    }
   }
   if (!seeded.has(env)) {
     await seedDefaults(sql, env);
@@ -263,31 +279,135 @@ export async function getRole(env: ClerkEnv, key: string): Promise<RoleRow | nul
   return (await listRoles(env)).find((role) => role.key === key) ?? null;
 }
 
-/** Everything needed to work out one person's permissions, in one round trip. */
-export async function loadAuthorization(
-  env: ClerkEnv,
-  userId: string,
-): Promise<{ roleKeys: string[]; rolePermissions: Map<string, string[]>; overrides: PermissionOverride[] }> {
-  const sql = await db(env);
-  const [row] = (await sql.query(
-    `SELECT
+/** Refreshes what pages show about the sheet-access policy. */
+export const SHEET_POLICY_TAG = "sheet-access-policy";
+
+/** Set once this process has seen the owner-installed membership tables. They are never removed. */
+let membershipInstalled = false;
+
+function authorizationQuery(installed: boolean): string {
+  return `SELECT
        COALESCE((SELECT array_agg(role_key) FROM user_roles WHERE clerk_env = $1 AND clerk_user_id = $2), '{}') AS role_keys,
        COALESCE((SELECT json_agg(json_build_object('role', role_key, 'permission', permission))
                    FROM role_permissions WHERE clerk_env = $1), '[]') AS role_permissions,
        COALESCE((SELECT json_agg(json_build_object('permission', permission, 'effect', effect))
-                   FROM user_permission_overrides WHERE clerk_env = $1 AND clerk_user_id = $2), '[]') AS overrides`,
-    [env, userId],
-  )) as Array<{
-    role_keys: string[];
-    role_permissions: Array<{ role: string; permission: string }>;
-    overrides: PermissionOverride[];
-  }>;
+                   FROM user_permission_overrides WHERE clerk_env = $1 AND clerk_user_id = $2), '[]') AS overrides,
+       (SELECT value FROM site_settings WHERE clerk_env = $1 AND key = '${SHEET_POLICY_SETTING}') AS policy_setting,
+       to_regclass('public.sheet_access_latches') IS NOT NULL AS installed,
+       ${
+         installed
+           ? `EXISTS (SELECT 1 FROM sheet_access_latches WHERE clerk_env = $1) AS latched,
+       (SELECT status FROM user_church_affiliations WHERE clerk_env = $1 AND clerk_user_id = $2) AS affiliation`
+           : `false AS latched, NULL::text AS affiliation`
+       }`;
+}
+
+interface AuthorizationRow {
+  role_keys: string[];
+  role_permissions: Array<{ role: string; permission: string }>;
+  overrides: PermissionOverride[];
+  policy_setting: unknown;
+  installed: boolean;
+  latched: boolean;
+  affiliation: "verified" | "revoked" | null;
+}
+
+/**
+ * Everything needed to work out one person's permissions, in one round trip.
+ * Works before the membership tables are installed; the first request to see
+ * them reads again, so a latch or an affiliation is never missed.
+ */
+export async function loadAuthorization(
+  env: ClerkEnv,
+  userId: string,
+): Promise<{
+  roleKeys: string[];
+  rolePermissions: Map<string, string[]>;
+  overrides: PermissionOverride[];
+  sheetPolicy: { mode: SheetPolicyMode; affiliation: "verified" | "revoked" | null };
+}> {
+  const sql = await db(env);
+  let [row] = (await sql.query(authorizationQuery(membershipInstalled), [env, userId])) as AuthorizationRow[];
+  if (row.installed && !membershipInstalled) {
+    membershipInstalled = true;
+    [row] = (await sql.query(authorizationQuery(true), [env, userId])) as AuthorizationRow[];
+  }
 
   const rolePermissions = new Map<string, string[]>();
   for (const { role, permission } of row.role_permissions) {
     rolePermissions.set(role, [...(rolePermissions.get(role) ?? []), permission]);
   }
-  return { roleKeys: row.role_keys, rolePermissions, overrides: row.overrides };
+  return {
+    roleKeys: row.role_keys,
+    rolePermissions,
+    overrides: row.overrides,
+    sheetPolicy: {
+      mode: resolveSheetPolicyMode({ setting: row.policy_setting, latched: row.latched }),
+      affiliation: row.affiliation,
+    },
+  };
+}
+
+/** Whether the sheet-access policy is in force in this environment, read directly. */
+async function readSheetPolicyMode(env: ClerkEnv): Promise<SheetPolicyMode> {
+  const sql = getSql();
+  if (!sql) throw new AccountsUnavailableError();
+  const [row] = (await sql.query(
+    `SELECT (SELECT value FROM site_settings WHERE clerk_env = $1 AND key = $2) AS setting,
+            to_regclass('public.sheet_access_latches') IS NOT NULL AS installed`,
+    [env, SHEET_POLICY_SETTING],
+  )) as Array<{ setting: unknown; installed: boolean }>;
+  let latched = false;
+  if (row.installed) {
+    const [latch] = (await sql.query(`SELECT EXISTS (SELECT 1 FROM sheet_access_latches WHERE clerk_env = $1) AS latched`, [
+      env,
+    ])) as Array<{ latched: boolean }>;
+    latched = latch.latched;
+  }
+  return resolveSheetPolicyMode({ setting: row.setting, latched });
+}
+
+const getCachedPolicyMode = unstable_cache(readSheetPolicyMode, ["sheet-access-policy-mode"], {
+  tags: [SHEET_POLICY_TAG],
+  revalidate: siteConfig.sheetMusic.revalidateSeconds,
+});
+
+/**
+ * The mode for what pages SHOW, cached so public pages do not wake the
+ * database. Display only: the file route asks deliveryPolicyMode().
+ */
+export async function displayPolicyMode(): Promise<SheetPolicyMode> {
+  const config = currentClerkConfig();
+  if (config.status !== "ready") return "enforcing";
+  try {
+    return await getCachedPolicyMode(config.env);
+  } catch {
+    return "enforcing";
+  }
+}
+
+const POLICY_RECHECK_MS = 60_000;
+const deliveryModes = new Map<ClerkEnv, { mode: SheetPolicyMode; at: number }>();
+
+/**
+ * The mode for a file delivery: rechecked at most once a minute per server.
+ * Once enforcing it never goes back (the latch is permanent), so this stops
+ * asking. If it cannot be read, the policy applies.
+ */
+export async function deliveryPolicyMode(): Promise<SheetPolicyMode> {
+  const config = currentClerkConfig();
+  if (config.status !== "ready") return "enforcing";
+  const known = deliveryModes.get(config.env);
+  if (known?.mode === "enforcing") return "enforcing";
+  if (known && Date.now() - known.at < POLICY_RECHECK_MS) return known.mode;
+  try {
+    const mode = await readSheetPolicyMode(config.env);
+    deliveryModes.set(config.env, { mode, at: Date.now() });
+    return mode;
+  } catch {
+    deliveryModes.delete(config.env);
+    return "enforcing";
+  }
 }
 
 /** Role keys for many users at once (for the user list). */
@@ -335,13 +455,18 @@ export async function createRole(
   }
 }
 
-/** Renames a role and replaces its permissions. Never called for the administrator role. */
+/**
+ * Renames a role and replaces its permissions. Never called for the
+ * administrator role. The Member role's sheet music row is left exactly as it
+ * is: a form can neither restore it nor remove it, only activation removes it.
+ */
 export async function updateRole(
   env: ClerkEnv,
   key: string,
   role: { label: string; description: string; permissions: string[] },
 ): Promise<void> {
   const sql = await db(env);
+  const permissions = key === MEMBER_ROLE ? role.permissions.filter((permission) => permission !== "view_sheet_music") : role.permissions;
   await sql.transaction((txn) => [
     txn.query(`UPDATE roles SET label = $3, description = $4 WHERE clerk_env = $1 AND key = $2`, [
       env,
@@ -349,10 +474,14 @@ export async function updateRole(
       role.label,
       role.description,
     ]),
-    txn.query(`DELETE FROM role_permissions WHERE clerk_env = $1 AND role_key = $2`, [env, key]),
+    txn.query(
+      `DELETE FROM role_permissions
+        WHERE clerk_env = $1 AND role_key = $2 AND NOT (role_key = $3 AND permission = 'view_sheet_music')`,
+      [env, key, MEMBER_ROLE],
+    ),
     txn.query(
       `INSERT INTO role_permissions (clerk_env, role_key, permission) SELECT $1, $2, unnest($3::text[])`,
-      [env, key, role.permissions],
+      [env, key, permissions],
     ),
   ]);
 }
@@ -447,8 +576,11 @@ export async function removeOverride(env: ClerkEnv, userId: string, permission: 
 /** Everything the site holds about a person, for when their account is deleted. */
 export async function deleteUserData(env: ClerkEnv, userId: string): Promise<void> {
   const sql = await db(env);
+  // The membership audit log is kept on purpose: it holds no name or email.
+  const membership = (await isMembershipInstalled(env)) ? ["user_church_affiliations", "invitation_claim_checks"] : [];
   await sql.transaction((txn) =>
     [
+      ...membership,
       "user_roles",
       "user_permission_overrides",
       "user_profiles",
@@ -1401,7 +1533,7 @@ export async function setInvitationRoles(
   roleKeys: string[],
   assignedBy: string,
 ): Promise<void> {
-  if (roleKeys.length === 0) return;
+  // Runs with no roles too: re-inviting someone without roles must clear the old choice.
   const sql = await db(env);
   await sql.transaction((txn) => [
     txn.query(
@@ -1435,40 +1567,80 @@ export async function deleteInvitationRoles(env: ClerkEnv, invitationId: string)
   await sql.query(`DELETE FROM invitation_roles WHERE clerk_env = $1 AND clerk_invitation_id = $2`, [env, invitationId]);
 }
 
-/** Cheap check before looking up anyone's email: is any invitation waiting to hand out roles? */
-export async function hasPendingInvitationRoles(env: ClerkEnv): Promise<boolean> {
+/** Whether the owner has installed the membership tables (membership-schema.mjs). */
+export async function isMembershipInstalled(env: ClerkEnv): Promise<boolean> {
+  if (membershipInstalled) return true;
   const sql = await db(env);
-  const rows = (await sql.query(
-    `SELECT 1 FROM invitation_roles WHERE clerk_env = $1 AND applied_at IS NULL LIMIT 1`,
-    [env],
-  )) as unknown[];
-  return rows.length > 0;
+  const [row] = (await sql.query(`SELECT to_regclass('public.sheet_access_latches') IS NOT NULL AS installed`)) as Array<{
+    installed: boolean;
+  }>;
+  membershipInstalled = row.installed;
+  return row.installed;
+}
+
+/** The membership store's query client. Only for use once they are installed. */
+export async function membershipClient(env: ClerkEnv): Promise<MembershipSql> {
+  const sql = await db(env);
+  return {
+    query: async (text, params) => (await sql.query(text, params)) as Array<Record<string, unknown>>,
+    transaction: async (statements) =>
+      (await sql.transaction((txn) => statements.map(({ text, params }) => txn.query(text, params)))) as Array<
+        Array<Record<string, unknown>>
+      >,
+  };
 }
 
 /**
- * Gives a newly joined person the roles chosen when they were invited.
- * Accounts can only be created through an invitation (Clerk's Access mode is
- * Invite-only), and Clerk only lets someone accept an invitation sent to an
- * address they control, so matching on their verified email is safe. Returns
- * how many roles were given.
+ * Cheap check before asking Clerk about anyone: is an invitation waiting, and
+ * has this person not already been resolved against it?
  */
-export async function applyInvitationRoles(env: ClerkEnv, userId: string, emailsNormalized: string[]): Promise<number> {
-  if (emailsNormalized.length === 0) return 0;
+export async function invitationClaimWaiting(env: ClerkEnv, userId: string): Promise<boolean> {
   const sql = await db(env);
-  const [inserted] = await sql.transaction((txn) => [
-    txn.query(
-      `INSERT INTO user_roles (clerk_env, clerk_user_id, role_key, granted_by)
-       SELECT clerk_env, $2, role_key, assigned_by FROM invitation_roles
-        WHERE clerk_env = $1 AND email_normalized = ANY($3::text[]) AND applied_at IS NULL
-       ON CONFLICT DO NOTHING
-       RETURNING role_key`,
-      [env, userId, emailsNormalized],
-    ),
-    txn.query(
-      `UPDATE invitation_roles SET applied_at = now()
-        WHERE clerk_env = $1 AND email_normalized = ANY($2::text[]) AND applied_at IS NULL`,
-      [env, emailsNormalized],
-    ),
-  ]);
-  return (inserted as unknown[]).length;
+  const legacy = `EXISTS (SELECT 1 FROM invitation_roles WHERE clerk_env = $1 AND applied_at IS NULL)`;
+  if (!(await isMembershipInstalled(env))) {
+    const [row] = (await sql.query(`SELECT ${legacy} AS waiting`, [env])) as Array<{ waiting: boolean }>;
+    return row.waiting;
+  }
+  const [row] = (await sql.query(
+    `SELECT NOT EXISTS (SELECT 1 FROM invitation_claim_checks WHERE clerk_env = $1 AND clerk_user_id = $2)
+            AND (${legacy} OR EXISTS (SELECT 1 FROM invitation_decisions WHERE clerk_env = $1 AND status = 'open')) AS waiting`,
+    [env, userId],
+  )) as Array<{ waiting: boolean }>;
+  return row.waiting;
+}
+
+/** Older invitations' unused role choices for these verified addresses. */
+export async function legacyInvitationRows(
+  env: ClerkEnv,
+  emailsNormalized: readonly string[],
+): Promise<Array<{ invitationId: string; email: string }>> {
+  if (emailsNormalized.length === 0) return [];
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `SELECT DISTINCT clerk_invitation_id, email_normalized FROM invitation_roles
+      WHERE clerk_env = $1 AND email_normalized = ANY($2::text[]) AND applied_at IS NULL`,
+    [env, emailsNormalized],
+  )) as Array<{ clerk_invitation_id: string; email_normalized: string }>;
+  return rows.map((row) => ({ invitationId: row.clerk_invitation_id, email: row.email_normalized }));
+}
+
+/**
+ * Gives a person the roles of one exact invitation, already matched by
+ * legacyInvitationMatch. One statement, so a role choice is only ever used once.
+ */
+export async function applyLegacyInvitation(env: ClerkEnv, userId: string, invitationId: string): Promise<number> {
+  const sql = await db(env);
+  const rows = (await sql.query(
+    `WITH used AS (
+       UPDATE invitation_roles SET applied_at = now()
+        WHERE clerk_env = $1 AND clerk_invitation_id = $3 AND applied_at IS NULL
+        RETURNING clerk_env, role_key, assigned_by
+     )
+     INSERT INTO user_roles (clerk_env, clerk_user_id, role_key, granted_by)
+     SELECT clerk_env, $2, role_key, assigned_by FROM used
+     ON CONFLICT DO NOTHING
+     RETURNING role_key`,
+    [env, userId, invitationId],
+  )) as unknown[];
+  return rows.length;
 }

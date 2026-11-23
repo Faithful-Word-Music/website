@@ -14,12 +14,12 @@ import type { PublicSheetFile } from "@/lib/sheet-music";
 const { sheetMusic: copy } = songListContent.songPage;
 
 /**
- * Copyrighted sheet music, for signed-in members.
+ * Restricted sheet music, for signed-in people with access.
  *
  * Song pages are cached and the same for everyone, so they cannot know who
  * is looking. These pieces find out in the browser - is someone signed in,
- * and does their account include "View member sheet music"? - and unlock the
- * members' files if so. That is only about what to show: the file route
+ * and does their account have sheet music access? - and unlock those files
+ * if so. That is only about what to show: the file route
  * checks the session again before serving anything (see
  * src/app/library/songs/[song]/sheet-music/[file]/route.ts).
  */
@@ -71,7 +71,17 @@ export function MembersNote({ hasPublicFiles }: { hasPublicFiles: boolean }) {
       </p>
     );
   }
-  if (access === "denied") return <p className="mt-2 text-muted">{copy.membersNoteDenied}</p>;
+  if (access === "denied") {
+    return (
+      <p className="mt-2 text-muted">
+        {copy.membersNoteDenied}{" "}
+        <Link href="/contact" className="text-ink underline decoration-gold underline-offset-4 transition-colors hover:text-gold-dark">
+          {copy.supportCenter}
+        </Link>
+        .
+      </p>
+    );
+  }
   return hasPublicFiles ? null : <p className="mt-2 text-muted">{copy.restricted}</p>;
 }
 

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE, sheetSubject } from "@/lib/auth/session";
+import { decideSheetAccess } from "@/lib/auth/sheet-entitlement";
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { serviceSheets } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, ENTITLED_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { pdfVersionsOfType } from "@/lib/sheet-music-type";
-import { getSheetMusicIndex, openDriveFile } from "@/lib/sheet-music-index";
+import { confirmDriveFile, currentFileResource, getSheetMusicIndex, openDriveFile } from "@/lib/sheet-music-index";
 import { buildServicePacket, type PacketSong } from "@/lib/service-sheet-pdf";
 import { serviceAnchor } from "@/lib/site-search";
 
@@ -74,7 +75,8 @@ export async function GET(request: Request, ctx: RouteContext<"/dashboard/sheet-
     .find((candidate) => !candidate.placeholder && candidate.date && serviceAnchor(candidate.date, candidate.slot) === anchor);
   if (!service) return jsonError(404, "not-found");
 
-  const sheetViewer = viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER;
+  const sheetViewer = viewer.can("view_sheet_music") ? ENTITLED_VIEWER : PUBLIC_VIEWER;
+  const subject = await sheetSubject(viewer);
   const sheets = serviceSheets(service, {
     index: sheetMusic.index,
     sheetTypes,
@@ -90,6 +92,10 @@ export async function GET(request: Request, ctx: RouteContext<"/dashboard/sheet-
           canAccessFile(found.song, file, sheetViewer),
         );
         return versions.map(async ({ version, file }) => {
+          // Checked again on current rights, file by file, before Drive is asked for it.
+          const resource = await currentFileResource(found.song, file);
+          if (!resource || !decideSheetAccess(resource, subject, "distribute").allowed) return null;
+          if (!(await confirmDriveFile(file))) return null;
           const pdf = await readDriveFile(file.driveFileId);
           const editionTitle = versions.length > 1 ? `${title} · Version ${version.version}` : title;
           return pdf ? { number, title: editionTitle, pdf } : null;

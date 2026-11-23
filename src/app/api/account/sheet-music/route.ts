@@ -4,7 +4,7 @@ import { getViewer, isProfileBlocked } from "@/lib/auth/session";
 import { getSheetMusicTypes } from "@/lib/auth/store";
 import { servicePackets, servicePacketTypes } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
-import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { ENTITLED_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 
 /**
@@ -43,7 +43,7 @@ export async function GET() {
     if (!schedule.ok || !index.ok) return NextResponse.json({ assigned: true, unavailable: true }, { status: 503, headers });
 
     const services = schedule.months.flatMap((month) => month.services);
-    const sheetViewer = viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER;
+    const sheetViewer = viewer.can("view_sheet_music") ? ENTITLED_VIEWER : PUBLIC_VIEWER;
     const types = printsForOthers ? servicePacketTypes(services, { index: index.index, viewer: sheetViewer }) : undefined;
     if (sheetTypes.length === 0) return NextResponse.json({ assigned: false, types }, { headers });
 

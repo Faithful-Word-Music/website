@@ -517,11 +517,11 @@ describe("audiences", () => {
 
   it("reaches Member-only accounts only through the list of every account", () => {
     expect(needsEveryAccount(AUDIENCES.everyone, rolePermissions)).toBe(true);
-    expect(needsEveryAccount({ kind: "permission", permission: "view_sheet_music" }, rolePermissions)).toBe(true);
+    expect(needsEveryAccount({ kind: "permission", permission: "view_sheet_music" }, rolePermissions)).toBe(false);
     expect(needsEveryAccount(AUDIENCES.planners, rolePermissions)).toBe(false);
     expect(needsEveryAccount({ kind: "any", of: [AUDIENCES.musicians, AUDIENCES.everyone] }, rolePermissions)).toBe(true);
     expect(sorted(resolveAudience(AUDIENCES.everyone, everyone))).toEqual(sorted([...everyone.accountIds]));
-    expect(resolveAudience({ kind: "permission", permission: "view_sheet_music" }, everyone)).toContain("user_member");
+    expect(resolveAudience({ kind: "permission", permission: "view_sheet_music" }, everyone)).not.toContain("user_member");
   });
 });
 

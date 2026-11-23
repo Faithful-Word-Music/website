@@ -7,7 +7,7 @@ import { getSchedule } from "@/lib/schedule";
 import { getPlan } from "@/lib/service-planner/store";
 import { parseAnchor, slotSongs } from "@/lib/service-planner/model";
 import { fileLabel, findFile, type IndexSong } from "@/lib/sheet-music";
-import { MEMBER_VIEWER, PUBLIC_VIEWER, canAccessFile } from "@/lib/sheet-music-access";
+import { ENTITLED_VIEWER, PUBLIC_VIEWER, canAccessFile } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 import { songDirectory } from "@/lib/song-archive";
 import { normalizeSongNumber, normalizeSongTitle, resolveSong, songIdentity, songUrlSlug, type IdentityEntry } from "@/lib/song-identity";
@@ -169,7 +169,7 @@ export async function resolveContext(
       const found = song ? findFile(song, input.file) : null;
       if (!song || !found) return deny("missing");
       // Only a file this person could open themselves.
-      if (!canAccessFile(song, found.file, actor.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER)) return deny("hidden");
+      if (!canAccessFile(song, found.file, actor.can("view_sheet_music") ? ENTITLED_VIEWER : PUBLIC_VIEWER)) return deny("hidden");
       context.sheetMusic = { file: input.file, label: fileLabel(found.version), format: found.file.format };
     }
   }
@@ -285,7 +285,7 @@ export async function songFileChoices(actor: SupportActor, songId: string): Prom
   if (!index.ok) return [];
   const song = index.index.songs.find((item) => item.id.toLowerCase() === songId.toLowerCase());
   if (!song) return [];
-  const viewer = actor.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER;
+  const viewer = actor.can("view_sheet_music") ? ENTITLED_VIEWER : PUBLIC_VIEWER;
   return song.versions.flatMap((version) =>
     version.files.filter((file) => canAccessFile(song, file, viewer)).map((file) => ({ file: file.slug, label: fileLabel(version), format: file.format })),
   );

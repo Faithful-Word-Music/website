@@ -13,10 +13,11 @@ vi.mock("next/cache", () => ({ unstable_cache: (fn: unknown) => fn }));
 vi.mock("@/lib/archive-store", () => ({ loadStoredServices: async () => data.stored, saveServices: vi.fn() }));
 vi.mock("@/lib/schedule", () => ({ getSchedule: async () => ({ ok: true, months: data.months, published: data.published }), scheduleEnv: () => "development", publishedHistory: vi.fn() }));
 vi.mock("@/lib/service-planner/store", () => ({ listCatalogSongs: async () => data.catalog, plannerConfigured: () => true, listPlans: async () => [] }));
-vi.mock("@/lib/sheet-music-index", () => ({ SHEET_MUSIC_TAG: "sheet-music-index", getSheetMusicIndex: async () => data.index ? { ok: true, index: data.index } : { ok: false, reason: "unavailable" }, openDriveFile: data.open }));
+vi.mock("@/lib/sheet-music-index", () => ({ SHEET_MUSIC_TAG: "sheet-music-index", getSheetMusicIndex: async () => data.index ? { ok: true, index: data.index } : { ok: false, reason: "unavailable" }, openDriveFile: data.open, currentFileResource: async (song: IndexSong) => (song.rights === "cleared" ? "public" : "restricted"), confirmDriveFile: async () => ({ md5: null }) }));
 vi.mock("@/lib/auth/session", () => ({
   getViewer: async () => data.viewer,
   isProfileBlocked: async () => false,
+  sheetSubject: async (viewer: { can(permission: string): boolean }) => ({ kind: "account", profileBlocked: false, entitlement: { entitled: viewer.can("view_sheet_music"), reason: "no_entitlement", sources: [], delegable: false, mayReviewWithheld: false } }),
   PROFILE_INCOMPLETE: { error: "profile-incomplete", href: "/welcome" },
 }));
 
@@ -26,7 +27,7 @@ const indexSong = (number: string, keys: string, rights: IndexSong["rights"] = "
   id: `SSSH1989-${number}`, title, hymnNumber: number, collection, keys, rights,
   composer: null, lyricist: null, type: null, category: null, occasion: null, source: null,
   versions: [{ typeId: 1, label: "Standard", version: "1", keys, capoFret: null,
-    files: [{ slug: `standard-${number}.pdf`, format: "pdf", driveFileId: `private-${number}`, md5: `${number}checksum` }] }],
+    files: [{ slug: `standard-${number}.pdf`, format: "pdf", driveFileId: `private-${number}`, md5: `${number}checksum`, eligibility: rights === "cleared" ? ("public" as const) : ("restricted" as const) }] }],
 });
 const service = (number: string | null, key: string, songId?: string): DatedService => ({
   date: "2026-01-04", slot: "AM", startsAt: "2026-01-04T10:30:00-07:00", songs: [{ title, number, key, ...(songId ? { songId } : {}) }],

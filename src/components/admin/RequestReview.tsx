@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 
 import { approveRequestAction, rejectRequestAction } from "@/app/admin/actions";
 import { ActionMessage, TextField } from "@/components/account/fields";
-import { InvitationRolePicker, type AssignableRole } from "@/components/admin/InviteForm";
+import { AffiliationChoice, InvitationRolePicker, type AssignableRole } from "@/components/admin/InviteForm";
 import { Button } from "@/components/ui/Button";
 import { useAction } from "@/components/ui/use-action";
 import { feedbackContent } from "@/content/feedback";
@@ -30,6 +30,7 @@ export function RequestReview({
   const [mode, setMode] = useState<"idle" | "approve" | "reject">("idle");
   const [note, setNote] = useState("");
   const [chosenRoles, setChosenRoles] = useState<string[]>([]);
+  const [verified, setVerified] = useState(false);
 
   const run = (action: () => Promise<ActionResult>) => void runAction(action, { onOk: () => setMode("idle") });
 
@@ -52,6 +53,7 @@ export function RequestReview({
             Clerk will email an invitation to <strong className="font-medium">{email}</strong>. They choose a password
             and their account is created.
           </p>
+          <AffiliationChoice checked={verified} onChange={setVerified} />
           <InvitationRolePicker name={`${ids}-roles`} roles={roles} selected={chosenRoles} onChange={setChosenRoles} />
           <div className="flex flex-wrap gap-3">
             <Button
@@ -59,7 +61,7 @@ export function RequestReview({
               state={stateOf()}
               pendingLabel={feedbackContent.sending}
               doneLabel={feedbackContent.sent}
-              onClick={() => run(() => approveRequestAction(requestId, chosenRoles))}
+              onClick={() => run(() => approveRequestAction(requestId, chosenRoles, verified))}
             >
               Send invitation
             </Button>

@@ -82,6 +82,7 @@ export const searchContent = {
     users: { label: "Admin: People", keywords: "users accounts members musicians person roles sheet music assign disable" },
     roles: { label: "Admin: Roles", keywords: "permissions role access who can music director musician member" },
     configuration: { label: "Admin: Configuration", keywords: "settings titles instruments sheet music types capo options setup" },
+    sheetAccess: { label: "Admin: Sheet Access", keywords: "sheet music access copyright rights withheld file rights church members activate impact report" },
     notificationsSend: { label: "Admin: Send a notification", keywords: "notifications announcement compose write message send push everyone musicians audience" },
     notificationsHistory: { label: "Admin: Notification History", keywords: "notifications sent announcements history delivery push recipients who received" },
     notificationsTemplates: { label: "Admin: Notification Templates", keywords: "notifications templates saved messages reuse announcement" },

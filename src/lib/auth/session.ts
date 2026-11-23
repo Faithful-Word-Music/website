@@ -14,12 +14,19 @@ import { canAccessAdmin, explicitPermissions, resolvePermissions, type Permissio
 import type { ProfileStatus } from "./profile-requirements";
 import { normalizeEmail } from "./request-status";
 import { getViewerProfileStatus } from "./requirements";
+import { projectSheetPermission, resolveSheetEntitlement, type SheetEntitlement, type SheetSubject } from "./sheet-entitlement";
 import {
   AccountsUnavailableError,
-  applyInvitationRoles,
-  hasPendingInvitationRoles,
+  applyLegacyInvitation,
+  invitationClaimWaiting,
+  isMembershipInstalled,
+  legacyInvitationRows,
   loadAuthorization,
+  membershipClient,
 } from "./store";
+import { listInvitations } from "./clerk";
+import { INVITATION_DECISION_KEY, runInvitationClaim, type ClaimInvitation } from "./invitation-claim";
+import { consumeDecision, decisionForClaim, recordClaimCheck } from "./membership-store";
 
 /**
  * Who is asking, and what they may do. The only entry point protected code
@@ -72,8 +79,62 @@ export interface Viewer {
    * who is asked the musician and song-leader questions.
    */
   explicit: Set<Permission>;
+  /** Their sheet music access and why. `can("view_sheet_music")` always equals `sheet.entitled`. */
+  sheet: SheetEntitlement;
   can(permission: Permission): boolean;
   canAccessAdmin: boolean;
+}
+
+const CLAIM_RETRY_MS = 60_000;
+const lastClaim = new Map<string, number>();
+
+/** At most one Clerk check per person per minute per server, whatever the outcome. */
+function claimDue(env: ClerkEnv, userId: string): boolean {
+  const key = `${env}:${userId}`;
+  const now = Date.now();
+  if (now - (lastClaim.get(key) ?? 0) < CLAIM_RETRY_MS) return false;
+  if (lastClaim.size > 1000) lastClaim.clear();
+  lastClaim.set(key, now);
+  return true;
+}
+
+async function claimInvitation(env: ClerkEnv, userId: string): Promise<boolean> {
+  const installed = await isMembershipInstalled(env);
+  const sql = installed ? await membershipClient(env) : null;
+  return runInvitationClaim({
+    installed,
+    now: () => Date.now(),
+    async currentUser() {
+      const user = await currentUser();
+      if (!user) return null;
+      const decisionId = user.publicMetadata?.[INVITATION_DECISION_KEY];
+      return {
+        // Only addresses Clerk has verified: anyone can add an unverified one to their account.
+        verifiedEmails: user.emailAddresses
+          .filter((item) => item.verification?.status === "verified")
+          .map((item) => normalizeEmail(item.emailAddress)),
+        decisionId: typeof decisionId === "string" ? decisionId : null,
+        createdAt: user.createdAt,
+      };
+    },
+    findDecision: (id) => decisionForClaim(sql!, env, id),
+    async invitationsFor(emails) {
+      const found: ClaimInvitation[] = [];
+      for (const email of emails) {
+        const result = await listInvitations({ query: email, limit: 100 });
+        if (!result.ok) return null;
+        for (const invitation of result.value) {
+          const address = normalizeEmail(invitation.email);
+          if (address === email) found.push({ id: invitation.id, email: address, status: invitation.status, createdAt: invitation.createdAt });
+        }
+      }
+      return found;
+    },
+    consumeDecision: (id, invitationId) => consumeDecision(sql!, { env, id, invitationId, userId }),
+    legacyRows: (emails) => legacyInvitationRows(env, emails),
+    applyLegacy: (invitationId) => applyLegacyInvitation(env, userId, invitationId),
+    recordCheck: (outcome, decisionId) => recordClaimCheck(sql!, { env, userId, outcome, decisionId }),
+  });
 }
 
 /**
@@ -87,26 +148,36 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   const { userId } = await auth();
   if (!userId) return null;
 
-  let { roleKeys, rolePermissions, overrides } = await loadAuthorization(status.env, userId);
+  let { roleKeys, rolePermissions, overrides, sheetPolicy } = await loadAuthorization(status.env, userId);
 
-  // Someone new, with no roles yet: give them any roles chosen when they were
-  // invited. Their email is only looked up when an invitation is actually
-  // waiting to hand out roles, so ordinary requests pay nothing for this.
-  if (roleKeys.length === 0 && (await hasPendingInvitationRoles(status.env))) {
-    const user = await currentUser();
-    const emails = user?.emailAddresses.map((item) => normalizeEmail(item.emailAddress)) ?? [];
-    if ((await applyInvitationRoles(status.env, userId, emails)) > 0) {
-      ({ roleKeys, rolePermissions, overrides } = await loadAuthorization(status.env, userId));
-    }
+  // Someone new, with nothing yet: give them what was decided for the exact
+  // invitation they accepted. Clerk is only asked when an invitation is
+  // actually waiting, so ordinary requests pay nothing for this.
+  if (
+    roleKeys.length === 0 &&
+    sheetPolicy.affiliation === null &&
+    claimDue(status.env, userId) &&
+    (await invitationClaimWaiting(status.env, userId)) &&
+    (await claimInvitation(status.env, userId))
+  ) {
+    ({ roleKeys, rolePermissions, overrides, sheetPolicy } = await loadAuthorization(status.env, userId));
   }
 
-  const permissions = resolvePermissions(roleKeys, rolePermissions, overrides);
+  const sheet = resolveSheetEntitlement({
+    mode: sheetPolicy.mode,
+    roleKeys,
+    rolePermissions,
+    overrides,
+    affiliation: sheetPolicy.affiliation,
+  });
+  const permissions = projectSheetPermission(resolvePermissions(roleKeys, rolePermissions, overrides), sheet);
   return {
     userId,
     env: status.env,
     roleKeys,
     permissions,
     explicit: explicitPermissions(roleKeys, rolePermissions, overrides),
+    sheet,
     can: (permission) => permissions.has(permission),
     canAccessAdmin: canAccessAdmin(permissions),
   };
@@ -140,6 +211,11 @@ export function viewerProfileStatus(viewer: Viewer): Promise<ProfileStatus> {
 /** True when a missing requirement is past its deadline and the policy is enforcing. */
 export async function isProfileBlocked(viewer: Viewer): Promise<boolean> {
   return (await viewerProfileStatus(viewer)).state === "blocked";
+}
+
+/** This person as the sheet music policy sees them, profile gate included. */
+export async function sheetSubject(viewer: Viewer): Promise<SheetSubject> {
+  return { kind: "account", entitlement: viewer.sheet, profileBlocked: await isProfileBlocked(viewer) };
 }
 
 /** Where a blocked person is sent: onboarding, then back to where they were going. */

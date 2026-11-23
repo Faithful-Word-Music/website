@@ -1,5 +1,12 @@
 import { songKey } from "@/lib/song-list";
 import { indexEntries, resolveSong, type SongReference } from "@/lib/song-identity";
+import {
+  arrangementFor,
+  classifyResource,
+  type FileRightsRule,
+  type SheetResourceClass,
+} from "@/lib/auth/sheet-entitlement";
+import type { SheetPolicyMode } from "@/lib/auth/sheet-policy-state";
 
 /**
  * Sheet music: the songs in the Sheet Music Index, with the files found in
@@ -58,14 +65,19 @@ export interface SheetFile {
   modifiedTime?: string;
   /** Drive's checksum of the file's bytes: what tells the library index a file has really changed. */
   md5?: string;
+  /** SERVER ONLY. Public, restricted or withheld (classifyResource). None counts as withheld. */
+  eligibility?: SheetResourceClass;
+  /** SERVER ONLY. Folder names below "Sheet Music", which File Rights rules match on. */
+  folders?: string[];
+  /** SERVER ONLY. The Drive folder holding it when the Index was read. */
+  parentId?: string;
 }
 
 /**
  * A file's link with its version on the end: "…/standard-1.pdf?v=3f2a9c1e".
- * The CDN keeps a public file for up to an hour, by its full address - so a
- * file replaced in Drive (same name, new bytes) gets a new address once the
- * pages are rebuilt, and nobody is handed the old copy. The file route itself
- * ignores `v`.
+ * A file replaced in Drive (same name, new bytes) gets a new address once the
+ * pages are rebuilt, so a browser does not reuse the old copy. The file route
+ * itself ignores `v`.
  */
 export function versionedFileHref(href: string, file: Pick<SheetFile, "md5" | "modifiedTime">): string {
   const modified = file.modifiedTime ? Date.parse(file.modifiedTime) : Number.NaN;
@@ -210,6 +222,7 @@ export interface DriveFile {
   driveFileId: string;
   modifiedTime: string;
   md5?: string;
+  parentId?: string;
 }
 
 /** "(2)", "(Stedfast Baptist Church)", "(Christmas Caroling)" and the space before. */
@@ -269,7 +282,7 @@ export function sheetsFromDrive(items: DriveItem[]): DriveFile[] {
     const folders = foldersAbove(item, byId);
     if (!folders) continue;
     const sheet = parseDrivePath(folders, item.name, item.id, item.modifiedTime, item.md5Checksum);
-    if (sheet) sheets.push(sheet);
+    if (sheet) sheets.push(item.parents?.[0] ? { ...sheet, parentId: item.parents[0] } : sheet);
   }
   return sheets;
 }
@@ -349,6 +362,8 @@ export interface SheetMusicSources {
   songs: Array<SongDetails & { files: DriveFile[] }>;
   notes: VersionNote[];
   folders: DriveFolder[];
+  /** The optional File Rights tab. */
+  fileRights?: FileRightsRule[];
 }
 
 /** Hymn numbers compare as numbers when they are: "012" is 12. */
@@ -367,6 +382,7 @@ function slugPart(text: string): string {
 
 function parseSongs(grid: string[][]): SongDetails[] {
   const songs = new Map<string, SongDetails>();
+  const rights = songRights(grid);
 
   for (const row of readTable(grid, [["song id"], ["title"]])) {
     const id = row["song id"];
@@ -385,11 +401,28 @@ function parseSongs(grid: string[][]): SongDetails[] {
       category: row["category"],
       occasion: row["occasion"],
       source: row["source / organization"],
-      rights: rightsFromCell(row["copyrighted?"]),
+      rights: rights.get(id.toLowerCase()) ?? "unknown",
     });
   }
 
   return [...songs.values()];
+}
+
+/**
+ * Each Song ID's rights, by lower-cased ID. Rows repeating an ID (in any
+ * case) that disagree count as unknown, so a stray "No" can never outrank a "Yes".
+ */
+export function songRights(grid: string[][]): Map<string, Rights> {
+  const rights = new Map<string, Rights>();
+  for (const row of readTable(grid, [["song id"], ["title"]])) {
+    const id = row["song id"];
+    if (!id || !SONG_ID.test(id) || !row["title"]) continue;
+    const key = id.toLowerCase();
+    const value = rightsFromCell(row["copyrighted?"]);
+    const seen = rights.get(key);
+    rights.set(key, seen === undefined || seen === value ? value : "unknown");
+  }
+  return rights;
 }
 
 /** Whether a folder name is a Collection on the Songs tab. */
@@ -517,7 +550,13 @@ export function typeForFile(folders: readonly string[], types: readonly TypeSour
  * source holds are left out. One file per type + version + format: when a
  * file has been copied in twice, the most recently changed copy wins.
  */
-export function classify(sources: SheetMusicSources, types: readonly TypeSources[]): SheetMusicIndex {
+export function classify(
+  sources: SheetMusicSources,
+  types: readonly TypeSources[],
+  /** Whether the sheet-access policy is in force here; getSheetMusicIndex always passes it. */
+  mode: SheetPolicyMode = "legacy",
+): SheetMusicIndex {
+  const rules = sources.fileRights ?? [];
   const order = new Map(types.map((type, index) => [type.id, index]));
 
   const songs = sources.songs.map(({ files, ...details }): IndexSong => {
@@ -556,6 +595,9 @@ export function classify(sources: SheetMusicSources, types: readonly TypeSources
         driveFileId: file.driveFileId,
         modifiedTime: file.modifiedTime || undefined,
         ...(file.md5 ? { md5: file.md5 } : {}),
+        eligibility: classifyResource(details.rights, arrangementFor(file, rules), mode),
+        folders: file.folders,
+        ...(file.parentId ? { parentId: file.parentId } : {}),
       });
     }
 
@@ -705,15 +747,17 @@ export function toPublicSheetMusic(
   /** Whether a signed-in member may open a file the public may not. */
   membersMayOpen: (file: SheetFile) => boolean = () => false,
 ): PublicSheetMusic {
+  // A withheld file is not mentioned at all: no slug, link or checksum.
+  const shown = (version: SongVersion) => version.files.filter((file) => file.eligibility !== "withheld");
   const versions = song.versions
-    .filter((version) => version.files.length > 0)
+    .filter((version) => shown(version).length > 0)
     .map(
       (version): PublicVersion => ({
         label: version.label,
         version: version.version,
         keys: version.keys,
         capoFret: version.capoFret,
-        files: version.files.map((file) => {
+        files: shown(version).map((file) => {
           const open = mayOpen(file);
           return {
             format: file.format,

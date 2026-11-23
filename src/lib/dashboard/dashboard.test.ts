@@ -41,7 +41,7 @@ describe("buildFocus", () => {
     const focus = focusFor([]);
     expect(servesInMusic(focus)).toBe(false);
     expect(focus.administers).toBe(false);
-    expect(focus.opensMemberSheetMusic).toBe(true);
+    expect(focus.opensMemberSheetMusic).toBe(false);
   });
 
   it("treats the Musician role as playing", () => {
@@ -167,7 +167,7 @@ function song(versions: SongVersion[], rights: IndexSong["rights"] = "copyrighte
     occasion: null,
     source: null,
     rights,
-    versions,
+    versions: versions.map((item) => ({ ...item, files: item.files.map((entry) => ({ ...entry, eligibility: rights === "cleared" ? ("public" as const) : ("restricted" as const) })) })),
   };
 }
 

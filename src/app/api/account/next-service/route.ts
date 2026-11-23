@@ -6,7 +6,7 @@ import { servicePacket } from "@/lib/dashboard/coming-up";
 import { getSchedule } from "@/lib/schedule";
 import { anchorOf, datedServices, pickNextService } from "@/lib/search/next-service";
 import type { NextServicePrivate } from "@/lib/site-search";
-import { MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { ENTITLED_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
 
 /**
@@ -62,7 +62,7 @@ export async function GET() {
     const packet = servicePacket(next.service, {
       index: index.index,
       sheetTypes,
-      viewer: viewer.can("view_sheet_music") ? MEMBER_VIEWER : PUBLIC_VIEWER,
+      viewer: viewer.can("view_sheet_music") ? ENTITLED_VIEWER : PUBLIC_VIEWER,
     });
     const body: NextServicePrivate = { anchor: anchorOf(next.service), sheetMusicHref: packet?.href ?? null };
     return NextResponse.json(body, { headers });

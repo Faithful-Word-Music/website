@@ -184,14 +184,17 @@ export const songListContent = {
       title: "Sheet music",
       /** Shown when the Index lists files, but none may be shared publicly. */
       restricted: "Sheet music for this song isn't available publicly.",
-      /** Copyrighted files, open to signed-in members only. */
-      membersOnly: "Members only",
+      /** Files open only to signed-in people with sheet music access. */
+      membersOnly: "Authorized users",
       logIn: "Log in",
-      /** Above the list when members could open files the public cannot. */
-      membersNoteSignedOut: "This sheet music is copyrighted, so it's shared with members only.",
+      /** Above the list when authorized users could open files the public cannot. */
+      membersNoteSignedOut: "This sheet music is available only to authorized users.",
       /** Follows the "Log in" link: "Log in to view it." */
       membersNoteLogIn: "to view it.",
-      membersNoteDenied: "This sheet music is copyrighted. Your account doesn't include access to it yet.",
+      /** Runs into a link to the Support Center, then a full stop. */
+      membersNoteDenied:
+        "This sheet music is available only to authorized users. If you are a member of Faithful Word Baptist Church or believe you should have access, please contact the music ministry through the",
+      supportCenter: "Support Center",
       previewTitle: "Sheet music preview: {title}",
       previewLoading: "Loading the sheet music…",
       /** Over the preview when a PDF has more than one page. {page} and {count} are replaced at render time. */

@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { siteConfig } from "@/config/site";
-import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE } from "@/lib/auth/session";
+import { getViewer, isProfileBlocked, PROFILE_INCOMPLETE, sheetSubject } from "@/lib/auth/session";
+import { decideSheetAccess } from "@/lib/auth/sheet-entitlement";
 import { fileLabel, findFile } from "@/lib/sheet-music";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
-import { openDriveFile } from "@/lib/sheet-music-index";
+import { confirmDriveFile, currentFileResource, openDriveFile } from "@/lib/sheet-music-index";
 import { getIndexSongForPage } from "@/lib/song-archive";
 
 /**
@@ -14,12 +13,18 @@ import { getIndexSongForPage } from "@/lib/song-archive";
  * Serves one sheet-music file from private Google Drive, after checking that
  * this visitor may have it. This check is the real protection: the song page
  * hides links to restricted files, but anyone could type this address, so
- * the route decides for itself with the same canAccessFile() the page uses.
+ * the route decides for itself, on rights no more than a minute old.
  *
- *   unknown song or file   -> 404
- *   members only, signed out -> 401; signed in without access -> 403
- *                            (Drive is never asked in either case)
- *   allowed                -> the file, streamed from Drive untouched
+ *   unknown song or file      -> 404
+ *   rights cannot be read     -> 503
+ *   restricted, signed out    -> 401; signed in without access -> 403
+ *   withheld                  -> 403, except one file opened for staff review
+ *                               (Drive is never asked for the file in these cases)
+ *   allowed                   -> the file, streamed from Drive untouched
+ *
+ * No response is kept by a shared cache, so a file made private stops being
+ * served as soon as the rights say so. A browser may keep a public file but
+ * must ask here first (ETag); the answer comes only after the check.
  *
  * PDFs open in the browser; MuseScore files download as the original .mscz.
  * The Drive File ID never appears in the address or the response.
@@ -29,8 +34,14 @@ const CONTENT_TYPES = {
   musescore: "application/vnd.musescore.mscz",
 } as const;
 
+const PUBLIC_CACHE = "private, no-cache";
+const RESTRICTED_CACHE = "private, no-store";
+
 function jsonError(status: number, reason: string) {
-  return NextResponse.json({ ok: false, reason }, { status, headers: { "X-Robots-Tag": "noindex" } });
+  return NextResponse.json(
+    { ok: false, reason },
+    { status, headers: { "Cache-Control": RESTRICTED_CACHE, "X-Robots-Tag": "noindex" } },
+  );
 }
 
 /** A filename safe for every browser: a plain one, and a UTF-8 one. */
@@ -40,7 +51,7 @@ function contentDisposition(kind: "inline" | "attachment", fileName: string): st
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   ctx: RouteContext<"/library/songs/[song]/sheet-music/[file]">,
 ) {
   const { song: slug, file: fileSlug } = await ctx.params;
@@ -56,16 +67,32 @@ export async function GET(
     return jsonError(404, "not-found");
   }
 
-  // Public files need no session at all. Anything else needs a signed-in
-  // member whose roles allow it - checked here, on the server, every time.
-  const isPublic = canAccessFile(song, found.file, PUBLIC_VIEWER);
+  const resource = await currentFileResource(song, found.file);
+  if (!resource) return jsonError(503, "unavailable");
+
+  // Public files need no session at all. Anything else is decided here, on
+  // the server, every time.
+  const isPublic = resource === "public";
   if (!isPublic) {
-    const viewer = await getViewer().catch(() => null);
+    let viewer;
+    try {
+      viewer = await getViewer();
+    } catch {
+      return jsonError(503, "unavailable");
+    }
     if (!viewer) return jsonError(401, "sign-in-required");
     if (await isProfileBlocked(viewer)) return jsonError(403, PROFILE_INCOMPLETE.error);
-    if (!viewer.can("view_sheet_music") || !canAccessFile(song, found.file, MEMBER_VIEWER)) {
+    if (!decideSheetAccess(resource, await sheetSubject(viewer), "open").allowed) {
       return jsonError(403, "restricted");
     }
+  }
+
+  const confirmed = await confirmDriveFile(found.file);
+  if (!confirmed) return jsonError(503, "unavailable");
+
+  const etag = isPublic && confirmed.md5 ? `"${confirmed.md5}"` : null;
+  if (etag && request.headers.get("if-none-match") === etag) {
+    return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": PUBLIC_CACHE } });
   }
 
   const body = await openDriveFile(found.file.driveFileId);
@@ -76,20 +103,13 @@ export async function GET(
   const { version, file } = found;
   const extension = file.format === "pdf" ? "pdf" : "mscz";
   const fileName = `${song.title} - ${fileLabel(version)}.${extension}`;
-  const seconds = siteConfig.sheetMusic.revalidateSeconds;
 
   return new Response(body, {
     headers: {
       "Content-Type": CONTENT_TYPES[file.format],
       "Content-Disposition": contentDisposition(file.format === "pdf" ? "inline" : "attachment", fileName),
-      // A public file may be kept by the CDN - but no longer than the Index
-      // cache (and only a minute past it while it is fetched again), so a song
-      // made private again stops being served within about an hour. A
-      // members-only file must never be cached anywhere shared, or the next
-      // visitor could be handed it without signing in.
-      "Cache-Control": isPublic
-        ? `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=60`
-        : "private, no-store",
+      "Cache-Control": isPublic ? PUBLIC_CACHE : RESTRICTED_CACHE,
+      ...(etag ? { ETag: etag } : {}),
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex",
     },

@@ -215,12 +215,18 @@ export interface InvitationSummary {
  * this site, which is the only way to create an account (the Clerk dashboard's
  * Access mode is set to Invite-only).
  */
-export async function createInvitation(email: string, redirectUrl: string): Promise<ClerkResult<InvitationSummary>> {
+export async function createInvitation(
+  email: string,
+  redirectUrl: string,
+  /** Copied by Clerk to the new user's public metadata, which only the server can set. */
+  publicMetadata?: Record<string, string>,
+): Promise<ClerkResult<InvitationSummary>> {
   try {
     const client = await clerkClient();
     const invitation = await client.invitations.createInvitation({
       emailAddress: email,
       redirectUrl,
+      ...(publicMetadata ? { publicMetadata } : {}),
       notify: true,
       expiresInDays: siteConfig.accounts.invitationDays,
       ignoreExisting: false,

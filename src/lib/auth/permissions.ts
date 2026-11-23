@@ -131,7 +131,7 @@ export const PERMISSIONS = {
   },
   view_sheet_music: {
     label: "View member sheet music",
-    description: "Open copyrighted sheet music on song pages, which the public cannot see.",
+    description: "Open restricted sheet music, which the public cannot see. Never part of basic membership.",
     group: "members",
   },
   view_member_resources: {
@@ -234,7 +234,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: SONG_LEADER_ROLE,
     label: "Song Leader",
     description: "Leads congregational singing.",
-    permissions: ["lead_songs", "view_availability", "view_service_plans", "view_member_resources"],
+    permissions: ["lead_songs", "view_availability", "view_service_plans", "view_sheet_music", "view_member_resources"],
   },
   {
     key: MUSICIAN_ROLE,
@@ -246,7 +246,7 @@ export const DEFAULT_ROLES: RoleSeed[] = [
     key: MEMBER_ROLE,
     label: "Member",
     description: "Everyone with an account. Held automatically.",
-    permissions: ["view_sheet_music", "view_member_resources", "submit_support_requests"],
+    permissions: ["view_member_resources", "submit_support_requests"],
   },
 ];
 
@@ -322,7 +322,12 @@ export function resolvePermissions(
 
   for (const role of roles) {
     const granted = role === ADMIN_ROLE ? ALL_PERMISSIONS : (rolePermissions.get(role) ?? []);
-    for (const permission of granted) if (isPermission(permission)) result.add(permission);
+    for (const permission of granted) {
+      // The universal role never carries copyrighted sheet music, even if an
+      // old row says so. Sheet access is decided in sheet-entitlement.ts.
+      if (role === MEMBER_ROLE && permission === "view_sheet_music") continue;
+      if (isPermission(permission)) result.add(permission);
+    }
   }
 
   for (const override of overrides) {

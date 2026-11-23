@@ -131,7 +131,7 @@ const commandsOf = (context: NavContext) => everything(context).flatMap((entry) 
 const finds = (context: NavContext, query: string) => searchSite(index, query, false, context).groups.flatMap((group) => group.entries.map((entry) => entry.label));
 
 const PLANNER = ["/service-planner", "/service-planner/inserts"];
-const ADMIN = ["/admin", "/admin/requests", "/admin/invitations", "/admin/users", "/admin/roles", "/admin/configuration", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"];
+const ADMIN = ["/admin", "/admin/requests", "/admin/invitations", "/admin/users", "/admin/roles", "/admin/configuration", "/admin/sheet-access", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"];
 const RESTRICTED = [...PLANNER, "/conductor", "/availability", ...ADMIN];
 
 describe("who the search offers what", () => {
@@ -212,6 +212,7 @@ describe("who the search offers what", () => {
       "/admin/users": ["manage_users", "view_profiles", "manage_roles", "manage_profiles", "manage_sheet_music"],
       "/admin/roles": ["manage_roles"],
       "/admin/configuration": ["manage_profiles", "manage_sheet_music"],
+      "/admin/sheet-access": ["manage_sheet_music"],
       "/admin/ai": ["use_ai"],
       "/admin/ai/memory": ["use_ai"],
       "/admin/ai/philosophy": ["use_ai"],

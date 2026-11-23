@@ -8,9 +8,12 @@ import { ActionMessage, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/components/ui/cn";
 import { useAction } from "@/components/ui/use-action";
+import { adminContent } from "@/content/admin";
 import { feedbackContent } from "@/content/feedback";
-import { PERMISSIONS, PERMISSION_GROUPS, type Permission } from "@/lib/auth/permissions";
+import { MEMBER_ROLE, MUSICIAN_ROLE, PERMISSIONS, PERMISSION_GROUPS, type Permission } from "@/lib/auth/permissions";
 import { PROFILE_LIMITS } from "@/lib/auth/profile-options";
+
+const copy = adminContent.sheetAccess.roleForm;
 
 /**
  * Create a role, or edit one: its name, description and permissions. A
@@ -92,8 +95,11 @@ export function RoleForm({
               {(Object.keys(PERMISSIONS) as Permission[])
                 .filter((key) => PERMISSIONS[key].group === group.key)
                 .map((key) => {
-                  const checked = locked || permissions.includes(key);
-                  const enabled = !locked && (grantable.includes(key) || checked);
+                  // The universal Member role can never carry copyrighted sheet music.
+                  const memberSheet = roleKey === MEMBER_ROLE && key === "view_sheet_music";
+                  const checked = !memberSheet && (locked || permissions.includes(key));
+                  const enabled = !memberSheet && !locked && (grantable.includes(key) || checked);
+                  const note = key !== "view_sheet_music" ? null : memberSheet ? copy.memberNote : roleKey === MUSICIAN_ROLE ? copy.musicianNote : null;
                   return (
                     <li key={key}>
                       <label
@@ -112,6 +118,7 @@ export function RoleForm({
                         <span>
                           <span className="block text-sm text-ink">{PERMISSIONS[key].label}</span>
                           <span className="block text-xs text-muted">{PERMISSIONS[key].description}</span>
+                          {note ? <span className="mt-1 block text-xs text-gold-dark">{note}</span> : null}
                         </span>
                       </label>
                     </li>

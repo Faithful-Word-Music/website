@@ -46,7 +46,7 @@ export const AUTH_SCHEMA = [
      FOREIGN KEY (clerk_env, role_key) REFERENCES roles (clerk_env, key) ON DELETE CASCADE
    )`,
   // Roles chosen when an invitation was sent, given to the person the first
-  // time their new account is used (see applyInvitationRoles in store.ts).
+  // time their new account is used (see src/lib/auth/invitation-claim.ts).
   `CREATE TABLE IF NOT EXISTS invitation_roles (
      ${ENV},
      clerk_invitation_id text        NOT NULL,

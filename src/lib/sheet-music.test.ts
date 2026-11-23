@@ -17,7 +17,7 @@ import {
   type TypeSources,
   versionedFileHref,
 } from "@/lib/sheet-music";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, ENTITLED_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { DEFAULT_SHEET_MUSIC_TYPES, legacyVariant } from "@/lib/sheet-music-type";
 
 const HYMNAL = "Soul-Stirring Songs and Hymns 1989";
@@ -448,7 +448,7 @@ describe("access and the public view", () => {
   it("lets signed-in members open every file, copyrighted or not", () => {
     for (const id of ["SSSH1989-121", "SSSH1989-012", "SSSH1989-125", "PS-054"]) {
       const song = byId(id);
-      expect(canAccessFile(song, song.versions[0].files[0], MEMBER_VIEWER)).toBe(true);
+      expect(canAccessFile(song, song.versions[0].files[0], ENTITLED_VIEWER)).toBe(true);
     }
   });
 
@@ -458,7 +458,7 @@ describe("access and the public view", () => {
       indexSong,
       (file) => canAccessFile(indexSong, file, PUBLIC_VIEWER),
       (file) => `/library/songs/x/sheet-music/${file.slug}`,
-      (file) => canAccessFile(indexSong, file, MEMBER_VIEWER),
+      (file) => canAccessFile(indexSong, file, ENTITLED_VIEWER),
     );
   };
 

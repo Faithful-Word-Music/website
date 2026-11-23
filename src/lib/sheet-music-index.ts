@@ -5,13 +5,24 @@ import { cache } from "react";
 
 import { siteConfig } from "@/config/site";
 import { getGoogleAccessToken, isGoogleConfigured } from "@/lib/google-auth";
-import { sheetMusicTypesForSite } from "@/lib/auth/store";
+import {
+  arrangementFor,
+  classifyResource,
+  parseFileRights,
+  type FileRightsRule,
+  type SheetResourceClass,
+} from "@/lib/auth/sheet-entitlement";
+import { deliveryPolicyMode, displayPolicyMode, sheetMusicTypesForSite } from "@/lib/auth/store";
 import {
   classify,
   type DriveItem,
+  type IndexSong,
   readSheetMusic,
+  type Rights,
+  type SheetFile,
   type SheetMusicIndex,
   type SheetMusicSources,
+  songRights,
 } from "@/lib/sheet-music";
 
 /**
@@ -36,7 +47,11 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3/files";
 const SONGS_TAB = "Songs";
 /** The optional per-version tab, under its current name or its older one. */
 const VERSIONS_TABS = ["Versions", "Editions"];
+/** The optional tab of arrangement rights by folder or file (parseFileRights). */
+const FILE_RIGHTS_TAB = "File Rights";
 const COLUMNS = "A1:Z";
+/** The oldest rights answer a file may be delivered on. */
+const RIGHTS_MAX_AGE_MS = 60_000;
 
 export const SHEET_MUSIC_TAG = "sheet-music-index";
 
@@ -82,8 +97,8 @@ interface BatchGetResponse {
   valueRanges?: Array<{ values?: string[][] }>;
 }
 
-/** The Songs tab, and the Versions tab if the sheet has one. */
-async function fetchTabs(): Promise<{ songs: string[][]; versions: string[][] }> {
+/** The Songs tab, and the Versions and File Rights tabs if the sheet has them. */
+async function fetchTabs(): Promise<{ songs: string[][]; versions: string[][]; fileRights: string[][] }> {
   const spreadsheet = `${SHEETS_API}/${siteConfig.sheetMusic.indexSpreadsheetId}`;
   const metadata = await requestJson<SpreadsheetMetadata>(
     `${spreadsheet}?fields=sheets.properties.title`,
@@ -95,6 +110,8 @@ async function fetchTabs(): Promise<{ songs: string[][]; versions: string[][] }>
   const params = new URLSearchParams();
   params.append("ranges", `'${SONGS_TAB}'!${COLUMNS}`);
   if (versionsTab) params.append("ranges", `'${versionsTab}'!${COLUMNS}`);
+  const hasFileRights = titles.has(FILE_RIGHTS_TAB);
+  if (hasFileRights) params.append("ranges", `'${FILE_RIGHTS_TAB}'!${COLUMNS}`);
   params.set("valueRenderOption", "FORMATTED_VALUE");
   params.set("majorDimension", "ROWS");
 
@@ -102,6 +119,7 @@ async function fetchTabs(): Promise<{ songs: string[][]; versions: string[][] }>
   return {
     songs: data.valueRanges?.[0]?.values ?? [],
     versions: versionsTab ? (data.valueRanges?.[1]?.values ?? []) : [],
+    fileRights: hasFileRights ? (data.valueRanges?.[versionsTab ? 2 : 1]?.values ?? []) : [],
   };
 }
 
@@ -148,11 +166,11 @@ async function fetchSources(): Promise<SheetMusicSources> {
     [siteConfig.sheetMusic.hymnalCollection, "Other Songs", "Psalms"],
   );
   if (sources.songs.length === 0) throw new Error("The Index has no readable Songs rows");
-  return sources;
+  return { ...sources, fileRights: parseFileRights(tabs.fileRights) };
 }
 
 /** Failures are not cached, so a fixed sheet or key is picked up on the next visit. */
-const getCachedSources = unstable_cache(fetchSources, ["sheet-music-sources-website-collections"], {
+const getCachedSources = unstable_cache(fetchSources, ["sheet-music-sources-website-collections-v2"], {
   tags: [SHEET_MUSIC_TAG],
   revalidate: siteConfig.sheetMusic.revalidateSeconds,
 });
@@ -192,10 +210,76 @@ export async function getSheetMusicSources(): Promise<SheetMusicSourcesResult> {
  * of the page ask.
  */
 export const getSheetMusicIndex = cache(async (): Promise<SheetMusicResult> => {
-  const [sources, types] = await Promise.all([getSheetMusicSources(), sheetMusicTypesForSite()]);
+  const [sources, types, mode] = await Promise.all([getSheetMusicSources(), sheetMusicTypesForSite(), displayPolicyMode()]);
   if (!sources.ok) return sources;
-  return { ok: true, index: classify(sources.sources, types) };
+  return { ok: true, index: classify(sources.sources, types, mode) };
 });
+
+interface RightsSnapshot {
+  at: number;
+  rights: Map<string, Rights>;
+  rules: FileRightsRule[];
+}
+
+let rightsSnapshot: RightsSnapshot | null = null;
+let rightsRead: Promise<RightsSnapshot | null> | null = null;
+
+/**
+ * The rights as Google has them now, never older than RIGHTS_MAX_AGE_MS.
+ * Deliberately not unstable_cache, which can hand back a stale entry while it
+ * refreshes. Null when they cannot be read: nothing is delivered on a guess.
+ */
+async function freshRights(): Promise<RightsSnapshot | null> {
+  if (rightsSnapshot && Date.now() - rightsSnapshot.at < RIGHTS_MAX_AGE_MS) return rightsSnapshot;
+  rightsRead ??= (async () => {
+    try {
+      const startedAt = Date.now();
+      const tabs = await fetchTabs();
+      const rights = songRights(tabs.songs);
+      if (rights.size === 0) throw new Error("The Index has no readable Songs rows");
+      rightsSnapshot = { at: startedAt, rights, rules: parseFileRights(tabs.fileRights) };
+      return rightsSnapshot;
+    } catch (error) {
+      rightsSnapshot = null;
+      console.error("[sheet-music] Could not read current rights:", error instanceof Error ? error.message : "unknown error");
+      return null;
+    } finally {
+      rightsRead = null;
+    }
+  })();
+  return rightsRead;
+}
+
+/**
+ * What a file is right now, for a delivery. Every route that sends a file's
+ * bytes asks this first. Null means the answer is unavailable: refuse.
+ */
+export async function currentFileResource(song: IndexSong, file: SheetFile): Promise<SheetResourceClass | null> {
+  const [snapshot, mode] = await Promise.all([freshRights(), deliveryPolicyMode()]);
+  if (!snapshot) return null;
+  return classifyResource(snapshot.rights.get(song.id.toLowerCase()) ?? "unknown", arrangementFor(file, snapshot.rules), mode);
+}
+
+/**
+ * Confirms with Drive that a file is still where the Index found it, just
+ * before sending it, so one moved out of a cleared folder is not served on
+ * the cached path. Returns its current checksum, or null to refuse.
+ */
+export async function confirmDriveFile(file: SheetFile): Promise<{ md5: string | null } | null> {
+  try {
+    const params = new URLSearchParams({ fields: "trashed,parents,md5Checksum", supportsAllDrives: "true" });
+    const meta = await requestJson<{ trashed?: boolean; parents?: string[]; md5Checksum?: string }>(
+      `${DRIVE_API}/${encodeURIComponent(file.driveFileId)}?${params}`,
+      "Google Drive",
+    );
+    if (meta.trashed) return null;
+    if (file.parentId && !(meta.parents ?? []).includes(file.parentId)) return null;
+    return { md5: meta.md5Checksum ?? null };
+  } catch (error) {
+    console.error("[sheet-music] Could not confirm a file:", error instanceof Error ? error.message : "unknown error");
+    return null;
+  }
+}
 
 /**
  * A whole file from Drive, for the server's own reading (the library index
@@ -214,7 +298,7 @@ export async function readDriveFile(driveFileId: string, maxBytes: number): Prom
 
 /**
  * The file's bytes from Drive, as a stream, or null when Drive will not give
- * them. Call ONLY after canAccessFile() has allowed it.
+ * them. Call ONLY after currentFileResource() and decideSheetAccess() have allowed it.
  *
  * supportsAllDrives lets the same code read from a shared drive if the music
  * ever moves to one.

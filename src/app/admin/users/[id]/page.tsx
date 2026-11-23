@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import { NoAccess, Notice } from "@/components/account/Notices";
 import { ProfileView, SectionLabel } from "@/components/account/ProfileView";
 import { ActionButton } from "@/components/admin/ActionButton";
+import { ChurchAffiliationControls } from "@/components/admin/ChurchAffiliationSection";
 import { ExtendDeadlineButton } from "@/components/admin/ProfileRequirementsPerson";
+import { adminContent } from "@/content/admin";
 import { profileSetupContent, requirementLabel } from "@/content/profile-setup";
 import { feedbackContent } from "@/content/feedback";
 import { Pill } from "@/components/admin/StatusPill";
@@ -29,17 +31,22 @@ import { LEAD_SONGS } from "@/lib/auth/profile-requirements";
 import { evaluateProfile } from "@/lib/auth/requirements";
 import { getSongLeading } from "@/lib/auth/requirements-store";
 import { audienceFor, toProfileRecord, visibleProfile } from "@/lib/auth/profile-visibility";
+import { affiliationRefusal } from "@/lib/auth/membership-rules";
+import { getAffiliation } from "@/lib/auth/membership-store";
 import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
+import { projectSheetPermission, resolveSheetEntitlement } from "@/lib/auth/sheet-entitlement";
 import {
   getProfile,
   getSheetMusicTypes,
   getUserInstruments,
   getUserTitles,
+  isMembershipInstalled,
   listOptions,
   listOverrides,
   listRoles,
   listSheetMusicTypes,
   loadAuthorization,
+  membershipClient,
 } from "@/lib/auth/store";
 
 import { deleteUserAction, setBannedAction } from "../../actions";
@@ -84,7 +91,26 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
       managesSheetMusic ? listSheetMusicTypes(viewer.env) : null,
       getSongLeading(viewer.env, person.id),
     ]);
-  const effective = resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides);
+  // The same resolution the site applies to this person, from what is stored now.
+  const sheet = resolveSheetEntitlement({
+    mode: authorization.sheetPolicy.mode,
+    roleKeys: authorization.roleKeys,
+    rolePermissions: authorization.rolePermissions,
+    overrides,
+    affiliation: authorization.sheetPolicy.affiliation,
+  });
+  const effective = projectSheetPermission(resolvePermissions(authorization.roleKeys, authorization.rolePermissions, overrides), sheet);
+  const seesAccess = viewer.can("manage_users") || viewer.can("manage_roles");
+  const membershipReady = seesAccess && (await isMembershipInstalled(viewer.env));
+  const affiliation = membershipReady ? await getAffiliation(await membershipClient(viewer.env), viewer.env, person.id) : null;
+  const sheetOverride = overrides.find((override) => override.permission === "view_sheet_music") ?? null;
+  const affiliationRefused = affiliationRefusal({
+    actorId: viewer.userId,
+    targetId: person.id,
+    actorIsAdmin: viewer.roleKeys.includes(ADMIN_ROLE),
+    targetIsAdmin: authorization.roleKeys.includes(ADMIN_ROLE),
+  });
+  const accessCopy = adminContent.sheetAccess.person;
   const roleLabels = roles
     .filter((role) => authorization.roleKeys.includes(role.key) || role.key === MEMBER_ROLE)
     .map((role) => role.label);
@@ -135,6 +161,50 @@ export default async function UserPage({ params }: PageProps<"/admin/users/[id]"
       ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {seesAccess ? (
+          <Section title={accessCopy.title} description={accessCopy.description}>
+            <div className="space-y-4 text-sm">
+              <p className="flex flex-wrap items-center gap-2 text-ink">
+                <Pill tone={affiliation?.status === "verified" ? "strong" : "muted"}>
+                  {accessCopy.status[affiliation?.status ?? "none"]}
+                </Pill>
+                {affiliation?.verifiedAt ? <span className="text-xs text-muted">{accessCopy.verifiedOn.replace("{date}", formatDateTime(affiliation.verifiedAt))}</span> : null}
+              </p>
+              {affiliation?.status === "revoked" ? (
+                <p className="text-xs text-muted">{accessCopy.revokedOn.replace("{date}", formatDateTime(affiliation.updatedAt))}</p>
+              ) : null}
+              <div>
+                <p className="text-xs text-muted">{accessCopy.sheetMusic}</p>
+                <p className="mt-1 text-ink">{sheet.entitled ? accessCopy.allowed : accessCopy.denied}</p>
+                <p className="mt-1 text-xs text-muted">
+                  {(sheet.entitled ? sheet.sources : [sheet.reason]).map((source) => accessCopy.reasons[source]).join(", ")}
+                </p>
+              </div>
+              {sheetOverride ? (
+                <div>
+                  <p className="text-xs text-muted">{accessCopy.override}</p>
+                  <p className="mt-1 text-ink">
+                    {sheetOverride.effect === "grant" ? accessCopy.overrideGrant : accessCopy.overrideDeny} ·{" "}
+                    {formatDateTime(sheetOverride.setAt)}
+                  </p>
+                  {sheetOverride.note ? <p className="mt-1 text-xs text-muted">{sheetOverride.note}</p> : null}
+                </div>
+              ) : null}
+              {authorization.sheetPolicy.mode === "legacy" ? <p className="text-xs text-muted">{accessCopy.legacy}</p> : null}
+              {viewer.can("manage_users") && membershipReady ? (
+                <div className="border-t border-line pt-4">
+                  <ChurchAffiliationControls
+                    userId={person.id}
+                    status={affiliation?.status ?? null}
+                    canChange={affiliationRefused === null}
+                    refusal={affiliationRefused ? adminContent.sheetAccess.affiliation.refused[affiliationRefused] : null}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </Section>
+        ) : null}
+
         {viewer.can("manage_roles") ? (
           <Section title="Roles" description="What this person may do on the site. Their permissions add up across roles.">
             <RoleEditor

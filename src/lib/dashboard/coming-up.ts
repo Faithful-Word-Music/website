@@ -24,7 +24,7 @@ import {
   type SongVersion,
   versionedFileHref,
 } from "@/lib/sheet-music";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER, type Viewer as SheetViewer } from "@/lib/sheet-music-access";
+import { canAccessFile, ENTITLED_VIEWER, PUBLIC_VIEWER, type Viewer as SheetViewer } from "@/lib/sheet-music-access";
 import { assignedFiles } from "@/lib/sheet-music-type";
 import { serviceSlots, songPath } from "@/lib/song-list";
 import { serviceAnchor } from "@/lib/site-search";
@@ -273,7 +273,7 @@ export function buildComingUp(
     anyType?: boolean;
   },
 ): ComingUpService[] {
-  const viewer = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
+  const viewer = focus.opensMemberSheetMusic ? ENTITLED_VIEWER : PUBLIC_VIEWER;
   const { index, sheetTypes } = options;
   const identities = indexEntries(index?.songs ?? []);
   const identify = <T extends SongReference>(song: T) => ({

@@ -48,7 +48,7 @@ import {
   teamTools,
   type WorkspaceInput,
 } from "@/lib/dashboard/workspace";
-import { canAccessFile, MEMBER_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
+import { canAccessFile, ENTITLED_VIEWER, PUBLIC_VIEWER } from "@/lib/sheet-music-access";
 import { buildSongRecords } from "@/lib/song-history";
 
 export const metadata: Metadata = {
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
   const gaps = focus.managesSheetMusic && music.index ? findSheetGaps(music.upcoming, music.index, hymnalCollection, capoRules) : null;
   const glance = focus.seesAnalytics ? quarterGlance(music.past, now) : null;
 
-  const viewerKind = focus.opensMemberSheetMusic ? MEMBER_VIEWER : PUBLIC_VIEWER;
+  const viewerKind = focus.opensMemberSheetMusic ? ENTITLED_VIEWER : PUBLIC_VIEWER;
   // The song list's sheet music buttons, worked out here anyway - handed to
   // it so it opens complete (src/lib/service-packets.ts).
   // Someone who looks after the sheet music can print a service in any type.

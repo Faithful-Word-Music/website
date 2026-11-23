@@ -6,6 +6,7 @@ import { inviteAction } from "@/app/admin/actions";
 import { ActionMessage, ChoiceChips, TextField } from "@/components/account/fields";
 import { Button } from "@/components/ui/Button";
 import { useAction } from "@/components/ui/use-action";
+import { adminContent } from "@/content/admin";
 import { feedbackContent } from "@/content/feedback";
 
 export interface AssignableRole {
@@ -42,19 +43,40 @@ export function InvitationRolePicker({
   );
 }
 
+/** Church affiliation, decided separately from roles when inviting someone. */
+export function AffiliationChoice({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
+  const copy = adminContent.sheetAccess.affiliation;
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line px-3 py-2.5 hover:border-gold">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="mt-1 h-4 w-4 accent-[var(--color-ink)]"
+      />
+      <span>
+        <span className="block text-sm text-ink">{copy.inviteLabel}</span>
+        <span className="block text-xs text-muted">{copy.inviteHint}</span>
+      </span>
+    </label>
+  );
+}
+
 /** Invite someone directly, without an account request first. */
 export function InviteForm({ roles }: { roles: AssignableRole[] }) {
   const ids = useId();
   const [email, setEmail] = useState("");
   const [chosenRoles, setChosenRoles] = useState<string[]>([]);
+  const [verified, setVerified] = useState(false);
   const { result, run, stateOf } = useAction();
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void run(() => inviteAction(email, chosenRoles), {
+    void run(() => inviteAction(email, chosenRoles, verified), {
       onOk: () => {
         setEmail("");
         setChosenRoles([]);
+        setVerified(false);
       },
     });
   }
@@ -70,6 +92,7 @@ export function InviteForm({ roles }: { roles: AssignableRole[] }) {
         maxLength={254}
         onChange={setEmail}
       />
+      <AffiliationChoice checked={verified} onChange={setVerified} />
       <InvitationRolePicker name={`${ids}-roles`} roles={roles} selected={chosenRoles} onChange={setChosenRoles} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Button

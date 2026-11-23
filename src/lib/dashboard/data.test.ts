@@ -38,7 +38,7 @@ vi.mock("./load", () => ({
 
 function viewer(permissions: Permission[]): Viewer {
   const set = new Set(permissions);
-  return { userId: "user_1", env: "development", roleKeys: [], permissions: set, explicit: set, can: (p) => set.has(p), canAccessAdmin: false };
+  return { userId: "user_1", env: "development", roleKeys: [], permissions: set, explicit: set, sheet: { entitled: false, reason: "no_entitlement", sources: [], delegable: false, mayReviewWithheld: false }, can: (p) => set.has(p), canAccessAdmin: false };
 }
 
 beforeEach(() => {

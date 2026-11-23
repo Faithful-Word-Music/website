@@ -108,7 +108,7 @@ describe("GET /api/account/next-service", () => {
     await call();
     state.viewer = member("view_sheet_music");
     await call();
-    expect(seen).toEqual([{ kind: "public" }, { kind: "member" }]);
+    expect(seen).toEqual([{ kind: "public" }, { kind: "entitled" }]);
   });
 
   it("503 and no link when the schedule or the Index cannot be read", async () => {

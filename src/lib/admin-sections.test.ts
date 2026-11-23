@@ -20,6 +20,7 @@ describe("the admin area's sections", () => {
       "/admin/users",
       "/admin/roles",
       "/admin/configuration",
+      "/admin/sheet-access",
       "/admin/notifications",
       "/admin/notifications/history",
       "/admin/notifications/templates",
@@ -35,6 +36,7 @@ describe("the admin area's sections", () => {
       "/admin",
       "/admin/users",
       "/admin/configuration",
+      "/admin/sheet-access",
       "/admin/notifications",
       "/admin/notifications/history",
       "/admin/notifications/templates",
@@ -57,7 +59,7 @@ describe("the admin area's sections", () => {
     expect(hrefs(holding("manage_roles"))).toEqual(["/admin", "/admin/users", "/admin/roles"]);
     expect(hrefs(holding("manage_users"))).toEqual(["/admin", "/admin/requests", "/admin/invitations", "/admin/users"]);
     expect(hrefs(holding("use_ai"))).toEqual(["/admin", "/admin/ai", "/admin/ai/memory", "/admin/ai/philosophy"]);
-    expect(hrefs(holding("manage_sheet_music"))).toEqual(["/admin", "/admin/users", "/admin/configuration"]);
+    expect(hrefs(holding("manage_sheet_music"))).toEqual(["/admin", "/admin/users", "/admin/configuration", "/admin/sheet-access"]);
     // Sending notifications and configuring them are separate: either opens only its own pages.
     expect(hrefs(holding("send_notifications"))).toEqual(["/admin", "/admin/notifications", "/admin/notifications/history", "/admin/notifications/templates"]);
     expect(hrefs(holding("manage_notifications"))).toEqual(["/admin", "/admin/notifications/policies"]);

@@ -121,7 +121,7 @@ describe("what may be reported on", () => {
   });
 
   it("offers only sheet music the person could open", async () => {
-    const file = { format: "pdf", slug: "standard-1.pdf", driveFileId: "secret-drive-id" };
+    const file = { format: "pdf", slug: "standard-1.pdf", driveFileId: "secret-drive-id", eligibility: "restricted" };
     data.index = { songs: [{ id: "BTH-012", rights: "copyrighted", versions: [{ typeId: 1, label: "Standard", version: "1", keys: null, capoFret: null, files: [file] }] }], types: [] };
     const asMember = await resolveContext("development", member, "wrong_sheet_music", { songId: "BTH-012", file: "standard-1.pdf" }, NOW);
     expect(asMember.ok && asMember.context.sheetMusic).toEqual({ file: "standard-1.pdf", label: "Standard", format: "pdf" });

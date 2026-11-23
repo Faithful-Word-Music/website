@@ -12,7 +12,7 @@ import { formatDate } from "@/lib/auth/format";
 import { GRACE_DAYS, type RequirementPolicy } from "@/lib/auth/profile-requirements";
 import { getRequirementPolicy } from "@/lib/auth/requirements-store";
 import { PROFILE_GATE_EXEMPT, requireAnyPermission } from "@/lib/auth/session";
-import { expandSheetMusicSources, getCapoPolicy, listOptions, listSheetMusicTypes } from "@/lib/auth/store";
+import { displayPolicyMode, expandSheetMusicSources, getCapoPolicy, listOptions, listSheetMusicTypes } from "@/lib/auth/store";
 import { classify, FORMAT_FOLDERS, foldersOwned, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources } from "@/lib/sheet-music-index";
 import { describeSource, songCount } from "@/lib/sheet-music-type";
@@ -49,7 +49,7 @@ export default async function ConfigurationPage() {
   if (drive && seeded && (await expandSheetMusicSources(viewer.env, (source) => foldersOwned(drive, seeded, source)))) {
     sheetTypes = await listSheetMusicTypes(viewer.env);
   }
-  const index = drive && sheetTypes ? classify(drive, sheetTypes) : null;
+  const index = drive && sheetTypes ? classify(drive, sheetTypes, await displayPolicyMode()) : null;
 
   return (
     <div>
