@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { LibrarySectionNav } from "@/components/library/LibrarySectionNav";
 import { SongIndex } from "@/components/library/SongIndex";
 import { PreparationLink } from "@/components/recordings/PreparationLink";
 import { Card } from "@/components/ui/Card";
@@ -42,6 +43,9 @@ export default async function LibraryPage() {
         <SectionHeading as="h1" eyebrow={siteConfig.name} title={libraryContent.title} className="max-w-2xl">
           <p className="text-base sm:text-lg">{libraryContent.lead}</p>
         </SectionHeading>
+
+        {/* Members only, found out in the browser: this page stays the same for everyone. */}
+        <LibrarySectionNav className="mt-8" />
 
         {/* Recordings live on each song's page; the upcoming services' are gathered into playlists. */}
         <PreparationLink className="mt-8" />

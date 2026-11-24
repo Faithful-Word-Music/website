@@ -9,6 +9,7 @@ export const dashboardContent = {
   greeting: "Welcome back, {name}!",
   greetingFallback: "Welcome back!",
   profileLink: "Your profile",
+  favoritesLink: "Your favorites",
 
   attention: {
     // A profile that still needs something is no longer an item here: the

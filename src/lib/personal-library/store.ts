@@ -1,6 +1,8 @@
 import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import type { MembershipSql } from "@/lib/auth/membership-store";
 
+import { foldSongId } from "./identity";
+
 /**
  * Reading and writing one person's Personal Library (schema.mjs).
  *
@@ -57,6 +59,11 @@ function storedIdList(storedIds: readonly string[]): string[] {
   return [...storedIds];
 }
 
+/** SQL's side of foldSongId (identity.ts): the same ASCII-only fold, whatever the database locale. */
+const FOLDED_SONG_ID = `translate(song_id, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')`;
+
+const foldedIdList = (storedIds: readonly string[]) => [...new Set(storedIdList(storedIds).map(foldSongId))];
+
 // ---------------------------------------------------------------------------
 // Favorites
 // ---------------------------------------------------------------------------
@@ -73,7 +80,7 @@ export interface FavoritePage {
 
 export type AddFavoriteResult = "added" | "already" | "account-erasing";
 
-/** Adds once. A favorite stored under any spelling of this song counts as already there. */
+/** Adds once. A favorite stored under any spelling of this song, in any case, counts as already there. */
 export async function addFavorite(
   sql: PersonalLibrarySql,
   owner: LibraryOwner,
@@ -84,7 +91,7 @@ export async function addFavorite(
     owner,
     `WITH blocked AS (SELECT ${ERASING} AS value),
           present AS (SELECT 1 FROM user_song_favorites
-                       WHERE clerk_env = $1 AND clerk_user_id = $2 AND song_id = ANY($4::text[])),
+                       WHERE clerk_env = $1 AND clerk_user_id = $2 AND ${FOLDED_SONG_ID} = ANY($4::text[])),
           inserted AS (
             INSERT INTO user_song_favorites (clerk_env, clerk_user_id, song_id, created_at)
             SELECT $1::text, $2::text, $3::text, clock_timestamp()
@@ -92,26 +99,56 @@ export async function addFavorite(
             ON CONFLICT DO NOTHING
             RETURNING 1)
      SELECT (SELECT value FROM blocked) AS blocked, EXISTS (SELECT 1 FROM inserted) AS added`,
-    [owner.env, owner.userId, song.songId, storedIdList(song.storedIds)],
+    [owner.env, owner.userId, song.songId, foldedIdList(song.storedIds)],
   );
   if (row.blocked) return "account-erasing";
   return row.added ? "added" : "already";
 }
 
-/** Removes this song under every spelling. Removing nothing is not an error. */
-export async function removeFavorite(
+export type RemoveFavoriteResult = "removed" | "absent" | "account-erasing";
+
+async function removeWhere(
+  sql: PersonalLibrarySql,
+  owner: LibraryOwner,
+  condition: string,
+  value: string | string[],
+): Promise<RemoveFavoriteResult> {
+  const [row] = await locked(
+    sql,
+    owner,
+    `WITH blocked AS (SELECT ${ERASING} AS value),
+          removed AS (
+            DELETE FROM user_song_favorites
+             WHERE clerk_env = $1 AND clerk_user_id = $2 AND ${condition}
+               AND NOT (SELECT value FROM blocked)
+            RETURNING 1)
+     SELECT (SELECT value FROM blocked) AS blocked, EXISTS (SELECT 1 FROM removed) AS removed`,
+    [owner.env, owner.userId, value],
+  );
+  if (row.blocked) return "account-erasing";
+  return row.removed ? "removed" : "absent";
+}
+
+/** Removes this song under every spelling, in any case. Removing nothing is not an error. */
+export function removeFavorite(
   sql: PersonalLibrarySql,
   owner: LibraryOwner,
   storedIds: readonly string[],
-): Promise<"removed" | "absent"> {
-  const rows = await locked(
-    sql,
-    owner,
-    `DELETE FROM user_song_favorites
-      WHERE clerk_env = $1 AND clerk_user_id = $2 AND song_id = ANY($3::text[]) RETURNING 1`,
-    [owner.env, owner.userId, storedIdList(storedIds)],
-  );
-  return rows.length > 0 ? "removed" : "absent";
+): Promise<RemoveFavoriteResult> {
+  return removeWhere(sql, owner, `${FOLDED_SONG_ID} = ANY($3::text[])`, foldedIdList(storedIds));
+}
+
+/**
+ * Removes the one row stored under exactly this key, for an entry the
+ * directory cannot resolve. Case-sensitive with no alias expansion: without a
+ * resolved song, a wider match could reach a different song's record.
+ */
+export function removeExactFavorite(
+  sql: PersonalLibrarySql,
+  owner: LibraryOwner,
+  storedKey: string,
+): Promise<RemoveFavoriteResult> {
+  return removeWhere(sql, owner, `song_id = $3::text`, storedKey);
 }
 
 export async function isFavorite(
@@ -120,11 +157,56 @@ export async function isFavorite(
   storedIds: readonly string[],
 ): Promise<boolean> {
   const [row] = await sql.query(
-    `SELECT EXISTS (SELECT 1 FROM user_song_favorites
-                     WHERE clerk_env = $1 AND clerk_user_id = $2 AND song_id = ANY($3::text[])) AS present`,
-    [owner.env, owner.userId, storedIdList(storedIds)],
+    `SELECT NOT ${ERASING} AND EXISTS (SELECT 1 FROM user_song_favorites
+                     WHERE clerk_env = $1 AND clerk_user_id = $2 AND ${FOLDED_SONG_ID} = ANY($3::text[])) AS present`,
+    [owner.env, owner.userId, foldedIdList(storedIds)],
   );
   return row.present === true;
+}
+
+export type FavoriteMembership = { blocked: true } | { blocked: false; present: Set<string> };
+
+/**
+ * Which of these folded spellings (foldSongId) the owner has stored, in one
+ * query. The database filters, so a small lookup never loads the collection.
+ */
+export async function favoriteMembership(
+  sql: PersonalLibrarySql,
+  owner: LibraryOwner,
+  foldedIds: readonly string[],
+): Promise<FavoriteMembership> {
+  const [row] = await sql.query(
+    `WITH blocked AS (SELECT ${ERASING} AS value)
+     SELECT (SELECT value FROM blocked) AS blocked,
+            COALESCE((SELECT json_agg(DISTINCT ${FOLDED_SONG_ID}) FROM user_song_favorites
+                       WHERE clerk_env = $1 AND clerk_user_id = $2 AND ${FOLDED_SONG_ID} = ANY($3::text[])
+                         AND NOT (SELECT value FROM blocked)), '[]'::json) AS present`,
+    [owner.env, owner.userId, [...foldedIds]],
+  );
+  if (row.blocked) return { blocked: true };
+  return { blocked: false, present: new Set(parseJson<string[]>(row.present)) };
+}
+
+/**
+ * Every stored favorite with its exact timestamp, for search and sorting across
+ * the whole collection. The marker is read in the same statement, so an
+ * erasing account gets nothing.
+ */
+export async function listFavoriteRows(
+  sql: PersonalLibrarySql,
+  owner: LibraryOwner,
+): Promise<{ blocked: true } | { blocked: false; rows: FavoriteRow[] }> {
+  const [row] = await sql.query(
+    `WITH blocked AS (SELECT ${ERASING} AS value)
+     SELECT (SELECT value FROM blocked) AS blocked,
+            COALESCE((SELECT json_agg(json_build_object('songId', f.song_id, 'createdAt', ${PRECISE("f.created_at")}))
+                        FROM user_song_favorites f
+                       WHERE f.clerk_env = $1 AND f.clerk_user_id = $2
+                         AND NOT (SELECT value FROM blocked)), '[]'::json) AS rows`,
+    [owner.env, owner.userId],
+  );
+  if (row.blocked) return { blocked: true };
+  return { blocked: false, rows: parseJson<FavoriteRow[]>(row.rows) };
 }
 
 function parseCursor(cursor: string): { at: string; songId: string } | null {
@@ -145,7 +227,7 @@ export async function listFavorites(
   if (options.cursor && !cursor) throw new Error("Invalid favorites cursor.");
   const rows = await sql.query(
     `SELECT song_id, ${PRECISE("created_at")} AS created_at FROM user_song_favorites
-      WHERE clerk_env = $1 AND clerk_user_id = $2
+      WHERE clerk_env = $1 AND clerk_user_id = $2 AND NOT ${ERASING}
         AND ($3::timestamptz IS NULL OR created_at < $3::timestamptz
              OR (created_at = $3::timestamptz AND song_id > $4::text))
       ORDER BY user_song_favorites.created_at DESC, song_id ASC
@@ -221,7 +303,7 @@ export async function recordRecent(
                    OR last_viewed_at <= COALESCE($3::timestamptz, clock_timestamp()) - make_interval(days => ${RECENT_RETENTION_DAYS})
                 LIMIT ${PRUNE_BATCH}
               ) doomed
-              WHERE r.clerk_env = $1 AND r.clerk_user_id = $2
+              WHERE r.clerk_env = $1 AND r.clerk_user_id = $2 AND NOT ${ERASING}
                 AND r.resource_kind = doomed.resource_kind AND r.resource_key = doomed.resource_key`,
       params: [owner.env, owner.userId, at],
     },
@@ -254,14 +336,20 @@ export async function listRecent(
   }));
 }
 
-export async function clearRecent(sql: PersonalLibrarySql, owner: LibraryOwner): Promise<number> {
-  const rows = await locked(
+/** How many were cleared. Refused once the account has an erasure marker. */
+export async function clearRecent(sql: PersonalLibrarySql, owner: LibraryOwner): Promise<number | "account-erasing"> {
+  const [row] = await locked(
     sql,
     owner,
-    `DELETE FROM user_library_recent WHERE clerk_env = $1 AND clerk_user_id = $2 RETURNING 1`,
+    `WITH blocked AS (SELECT ${ERASING} AS value),
+          cleared AS (
+            DELETE FROM user_library_recent
+             WHERE clerk_env = $1 AND clerk_user_id = $2 AND NOT (SELECT value FROM blocked)
+            RETURNING 1)
+     SELECT (SELECT value FROM blocked) AS blocked, (SELECT count(*)::int FROM cleared) AS cleared`,
     [owner.env, owner.userId],
   );
-  return rows.length;
+  return row.blocked ? "account-erasing" : (row.cleared as number);
 }
 
 // ---------------------------------------------------------------------------
@@ -301,7 +389,7 @@ export type UpdateNoteResult =
   | { status: "not-found" | "account-erasing" };
 
 export type DeleteNoteResult =
-  | { status: "deleted" | "already-absent" }
+  | { status: "deleted" | "already-absent" | "account-erasing" }
   | { status: "conflict"; notes: SongNote[] };
 
 /** Plain text up to 20,000 characters, counted as PostgreSQL counts them. Blank is valid. */
@@ -516,18 +604,22 @@ export async function deleteNote(
   const [row] = await locked(
     sql,
     owner,
-    `WITH existing AS (SELECT * FROM user_song_notes
+    `WITH blocked AS (SELECT ${ERASING} AS value),
+          existing AS (SELECT * FROM user_song_notes
                         WHERE clerk_env = $1 AND clerk_user_id = $2 AND song_id = ANY($3::text[])),
           removed AS (
             UPDATE user_song_notes AS n
                SET content = '', deleted_at = clock_timestamp(), updated_at = clock_timestamp()
              WHERE n.clerk_env = $1 AND n.clerk_user_id = $2 AND n.song_id = ANY($3::text[])
                AND n.note_id = $4::uuid AND n.revision = $5::integer AND n.deleted_at IS NULL
+               AND NOT (SELECT value FROM blocked)
             RETURNING 1)
-     SELECT EXISTS (SELECT 1 FROM removed) AS deleted,
+     SELECT (SELECT value FROM blocked) AS blocked,
+            EXISTS (SELECT 1 FROM removed) AS deleted,
             ${LIVE_NOTES} AS existing`,
     [owner.env, owner.userId, storedIdList(input.storedIds), input.noteId, input.expectedRevision],
   );
+  if (row.blocked) return { status: "account-erasing" };
   if (row.deleted) return { status: "deleted" };
   const existing = noteList(row.existing);
   return existing.length > 0 ? { status: "conflict", notes: existing.map(toNote) } : { status: "already-absent" };

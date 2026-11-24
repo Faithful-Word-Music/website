@@ -68,7 +68,7 @@ Rollback removes the Song Leader grant activation added. It never restores unive
 
 ## Personal Library
 
-Favorites, notes and history are open to every approved member and never affect this policy. Having a song in them grants nothing. See [personal-library.md](personal-library.md).
+Favorites, notes and history are open to every approved member and never affect this policy. Having a song in them grants nothing, and Favorites responses carry only public song details: no rights, file links or Drive identifiers. Administrators have no access to another person's Favorites. See [personal-library.md](personal-library.md).
 
 ## Known limitation: AI lyrics
 

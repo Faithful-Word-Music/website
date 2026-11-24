@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 
+import { FavoriteButton } from "@/components/library/FavoriteButton";
 import { SongRecordings } from "@/components/recordings/SongRecordings";
 import { SongSections } from "@/components/song-list/MemberSheetMusic";
 import { SongReportLinks } from "@/components/support/SongReportLinks";
@@ -97,6 +98,11 @@ export default async function SongPage({ params }: PageProps<"/library/songs/[so
           title={title}
           className="mt-6 max-w-2xl"
         />
+
+        {/* Approved members only, found out in the browser: the page itself stays the same for everyone. */}
+        <div className="favorite-song-slot mt-4">
+          <FavoriteButton songId={data.songId} title={title} labelled />
+        </div>
 
         {/*
           What most visitors come for sits first: the sheet music whenever this

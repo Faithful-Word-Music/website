@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId, useMemo, useRef, useState } from "react";
 
+import { FavoriteButton } from "@/components/library/FavoriteButton";
 import { NewTabNote, songLinkProps } from "@/components/song-list/SongLink";
 import { SongSearch } from "@/components/song-list/SongSearch";
 import { buttonClasses } from "@/components/ui/Button";
@@ -126,8 +127,12 @@ export function SongIndex({ songs }: { songs: LibrarySong[] }) {
               </h3>
               <ul className="mt-4 md:mt-0 lg:columns-2 lg:gap-12">
                 {letterSongs.map((song) => (
-                  <li key={song.slug} data-flip={song.slug} className="break-inside-avoid">
+                  <li key={song.slug} data-flip={song.slug} className="flex break-inside-avoid items-start gap-1">
                     <IndexEntry song={song} />
+                    {/* Beside the link, never in it. The slot is held for a member before the heart loads. */}
+                    <span className="favorite-slot">
+                      <FavoriteButton songId={song.songId} title={song.title} />
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -145,7 +150,7 @@ function IndexEntry({ song }: { song: LibrarySong }) {
     <Link
       href={songPath(song.slug)}
       {...songLinkProps}
-      className="group flex min-h-11 items-baseline gap-2 rounded-sm py-2 focus-visible:outline-offset-4"
+      className="group flex min-h-11 min-w-0 flex-1 items-baseline gap-2 rounded-sm py-2 focus-visible:outline-offset-4"
     >
       <span className="min-w-0 font-display text-[1.0625rem] leading-snug text-ink transition-colors group-hover:text-gold-dark">
         {song.title}

@@ -864,25 +864,49 @@ export interface CatalogSong {
  */
 async function copyCatalogSongs(env: ClerkEnv) {
   const sql = await plannerSql();
-  // Nothing writes the old table any more, so once this server has copied it
-  // for an environment there is nothing left to copy. Callers at the same
-  // moment share one copy; a failed one is forgotten and tried again. Each new
-  // server instance copies once more, which changes nothing (DO NOTHING).
-  let copying = catalogCopies.get(env);
-  if (!copying) {
-    copying = copyLegacyCatalog(sql, env);
-    catalogCopies.set(env, copying);
-    copying.catch(() => {
-      if (catalogCopies.get(env) === copying) catalogCopies.delete(env);
-    });
-  }
-  await copying;
+  await copyFromNow(sql, env);
   return sql;
 }
 
-const catalogCopies = new Map<ClerkEnv, Promise<void>>();
+interface CatalogCopyRuns {
+  /** The copy executing now. Its snapshot may predate a later caller. */
+  running: Promise<void> | null;
+  /** The copy that has not started yet, which any new caller can safely share. */
+  next: Promise<void> | null;
+}
+
+const catalogCopies = new Map<ClerkEnv, CatalogCopyRuns>();
+
+/**
+ * Resolves after a copy that STARTED after this call. Callers share the copy
+ * that has not started yet, so at most one runs and one waits per environment.
+ * Nothing is remembered once they finish, so a later access always copies again
+ * and a failure affects only the callers of that run.
+ */
+function copyFromNow(sql: Awaited<ReturnType<typeof plannerSql>>, env: ClerkEnv): Promise<void> {
+  const runs = catalogCopies.get(env) ?? { running: null, next: null };
+  catalogCopies.set(env, runs);
+  if (runs.next) return runs.next;
+
+  const start = async () => {
+    runs.next = null;
+    const run = copyLegacyCatalog(sql, env);
+    runs.running = run;
+    try {
+      await run;
+    } finally {
+      if (runs.running === run) runs.running = null;
+      if (!runs.running && !runs.next && catalogCopies.get(env) === runs) catalogCopies.delete(env);
+    }
+  };
+  const next = (runs.running ?? Promise.resolve()).catch(() => undefined).then(start);
+  runs.next = next;
+  return next;
+}
 
 async function copyLegacyCatalog(sql: Awaited<ReturnType<typeof plannerSql>>, env: ClerkEnv): Promise<void> {
+  // Plain ON CONFLICT on purpose: a NOT EXISTS pre-filter measured slower at
+  // some table sizes, depending on the query plan (docs/song-identity.md).
   await sql.query(
     `INSERT INTO catalog_songs_v2
        (clerk_env, song_id, legacy_title_key, title_key, title, number, collection, default_key, created_by, created_at)

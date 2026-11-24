@@ -29,10 +29,26 @@ const files = sourceFiles(ROOT).map((path) => ({
 }));
 
 describe("Personal Library privacy", () => {
-  it("is imported only by account deletion and its recovery", () => {
+  it("is imported only by account deletion, its recovery, and the owner-scoped Favorites API", () => {
     const outside = files.filter((file) => !file.path.startsWith("lib/personal-library/"));
     const importers = outside.filter((file) => /personal-library\//.test(file.text)).map((file) => file.path).sort();
-    expect(importers).toEqual(["app/admin/actions.ts", "app/api/cron/sync-archive/route.ts"]);
+    expect(importers).toEqual(["app/admin/actions.ts", "app/api/account/favorites/handlers.ts", "app/api/cron/sync-archive/route.ts"]);
+  });
+
+  it("sends every Favorites answer through the gated boundary, private and uncached", () => {
+    const handlers = files.find((file) => file.path === "app/api/account/favorites/handlers.ts")!.text;
+    expect(handlers).toMatch(/withPersonalLibrary</);
+    expect(handlers).toContain(`"Cache-Control": "private, no-store"`);
+    expect(handlers).not.toMatch(/getViewer|withPermissionExempt|unstable_cache|"use cache"|console\./);
+    // The owner is never read from a request.
+    expect(handlers).not.toMatch(/body\??\.(userId|clerkEnv|env|owner)\b|params\.get\("(userId|owner|env)"\)/);
+  });
+
+  it("keeps Favorites out of AI, analytics, notifications and reports", () => {
+    const api = /api\/account\/favorites|favorites-api|FavoritesProvider/;
+    const forbidden = files.filter((file) =>
+      /^(lib\/ai|app\/api\/conductor|lib\/notifications|app\/admin|lib\/dashboard)\b/.test(file.path) && api.test(file.text));
+    expect(forbidden.map((file) => file.path)).toEqual([]);
   });
 
   it("has its tables read nowhere else", () => {

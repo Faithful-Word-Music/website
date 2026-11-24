@@ -14,7 +14,9 @@ import {
   createNote,
   deleteNote,
   deletePersonalLibraryData,
+  favoriteMembership,
   isFavorite,
+  listFavoriteRows,
   listFavorites,
   listPendingErasures,
   listRecent,
@@ -22,6 +24,7 @@ import {
   noteErasureRecovery,
   recordRecent,
   releaseErasureAttempt,
+  removeExactFavorite,
   removeFavorite,
   updateNote,
   type LibraryOwner,
@@ -211,6 +214,64 @@ describe.skipIf(!packageUrl)("Personal Library on isolated PostgreSQL", () => {
 
     it("rejects a malformed cursor", async () => {
       await expect(listFavorites(sql, A, { cursor: "nonsense" })).rejects.toThrow();
+    });
+
+    describe("case variants", () => {
+      const stored = async () =>
+        (await engine.query(`SELECT song_id FROM user_song_favorites WHERE clerk_user_id = 'user_a' ORDER BY song_id`)).rows.map((row) => row.song_id);
+      const seed = (id: string) =>
+        engine.query(`INSERT INTO user_song_favorites (clerk_env, clerk_user_id, song_id) VALUES ('development', 'user_a', $1)`, [id]);
+
+      it("cannot create a duplicate through a case variant", async () => {
+        await seed("bth-001");
+        expect(await addFavorite(sql, A, { songId: "BTH-001", storedIds: ["BTH-001"] })).toBe("already");
+        expect(await stored()).toEqual(["bth-001"]);
+      });
+
+      it("finds and removes a row stored in another case", async () => {
+        await seed("bth-001");
+        expect(await isFavorite(sql, A, ["BTH-001"])).toBe(true);
+        expect(await favoriteMembership(sql, A, ["bth-001"])).toEqual({ blocked: false, present: new Set(["bth-001"]) });
+        expect(await removeFavorite(sql, A, ["BTH-001"])).toBe("removed");
+        expect(await stored()).toEqual([]);
+      });
+
+      it("agrees with the resolver's fold, leaving non-ASCII lookalikes alone", async () => {
+        await seed("K-1");
+        await seed("É-1");
+        expect(await removeFavorite(sql, A, ["K-1", "é-1"])).toBe("absent");
+        expect(await stored()).toHaveLength(2);
+      });
+
+      it("removes an exact stored key only, never its case variants or aliases", async () => {
+        await seed("GONE-1");
+        await seed("gone-1");
+        expect(await removeExactFavorite(sql, A, "Gone-1")).toBe("absent");
+        expect(await removeExactFavorite(sql, A, "GONE-1")).toBe("removed");
+        expect(await removeExactFavorite(sql, A, "GONE-1")).toBe("absent");
+        expect(await stored()).toEqual(["gone-1"]);
+      });
+
+      it("removes an exact key for its owner only", async () => {
+        await seed("GONE-1");
+        expect(await removeExactFavorite(sql, B, "GONE-1")).toBe("absent");
+        expect(await removeExactFavorite(sql, PROD_A, "GONE-1")).toBe("absent");
+        expect(await stored()).toEqual(["GONE-1"]);
+      });
+    });
+
+    it("answers membership in one query, for this owner only", async () => {
+      await addFavorite(sql, A, { songId: SONG, storedIds: IDS });
+      expect(await favoriteMembership(sql, B, [SONG.toLowerCase()])).toEqual({ blocked: false, present: new Set() });
+      expect(await favoriteMembership(sql, A, [SONG.toLowerCase(), "other"])).toEqual({ blocked: false, present: new Set([SONG.toLowerCase()]) });
+      expect(await favoriteMembership(sql, A, [])).toEqual({ blocked: false, present: new Set() });
+    });
+
+    it("lists every row with microsecond timestamps, and an empty collection", async () => {
+      expect(await listFavoriteRows(sql, A)).toEqual({ blocked: false, rows: [] });
+      await engine.query(`INSERT INTO user_song_favorites (clerk_env, clerk_user_id, song_id, created_at)
+        VALUES ('development', 'user_a', 'S-1', '2026-01-01T00:00:00.123456Z')`);
+      expect(await listFavoriteRows(sql, A)).toEqual({ blocked: false, rows: [{ songId: "S-1", createdAt: "2026-01-01T00:00:00.123456Z" }] });
     });
 
     it("isolates owners and environments", async () => {
@@ -635,6 +696,69 @@ describe.skipIf(!packageUrl)("Personal Library on isolated PostgreSQL", () => {
       expect(await view(A, SONG, T0)).toBe("account-erasing");
       expect((await create(A)).status).toBe("account-erasing");
       expect(await totals(A)).toEqual([0, 0, 0]);
+    });
+
+    describe.each(["pending", "complete"] as const)("with a %s marker", (state) => {
+      const close = async (owner: LibraryOwner = A) => {
+        await beginErasure(sql, owner, randomUUID());
+        if (state === "complete") {
+          await engine.query(
+            `UPDATE personal_library_erasures SET state = 'complete', open_attempts = '{}', completed_at = now()
+              WHERE clerk_env = $1 AND clerk_user_id = $2`,
+            [owner.env, owner.userId],
+          );
+        }
+      };
+
+      it("refuses favorite removal, exact removal, clearing history and deleting a note, changing nothing", async () => {
+        await fill(A);
+        const [note] = (await engine.query(`SELECT note_id FROM user_song_notes WHERE clerk_user_id = 'user_a'`)).rows;
+        await close();
+        expect(await removeFavorite(sql, A, IDS)).toBe("account-erasing");
+        expect(await removeExactFavorite(sql, A, SONG)).toBe("account-erasing");
+        expect(await clearRecent(sql, A)).toBe("account-erasing");
+        expect(await deleteNote(sql, A, { storedIds: IDS, noteId: note.note_id as string, expectedRevision: 1 })).toEqual({ status: "account-erasing" });
+        expect(await totals(A)).toEqual([1, 1, 1]);
+        const [kept] = (await engine.query(`SELECT content, deleted_at FROM user_song_notes WHERE clerk_user_id = 'user_a'`)).rows;
+        expect(kept).toMatchObject({ content: "note", deleted_at: null });
+      });
+
+      it("exposes no favorites through any read", async () => {
+        await addFavorite(sql, A, { songId: SONG, storedIds: IDS });
+        await close();
+        expect(await isFavorite(sql, A, IDS)).toBe(false);
+        expect((await listFavorites(sql, A)).items).toEqual([]);
+        expect(await listFavoriteRows(sql, A)).toEqual({ blocked: true });
+        expect(await favoriteMembership(sql, A, [SONG.toLowerCase()])).toEqual({ blocked: true });
+      });
+
+      it("does not prune an erasing account's history", async () => {
+        await view(A, SONG, Date.now() - 200 * DAY);
+        await close();
+        expect(await view(A, "OTHER-1", Date.now())).toBe("account-erasing");
+        expect(await count("user_library_recent")).toBe(1);
+      });
+
+      it("still lets the privileged cleanup remove everything", async () => {
+        await fill(A);
+        await close();
+        await deletePersonalLibraryData(sql, A);
+        expect(await totals(A)).toEqual([0, 0, 0]);
+      });
+
+      it("leaves another account's operations alone", async () => {
+        await fill(B);
+        await close();
+        expect(await removeFavorite(sql, B, IDS)).toBe("removed");
+        expect(await clearRecent(sql, B)).toBe(1);
+      });
+    });
+
+    it("settles overlapping removals and an erasure one before the other", async () => {
+      await addFavorite(sql, A, { songId: SONG, storedIds: IDS });
+      const [removed] = await Promise.all([removeFavorite(sql, A, IDS), beginErasure(sql, A, randomUUID())]);
+      expect(["removed", "account-erasing"]).toContain(removed);
+      expect(await count("user_song_favorites")).toBe(removed === "removed" ? 0 : 1);
     });
 
     it("refuses an update to an existing note once the marker is down", async () => {

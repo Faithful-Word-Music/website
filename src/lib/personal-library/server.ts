@@ -7,10 +7,12 @@ import type { ClerkEnv } from "@/lib/auth/clerk-env";
 import { currentClerkConfig } from "@/lib/auth/clerk-env";
 import { db, deleteUserData, type Sql } from "@/lib/auth/store";
 import { applySchema } from "@/lib/db";
+import type { FavoriteSongInfo } from "@/lib/favorites-api";
 import { deleteNotificationData } from "@/lib/notifications/store";
 import { listCatalogSongs, plannerConfigured } from "@/lib/service-planner/store";
 import { getSheetMusicIndex } from "@/lib/sheet-music-index";
-import { indexEntries } from "@/lib/song-identity";
+import { indexEntries, songUrlSlug } from "@/lib/song-identity";
+import { songPath } from "@/lib/song-list";
 
 import { eraseAccount, recoverPendingErasures, type ClerkDeletion, type ErasureCleanup, type ErasureOutcome, type RecoverySummary } from "./erasure";
 import { buildPersonalDirectory, type PersonalDirectory } from "./identity";
@@ -69,21 +71,49 @@ async function erasureClient(env: ClerkEnv): Promise<PersonalLibrarySql | null> 
   }
 }
 
+export interface PersonalSongs {
+  directory: PersonalDirectory;
+  /** Public details by canonical ID, copied field by field so nothing else can reach a response. */
+  songs: ReadonlyMap<string, FavoriteSongInfo>;
+}
+
+function songInfo(song: { songId: string; title: string; number: string | null; collection: string | null }): FavoriteSongInfo {
+  const { songId, title, number, collection } = song;
+  return { songId, title, number, collection, href: songPath(songUrlSlug({ songId, title, number, collection })) };
+}
+
 /**
  * Current songs for validating a new record. Unlike songDirectory(), a source
  * that cannot be read is reported, never treated as "this song does not exist".
+ * Reads the catalog directly, so a late legacy row is found at once even while
+ * the public pages' cached catalog has not refreshed.
  */
-export async function personalSongDirectory(env: ClerkEnv): Promise<PersonalDirectory> {
-  if (!plannerConfigured()) return { status: "unavailable" };
+export async function personalSongs(env: ClerkEnv): Promise<PersonalSongs> {
+  const unavailable: PersonalSongs = { directory: { status: "unavailable" }, songs: new Map() };
+  if (!plannerConfigured()) return unavailable;
   try {
     const index = await getSheetMusicIndex();
-    if (!index.ok) return { status: "unavailable" };
+    if (!index.ok) return unavailable;
     const catalog = await listCatalogSongs(env, indexEntries(index.index.songs));
-    return buildPersonalDirectory(index.index.songs.map((song) => song.id), catalog);
+    const songs = new Map<string, FavoriteSongInfo>();
+    for (const song of index.index.songs) {
+      songs.set(song.id, songInfo({ songId: song.id, title: song.title, number: song.hymnNumber, collection: song.collection }));
+    }
+    const directory = buildPersonalDirectory(index.index.songs.map((song) => song.id), catalog);
+    // A catalog row can join an index song that differs only by case; its details stay the index's.
+    if (directory.status === "ok") {
+      const present = new Set(directory.entries.map((entry) => entry.id));
+      for (const song of catalog) if (present.has(song.songId) && !songs.has(song.songId)) songs.set(song.songId, songInfo(song));
+    }
+    return { directory, songs };
   } catch (error) {
     console.error("[personal-library] Could not read the song directory:", error instanceof Error ? error.message : "unknown error");
-    return { status: "unavailable" };
+    return unavailable;
   }
+}
+
+export async function personalSongDirectory(env: ClerkEnv): Promise<PersonalDirectory> {
+  return (await personalSongs(env)).directory;
 }
 
 function clerkDeletion(result: ClerkResult<null>): ClerkDeletion {

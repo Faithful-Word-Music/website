@@ -21,14 +21,14 @@ describe("catalog identity storage", () => {
     expect(schema.join("\n")).not.toMatch(/(?:ALTER|DROP|TRUNCATE) TABLE catalog_songs\b/);
   });
 
-  it("copies each environment once per server instance, not on every read", async () => {
+  it("copies the caller's environment again on every later read, so late legacy rows are found", async () => {
     const { listCatalogSongs } = await import("./store");
     await listCatalogSongs("development");
     await listCatalogSongs("development");
     await listCatalogSongs("production");
     const copies = db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
-    expect(copies).toHaveLength(2);
-    expect(copies.map(([, params]) => params)).toEqual([["development"], ["production"]]);
+    expect(copies).toHaveLength(3);
+    expect(copies.map(([, params]) => params)).toEqual([["development"], ["development"], ["production"]]);
     for (const [sql] of copies) {
       expect(sql).toContain("INSERT INTO catalog_songs_v2");
       expect(sql).toContain("WHERE clerk_env = $1");
@@ -47,7 +47,7 @@ describe("catalog identity storage", () => {
     expect(copies[0][0]).toMatch(/md5\([^)]*clerk_env[^)]*title_key/);
   });
 
-  it("tries a failed copy again on the next read, and is only done once it succeeds", async () => {
+  it("tries a failed copy again on the next read, and keeps copying after it succeeds", async () => {
     let failCopy = true;
     db.query.mockImplementation(async (sql: string) => {
       if (/FROM catalog_songs\s/.test(sql) && failCopy) {
@@ -61,7 +61,64 @@ describe("catalog identity storage", () => {
     await listCatalogSongs("development");
     await listCatalogSongs("development");
     const copies = db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
-    expect(copies).toHaveLength(2);
+    expect(copies).toHaveLength(3);
+  });
+
+  it("makes a caller arriving during a copy wait for a newer one, shared by all such callers", async () => {
+    const releases: Array<() => void> = [];
+    db.query.mockImplementation((sql: string) =>
+      /FROM catalog_songs\s/.test(sql) ? new Promise((resolve) => releases.push(() => resolve([]))) : Promise.resolve([]));
+    const copyCount = () => db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql)).length;
+    const { listCatalogSongs } = await import("./store");
+
+    const first = listCatalogSongs("production");
+    await vi.waitFor(() => expect(copyCount()).toBe(1));
+    let lateDone = false;
+    const late = Promise.all([listCatalogSongs("production"), listCatalogSongs("production")]).then(() => { lateDone = true; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(copyCount()).toBe(1);
+
+    releases[0]();
+    await first;
+    await vi.waitFor(() => expect(copyCount()).toBe(2));
+    expect(lateDone).toBe(false);
+    releases[1]();
+    await late;
+    expect(copyCount()).toBe(2);
+  });
+
+  it("does not fail a waiting caller because the copy before it failed", async () => {
+    const settles: Array<{ resolve: (rows: unknown[]) => void; reject: (error: Error) => void }> = [];
+    db.query.mockImplementation((sql: string) =>
+      /FROM catalog_songs\s/.test(sql)
+        ? new Promise((resolve, reject) => settles.push({ resolve, reject }))
+        : Promise.resolve([]));
+    const copyCount = () => db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql)).length;
+    const { listCatalogSongs } = await import("./store");
+
+    const first = listCatalogSongs("development");
+    await vi.waitFor(() => expect(copyCount()).toBe(1));
+    const waiting = listCatalogSongs("development");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    settles[0].reject(new Error("connection lost"));
+    await expect(first).rejects.toThrow("connection lost");
+    await vi.waitFor(() => expect(copyCount()).toBe(2));
+    settles[1].resolve([]);
+    await expect(waiting).resolves.toEqual([]);
+  });
+
+  it("keeps environments' copies independent while one is running", async () => {
+    const releases: Array<() => void> = [];
+    db.query.mockImplementation((sql: string) =>
+      /FROM catalog_songs\s/.test(sql) ? new Promise((resolve) => releases.push(() => resolve([]))) : Promise.resolve([]));
+    const copies = () => db.query.mock.calls.filter(([sql]) => /FROM catalog_songs\s/.test(sql));
+    const { listCatalogSongs } = await import("./store");
+    const development = listCatalogSongs("development");
+    const production = listCatalogSongs("production");
+    await vi.waitFor(() => expect(copies()).toHaveLength(2));
+    expect(copies().map(([, params]) => params)).toEqual([["development"], ["production"]]);
+    releases.forEach((release) => release());
+    await Promise.all([development, production]);
   });
 
   it("creates two same-title records with different durable UUIDs and retains supplied identities", async () => {

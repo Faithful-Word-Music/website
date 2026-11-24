@@ -92,7 +92,15 @@ checks.
 
 Favorites, notes and history use a stricter rule than this page's fallback identities: a new record needs a current index ID or a persisted catalog identity, never a title or `legacy-*` value. See [personal-library.md](personal-library.md#song-identity).
 
-**Known defect:** the statement above that late additions to the old catalog are picked up on every access is not what the code currently does. Each server copies once per environment. See [the required follow-up](personal-library.md#required-follow-up-before-p22-acceptance-catalog-copy).
+## Late legacy catalog rows
+
+Corrected in P2.2. A server used to remember its first successful copy forever, so a row an older deployment wrote later stayed invisible until a restart.
+
+- Every access now runs the atomic `INSERT ... SELECT ... ON CONFLICT DO NOTHING` for its environment. Nothing is remembered once a copy finishes.
+- Callers overlapping a running copy share **one following copy**, so no caller accepts a snapshot older than its own arrival. At most one copy runs and one waits per environment, and a failure affects only that run's callers.
+- Imported IDs, timestamps, corrected metadata and associations are never overwritten, and the old table is never changed.
+- A `NOT EXISTS` pre-filter was measured and rejected: on PGlite with 1,000 rows it took a median 33.6 ms against 3.7 ms without it, because of the query plan.
+- **Bounded delay on public pages:** they read a cached catalog (`getCachedCatalog`, 24-hour revalidation, cleared by planner changes and Sheet Music refreshes), which keeps public renders off the database. The Personal Library reads directly and sees a late row at once.
 
 ## Song identity is not place identity
 

@@ -49,6 +49,32 @@ html[data-member] [data-footer="app"] {
   }
 }
 
+/* Room for a member's Library controls, held from the first paint so nothing
+   jumps when they load in the browser. The cached page is the same for
+   everyone, and a visitor's has no gap. */
+.favorite-slot,
+.favorite-nav-slot,
+.favorite-song-slot {
+  display: none;
+}
+
+html[data-member] .favorite-slot {
+  display: inline-flex;
+  flex: none;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+}
+
+html[data-member] .favorite-nav-slot {
+  display: block;
+  min-height: 2.75rem;
+}
+
+html[data-member] .favorite-song-slot {
+  display: block;
+  min-height: 2.75rem;
+}
+
 /* Dropdowns: every native <select> gets the site's own chevron (Icon's
    chevron-down, in the muted colour of the theme) with the same breathing
    room from its edge, instead of each browser's own arrow pressed against

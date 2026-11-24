@@ -213,6 +213,12 @@ export default async function DashboardPage() {
             >
               {copy.profileLink}
             </Link>
+            <Link
+              href="/library/favorites"
+              className="text-muted underline decoration-line underline-offset-4 transition-colors hover:text-ink hover:decoration-gold"
+            >
+              {copy.favoritesLink}
+            </Link>
           </p>
         </header>
 

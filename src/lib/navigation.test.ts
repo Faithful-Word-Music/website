@@ -140,6 +140,15 @@ describe("isMemberPath", () => {
     expect(isMemberPath("/contact/requests/R-12345678")).toBe(true);
     expect(isMemberPath("/contact")).toBe(false);
   });
+
+  it("protects Favorites without making the rest of the Library private", () => {
+    expect(isMemberPath("/library/favorites")).toBe(true);
+    expect(isMemberPath("/library/favorites/anything")).toBe(true);
+    expect(isMemberPath("/library")).toBe(false);
+    expect(isMemberPath("/library/favoritesx")).toBe(false);
+    expect(isMemberPath("/library/songs/amazing-grace-sssh1989-10")).toBe(false);
+    expect(isMemberPath("/library/songs/favorites")).toBe(false);
+  });
 });
 
 describe("isActivePath", () => {

@@ -1,14 +1,15 @@
 # Personal Library
 
-Each member's private favorites, recent history and song notes. **P2.1 is the data foundation only.** No page, button, route or view tracking uses it yet. The code is in `src/lib/personal-library/`.
+Each member's private favorites, recent history and song notes. **Favorites are live as of P2.2** ([Favorites](#favorites-p22)). Notes and recent history remain storage only, with no page, button or view tracking. The code is in `src/lib/personal-library/`.
 
 | File | Purpose |
 |---|---|
 | `schema.mjs` | The additive tables |
 | `identity.ts` | Which song a record belongs to (pure) |
+| `favorites.ts` | One logical Favorite per song; search, sort, cursors, batched membership (pure) |
 | `store.ts` | Owner-scoped reads and writes |
 | `erasure.ts` | The order of an account erasure (pure) |
-| `authorize.ts` | `withPersonalLibrary`, the boundary for future server actions |
+| `authorize.ts` | `withPersonalLibrary`, the boundary for every Personal Library operation |
 | `server.ts` | Server-only client, strict song directory, erasure wiring |
 
 ## Who may use it
@@ -21,9 +22,9 @@ An approved member is anyone with a valid session in this Clerk environment whos
 - A favorite, note or history entry never grants sheet music.
 - Personal Library data is not used by AI, embeddings, analytics, reports, notifications or shared caches, and `invariants.test.ts` checks this against the source.
 
-### Operational requirements the owner must verify
+### Clerk settings this relies on
 
-These are Clerk dashboard settings. **They have not been independently verified**, because source code cannot show them. Check both in **Development and Production**:
+These are Clerk dashboard settings, which source code cannot show. **The owner has confirmed both in Development and Production.** They were not verified by automated inspection, and must stay on:
 
 1. **Access mode is Invite-only.** The approved-member definition relies on it: anyone able to create a Clerk account would count as a Member.
 2. **Users cannot delete their own accounts.** `/account` embeds Clerk's profile screen and the site has no Clerk webhook. A self-deletion would remove the Clerk user but leave all of that person's site data, including private notes.
@@ -62,9 +63,75 @@ Tables install on first use through `applySchema`: one transaction, under the si
 | Alias claimed by two songs | `ambiguous` |
 | Index or catalog unreadable | `directory-unavailable` |
 
-Stored keys are never rewritten. Reads and writes pass every spelling of the song (`storedIds`), so an old alias still finds its record. `describeStoredSong` reports a stored record as `available`, `unavailable`, `ambiguous`, or `unknown` during an outage. **No directory result ever deletes a record.**
+Stored keys are never rewritten. Reads and writes pass the song's safe spellings (`storedIds`), so an old alias still finds its record. `describeStoredSong` reports a stored record as `available`, `unavailable`, `ambiguous`, or `unknown` during an outage. **No directory result ever deletes a record.**
+
+**Alias and case safety (P2.2):**
+
+- `storedIds` holds the canonical ID plus only the aliases no other song claims, so a change to one song cannot reach another's record.
+- A song whose own ID is also claimed by another song is `ambiguous` under every spelling.
+- IDs compare through one fold, `foldSongId`, matched in SQL by `FOLDED_SONG_ID`. It lowercases **ASCII only**, because JavaScript and PostgreSQL lowercase other characters differently. A non-ASCII lookalike is a different song.
+- Two index IDs differing only by case stay two entries and resolve as `ambiguous`. They are never merged.
+- Favorites match case-insensitively, so a case variant cannot create a duplicate. Notes still match their exact stored spellings.
+- Removing an unresolvable entry (`removeExactFavorite`) is **case-sensitive with no alias expansion**.
 
 **Known limitation:** a song known only from history, with no index or catalog identity, cannot be newly favorited or noted. Its `legacy-*` identity is derived from a title or number and is not proven durable.
+
+## Favorites (P2.2)
+
+Part of the one Library. There is no separate My Library page or navbar item.
+
+| Route | Access | Rendering |
+|---|---|---|
+| `/library` (All Songs) | Public | Cached, hourly |
+| `/library/songs/[song]` | Public | Cached on first visit, hourly |
+| `/library/favorites` | Approved members; checked on the page, not only by the proxy | Dynamic, `noindex`, holds no Favorites in its HTML |
+
+`app/library/layout.tsx` only mounts a client provider and reads no session, so the public pages stay cached. Hearts, section links and membership load in the browser, and a visitor sends no Favorites request. Future sections stay hidden until they work.
+
+### API
+
+All in `app/api/account/favorites/handlers.ts`, through `withPersonalLibrary`, answered `private, no-store`.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/account/favorites` | `sort` (`recent`, `title`, `number`), `q`, `cursor`, `limit` (default 50, maximum 100) |
+| `POST /api/account/favorites/membership` | Up to 200 IDs in one set-based query |
+| `PUT /api/account/favorites/[songId]` | `{ favorite, expectedAccount, exact? }`. An explicit state; there is no toggle |
+
+- State-changing and membership requests must be same-origin.
+- `expectedAccount` grants nothing. It refuses a request queued for one account and sent after the session became another's.
+- `exact: true` removes one stored key and can never add.
+- Errors are controlled codes (`FavoriteErrorCode`). A directory failure is never reported as a missing song.
+- Idempotent is not the same as ordered: a delayed older request can still overwrite a newer one.
+
+### Listing
+
+Every stored row is read, spellings collapse into one logical Favorite dated by its **earliest** row, and only then does search, sorting and paging happen. Page size is not a collection limit.
+
+- **Recently Added** (default): newest first to the microsecond.
+- **Alphabetical:** normalized title, then collection and number.
+- **Hymn Number:** collection, then natural number. Unnumbered songs follow.
+- Entries without details sort last in the last two. The identity breaks every tie.
+- The cursor is a position in the order, bound to the sort and search. It does not freeze the collection across requests. An invalid cursor is refused and the list reloads from the top.
+- In a directory outage, entries still list by date, marked as details unavailable. Search is refused rather than showing a false empty result.
+
+### Browser state
+
+`FavoritesController` holds one account's state in memory: no browser storage, no third-party library, one instance per account.
+
+- **One request per song**, with later clicks collapsed into the latest intent. An older answer never overwrites a newer intent.
+- **Uncertain outcomes.** A timeout, lost response or generic server failure may still have been applied. The song becomes **uncertain**:
+  - One read updates what was last *observed* and does not clear the uncertainty.
+  - An ordinary click, in either direction, sends nothing. Nothing retries automatically.
+  - The member chooses **Add** or **Remove** explicitly, which sends one request.
+  - It ends when the original request gets a definite answer, or the explicit request does. If the original answers after that choice, the song is read again.
+- **Other tabs** get a `BroadcastChannel` signal with no song data. **Focus and navigation** refresh only when stale. There is no polling.
+- **Across devices** the database's execution order decides. Exact last-click-wins is not promised.
+- **Account change** discards the controller: queued intents are dropped, late answers are ignored, and the server refuses a mismatched `expectedAccount`.
+
+**Remaining limit of the approved model:** after an explicit choice, a still-travelling earlier request can land later and change the saved state. The tab corrects itself on that request's answer or the next refresh, but if its answer never arrives, the change appears only at the next read.
+
+**Offline and PWA.** `public/sw.js` has no fetch handler and caches nothing, so no Favorites response can persist. An offline click says it was not saved. There is no offline queue.
 
 ## Recent history
 
@@ -112,7 +179,9 @@ If two notes come to belong to one song because a catalog entry was linked to th
 3. **Clean up.** Personal Library, then `deleteUserData`, then `deleteNotificationData`. All can be repeated.
 4. **Complete.** Only after all three succeed, one transaction purges the library again and sets `complete`. The marker stays afterward, so a late request cannot recreate data.
 
-Every write and erasure step takes the same per-account advisory lock, so a write is strictly before the purge (and removed) or after the marker (and refused).
+Every write and erasure step takes the same per-account advisory lock, so a write is strictly before the purge (and removed) or after the marker (and refused). As of P2.2 that includes every removal (`removeFavorite`, `removeExactFavorite`, `clearRecent`, `deleteNote`) and the pruning inside `recordRecent`: each checks the marker in its own locked statement. Only the privileged erasure steps change an account once it is marked.
+
+Favorites reads check the marker in the same statement and expose nothing for a marked account. `loadNote` and `listRecent` still return stored data under a marker, which the recovery tests rely on. Neither is reachable from any route yet, so **P2.3 and P2.4 must refuse a marked account before exposing them.**
 
 **Recovery.** The nightly `sync-archive` cron calls `recoverAccountErasures`. It looks at up to 25 pending accounts, least recently tried first, and reruns the full cleanup only when Clerk confirms the account is gone. Overlapping runs are safe.
 
@@ -169,28 +238,22 @@ Required before accepting the P2.4 Sheet Music experience. Do this separately in
 3. **Roles and individuals:** on a person's page, confirm that the Member role alone gives no sheet music, and that a grant, a deny and a verified affiliation behave as in [membership-authorization.md](membership-authorization.md).
 4. **Delivery:** open one public, one restricted and one withheld file signed out, as a Member, and as an entitled person.
 
-## Future server-action contracts
+## Future contracts
 
-Each wraps `withPersonalLibrary`, validates input, and takes no owner from the client.
+Favorites shipped as the API above. Each remaining one wraps `withPersonalLibrary`, validates input, and takes no owner from the client.
 
 | Checkpoint | Action | Uses |
 |---|---|---|
-| Favorites | add, remove, list | `resolvePersonalSong`, `addFavorite`, `removeFavorite`, `listFavorites` |
 | Recent | record song view, clear, list | `recordRecent`, `clearRecent`, `listRecent` |
 | Notes | load, create, update, delete | `loadNote`, `createNote`, `updateNote`, `deleteNote`. The server generates `noteId`, the client generates one `mutationId` per intended save, and a create after a deletion sends the `deletedNoteId` it loaded |
 | P2.4 | record sheet open | Only after `decideSheetAccess` allows the file |
 
 ## Testing
 
-`store.integration.test.ts` runs on isolated in-memory PGlite and never reads `DATABASE_URL`. Set `PERSONAL_LIBRARY_PGLITE` to the file URL of PGlite's `dist/index.js`.
+`store.integration.test.ts` and `app/api/account/favorites/favorites.integration.test.ts` run on isolated in-memory PGlite and never read `DATABASE_URL`. Set `PERSONAL_LIBRARY_PGLITE` (or `MEMBERSHIP_PGLITE`) to the file URL of PGlite's `dist/index.js`. Set `FAVORITES_PERF=1` as well to print timings for 0 to 5,000 Favorites.
 
-PGlite has one backend, so its concurrency tests prove overlapping requests behave correctly when queued. **They do not reproduce lock contention between separate connections.** Check that on Preview against real PostgreSQL: overlapping note creates, including from one tombstone, 100-entry pruning, and a write racing an erasure.
+PGlite has one backend, so its concurrency tests prove overlapping requests behave correctly when queued. **They do not reproduce lock contention between separate connections.** Check that on Preview against real PostgreSQL: overlapping note creates, including from one tombstone, 100-entry pruning, and a write or removal racing an erasure.
 
-## Required follow-up before P2.2 acceptance: catalog copy
+## Catalog copy (resolved in P2.2)
 
-`store-identity.integration.test.ts` ("copies idempotently...") fails, and it fails identically on a clean export of `0f0bfa3`, so P2.1 did not cause it.
-
-- **Cause:** `copyCatalogSongs` copies the old `catalog_songs` table once per environment per server. The test and `docs/song-identity.md` expect a row added to the old table later to be picked up on the next read. The code comment says nothing writes that table any more.
-- **Newly added songs:** the Service Planner writes new songs straight to `catalog_songs_v2`, so they are **not** affected. Only a row written to the old table by an older deployment still running is missed, until a new server instance starts.
-- **Personal Library:** such a song resolves as `unknown`, so it cannot be newly favorited or noted until it is copied. Existing records are never changed or deleted.
-- **To decide:** either restore repeated copying or, if no old deployment can still write, update the test and the documentation to match.
+Late rows in the old `catalog_songs` table are now found without a server restart. See [song-identity.md](song-identity.md). The Personal Library reads the catalog directly, so it sees them at once. The public pages' cached catalog can take up to its 24-hour revalidation, unless a planner change or Sheet Music refresh clears it first.

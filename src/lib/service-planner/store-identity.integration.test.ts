@@ -98,4 +98,61 @@ describe.skipIf(!packageUrl)("catalog migration on isolated PostgreSQL", () => {
     expect((await listCatalogSongs("production")).find((song) => song.number === "167")?.songId).toBe("SSSH1989-167");
     expect((await local.engine!.query("SELECT * FROM catalog_songs ORDER BY clerk_env, title_key")).rows).toEqual(original);
   }, 20_000);
+
+  it("finds late rows repeatedly while keeping imported identities, edits, associations and the legacy table", async () => {
+    const { listCatalogSongs, createCatalogSong } = await import("./store");
+    const entries = [{ id: "SSSH1989-167", title: "All Hail", number: "167", collection: "SSSH1989" }];
+    const before = await listCatalogSongs("production", entries);
+    const linked = before.find((song) => song.number === "167")!;
+    expect(linked.songId).toBe("SSSH1989-167");
+    const independent = await createCatalogSong("production", { title: "All Hail", number: null, collection: null, defaultKey: "C" }, "user");
+    const imported = (await local.engine!.query(
+      "SELECT song_id, created_at FROM catalog_songs_v2 WHERE clerk_env = 'production' AND legacy_title_key IS NOT NULL ORDER BY song_id",
+    )).rows;
+    await local.engine!.query(`UPDATE catalog_songs_v2 SET title = 'Corrected', title_key = 'corrected'
+      WHERE clerk_env = 'production' AND song_id = $1`, [linked.catalogId]);
+    // A later legacy edit must not overwrite the corrected canonical record.
+    await local.engine!.query(`UPDATE catalog_songs SET title = 'Legacy edit' WHERE clerk_env = 'production' AND title_key = 'all hail'`);
+    const legacy = () => local.engine!.query("SELECT * FROM catalog_songs ORDER BY clerk_env, title_key");
+
+    for (const key of ["late one", "late two"]) {
+      await local.engine!.query(`INSERT INTO catalog_songs (clerk_env, title_key, title) VALUES ('production', $1, $1)`, [key]);
+      const legacyBefore = (await legacy()).rows;
+      const songs = await listCatalogSongs("production", entries);
+      expect(songs.some((song) => song.title === key)).toBe(true);
+      expect((await legacy()).rows).toEqual(legacyBefore);
+    }
+    const after = await listCatalogSongs("production", entries);
+    expect(after).toHaveLength(before.length + 3);
+    expect(after.find((song) => song.catalogId === linked.catalogId)).toMatchObject({ songId: "SSSH1989-167", title: "Corrected" });
+    expect(after.find((song) => song.catalogId === independent!.catalogId)?.songId).toBe(independent!.songId);
+    expect((await local.engine!.query(
+      "SELECT song_id, created_at FROM catalog_songs_v2 WHERE clerk_env = 'production' AND song_id = ANY($1::text[]) ORDER BY song_id",
+      [imported.map((row) => row.song_id)],
+    )).rows).toEqual(imported);
+    expect((await listCatalogSongs("development")).some((song) => song.title.startsWith("late"))).toBe(false);
+  }, 20_000);
+
+  it("recovers after a failed copy and shares concurrent late discovery", async () => {
+    const { listCatalogSongs } = await import("./store");
+    await listCatalogSongs("production");
+    await local.engine!.query("ALTER TABLE catalog_songs RENAME TO catalog_songs_away");
+    await expect(listCatalogSongs("production")).rejects.toThrow();
+    await local.engine!.query("ALTER TABLE catalog_songs_away RENAME TO catalog_songs");
+    await local.engine!.query(`INSERT INTO catalog_songs (clerk_env, title_key, title) VALUES ('production', 'after failure', 'After Failure')`);
+    const results = await Promise.all([listCatalogSongs("production"), listCatalogSongs("production"), listCatalogSongs("production")]);
+    for (const songs of results) expect(songs.filter((song) => song.title === "After Failure")).toHaveLength(1);
+  }, 20_000);
+
+  it("lets the Personal Library resolve a legacy row discovered after the first copy", async () => {
+    const { listCatalogSongs } = await import("./store");
+    const { buildPersonalDirectory, resolvePersonalSong } = await import("@/lib/personal-library/identity");
+    const directory = async () => buildPersonalDirectory([], await listCatalogSongs("production"));
+    const lateId = `catalog-${(await local.engine!.query(
+      `SELECT (md5('faithful-word-catalog-v2:production:late song')::uuid)::text AS id`,
+    )).rows[0].id}`;
+    expect(resolvePersonalSong(lateId, await directory())).toEqual({ status: "unknown" });
+    await local.engine!.query(`INSERT INTO catalog_songs (clerk_env, title_key, title) VALUES ('production', 'late song', 'Late Song')`);
+    expect(resolvePersonalSong(lateId, await directory())).toMatchObject({ status: "ok", songId: lateId });
+  }, 20_000);
 });

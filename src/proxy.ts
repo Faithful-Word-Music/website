@@ -86,6 +86,8 @@ export const config = {
     "/login/:path*",
     "/accept-invite/:path*",
     "/api/account/:path*",
+    // A member's Favorites. The rest of the Library is public and stays out of here.
+    "/library/favorites/:path*",
     // Sheet-music files: members-only ones are served after a session check.
     "/library/songs/:song/sheet-music/:file",
     // One archived service: who planned and published it shows to planners only.

@@ -38,6 +38,7 @@ export const ICON_PATHS = {
   "arrow-right": "M3 8h10M9 4l4 4-4 4",
   device: "M5 1.5h6a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1ZM7 12.5h2",
   list: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01",
+  heart: "M8 13.5S2.25 10.2 2.25 6.1A3.1 3.1 0 0 1 8 4.5a3.1 3.1 0 0 1 5.75 1.6C13.75 10.2 8 13.5 8 13.5Z",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;
@@ -46,12 +47,15 @@ export function Icon({
   name,
   size = 16,
   strokeWidth = 1.3,
+  filled = false,
   className,
 }: {
   name: IconName;
   /** Rendered size in px; the drawing scales from its 16px grid. */
   size?: number;
   strokeWidth?: number;
+  /** Fills a closed shape in the text's colour, for an on/off state such as a saved heart. */
+  filled?: boolean;
   className?: string;
 }) {
   return (
@@ -64,7 +68,7 @@ export function Icon({
       fill="none"
       className={cn("shrink-0", className)}
     >
-      <path d={ICON_PATHS[name]} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={ICON_PATHS[name]} fill={filled ? "currentColor" : undefined} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
