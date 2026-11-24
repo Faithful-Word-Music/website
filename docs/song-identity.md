@@ -88,6 +88,12 @@ checks.
 - Check member-only files signed out, as a member, and without the required permission.
 - Confirm repeated Preview reads do not duplicate catalog rows or change production data.
 
+## Personal records
+
+Favorites, notes and history use a stricter rule than this page's fallback identities: a new record needs a current index ID or a persisted catalog identity, never a title or `legacy-*` value. See [personal-library.md](personal-library.md#song-identity).
+
+**Known defect:** the statement above that late additions to the old catalog are picked up on every access is not what the code currently does. Each server copies once per environment. See [the required follow-up](personal-library.md#required-follow-up-before-p22-acceptance-catalog-copy).
+
 ## Song identity is not place identity
 
 A song's identity (`songIdentity`, the song ID) says **which song** it is. It is shared by every service, and by the same song twice in one service.

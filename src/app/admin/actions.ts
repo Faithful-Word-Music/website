@@ -8,7 +8,6 @@ import { redirect } from "next/navigation";
 import { profileSetupContent } from "@/content/profile-setup";
 import {
   createInvitation,
-  deleteAccount,
   getAccount,
   revokeInvitation,
   setBanned,
@@ -43,7 +42,6 @@ import {
   deleteInvitationRoles,
   deleteOption,
   deleteRole,
-  deleteUserData,
   getRole,
   isMembershipInstalled,
   listRoles,
@@ -96,7 +94,8 @@ import { libraryIndexProblem } from "@/lib/notifications/events/library";
 import { notifyBestEffort } from "@/lib/notifications/send";
 import { CHANNELS, allowedPolicies, isChannelPolicy } from "@/lib/notifications/model";
 import { notify, setPolicy } from "@/lib/notifications/service";
-import { deleteNotificationData, deletePushSubscriptions, notificationDeps } from "@/lib/notifications/store";
+import { deletePushSubscriptions, notificationDeps } from "@/lib/notifications/store";
+import { eraseUserAccount } from "@/lib/personal-library/server";
 import { notificationsContent } from "@/content/notifications";
 import { ANYWHERE, FORMAT_FOLDERS, sourceCoverage } from "@/lib/sheet-music";
 import { getSheetMusicSources, SHEET_MUSIC_TAG } from "@/lib/sheet-music-index";
@@ -632,12 +631,15 @@ export async function deleteUserAction(userId: unknown): Promise<ActionResult> {
 
     const account = await getAccount(target.data);
     if (!account.ok && account.reason !== "not-found") return clerkError(account, "The account could not be deleted.");
-    if (account.ok) {
-      const deleted = await deleteAccount(target.data);
-      if (!deleted.ok) return clerkError(deleted, "The account could not be deleted. Please try again.");
+    const outcome = await eraseUserAccount(viewer.env, target.data, account.ok);
+    if (outcome === "refused") return { ok: false, error: "Clerk refused to delete this account. Nothing was removed. Please try again." };
+    if (outcome === "uncertain") {
+      return { ok: false, error: "Clerk did not confirm the deletion. Please check this account and try again if it is still here." };
     }
-    await deleteUserData(viewer.env, target.data);
-    await deleteNotificationData(viewer.env, target.data);
+    if (outcome === "cleanup-pending") {
+      revalidatePath("/admin", "layout");
+      return { ok: false, error: "The account was deleted, but some of its data could not be removed yet." };
+    }
     revalidatePath("/admin", "layout");
     // Their page no longer exists; go back to the list.
     redirect("/admin/users");

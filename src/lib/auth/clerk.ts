@@ -21,7 +21,21 @@ import type { InvitationStatus } from "./request-status";
 
 export type ClerkResult<T> =
   | { ok: true; value: T }
-  | { ok: false; reason: "already-exists" | "not-found" | "rate-limited" | "failed"; message?: string };
+  | {
+      ok: false;
+      reason: "already-exists" | "not-found" | "rate-limited" | "failed";
+      message?: string;
+      /** Set by deleteAccount: Clerk answered that it did not carry out this request. */
+      definitive?: boolean;
+    };
+
+/**
+ * Clerk statuses that prove a deletion request was refused and did nothing.
+ * Anything else (a timeout, a dropped connection, a 5xx) might have worked.
+ */
+export function isDefinitiveDeleteRefusal(status: number): boolean {
+  return status === 400 || status === 401 || status === 403 || status === 422 || status === 429;
+}
 
 function fail<T>(action: string, error: unknown): ClerkResult<T> {
   if (isClerkAPIResponseError(error)) {
@@ -195,7 +209,11 @@ export async function deleteAccount(userId: string): Promise<ClerkResult<null>> 
     await client.users.deleteUser(userId);
     return { ok: true, value: null };
   } catch (error) {
-    return fail("deleteUser", error);
+    const failure = fail<null>("deleteUser", error);
+    if (!failure.ok && isClerkAPIResponseError(error) && isDefinitiveDeleteRefusal(error.status)) {
+      return { ...failure, definitive: true };
+    }
+    return failure;
   }
 }
 

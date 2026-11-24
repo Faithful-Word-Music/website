@@ -66,6 +66,10 @@ Activation is one database transaction. It is refused if the data changed since 
 
 Rollback removes the Song Leader grant activation added. It never restores universal Member access, and the environment stays enforcing. To restore someone's access quickly, verify them or give them an individual grant. To restore a file, fix its row in the Index or File Rights.
 
+## Personal Library
+
+Favorites, notes and history are open to every approved member and never affect this policy. Having a song in them grants nothing. See [personal-library.md](personal-library.md).
+
 ## Known limitation: AI lyrics
 
 The AI lyrics tools (`src/lib/library-content/indexer.ts`, `src/lib/ai/conductor/tools.ts`) do not apply this policy: anyone with `use_ai` can read lyrics from restricted or withheld songs. **This must be fixed before `use_ai` is given to anyone new.** Administrators and the Music Director role hold it by default.

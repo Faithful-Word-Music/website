@@ -2,6 +2,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { recoverAccountErasures } from "@/lib/personal-library/server";
 import { sendAlertEmail } from "@/lib/resend";
 import { ARCHIVE_TAG, syncArchive } from "@/lib/song-archive";
 
@@ -39,6 +40,10 @@ export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
+
+  // Finishes any account erasure that was interrupted. Never throws, and a
+  // problem here must not stop the archive.
+  await recoverAccountErasures();
 
   try {
     const summary = await syncArchive(Date.now());
